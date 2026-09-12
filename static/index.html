@@ -1,0 +1,1864 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>היועץ החכם להשקעות</title>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<style>
+:root{
+ --bg:#f5f7fb;--surface:#ffffff;--surface2:#f9fbff;--ink:#152033;--muted:#6f7b91;
+ --line:#e4e9f2;--brand:#315bea;--brand2:#7b61ff;--good:#0f9d6e;--bad:#d84d4d;
+ --warn:#c58a18;--shadow:0 8px 28px rgba(35,48,74,.08);--radius:18px
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:Arial,"Noto Sans Hebrew",sans-serif}
+.app{min-height:100vh}
+.hero{background:linear-gradient(135deg,#19244f,#2d3f8f 60%,#5b4dc9);color:#fff;padding:30px 24px 22px}
+.hero-inner{max-width:1400px;margin:auto;display:flex;justify-content:space-between;gap:20px;align-items:flex-end;flex-wrap:wrap}
+.hero h1{font-size:38px;margin:0 0 8px;font-weight:900;letter-spacing:-.5px}
+.hero p{margin:0;color:#dce4ff;font-size:15px}
+.hero-actions{display:flex;gap:10px;flex-wrap:wrap}
+.btn{border:0;border-radius:12px;padding:10px 14px;font-weight:700;cursor:pointer}
+.btn-light{background:#fff;color:#243b8c}.btn-ghost{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.25)}
+.shell{max-width:1400px;margin:auto;padding:18px 20px 32px}
+.nav{display:flex;gap:8px;overflow:auto;padding:4px 0 14px;position:sticky;top:0;background:rgba(245,247,251,.96);backdrop-filter:blur(12px);z-index:20}
+.nav button{white-space:nowrap;border:1px solid var(--line);background:#fff;color:var(--muted);border-radius:12px;padding:10px 15px;font-weight:700;cursor:pointer}
+.nav button.active{background:var(--brand);color:#fff;border-color:var(--brand)}
+.page{display:none}.page.active{display:block}
+.section-head{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;margin:6px 0 14px}
+.section-head h2{margin:0;font-size:24px}.section-head p{margin:4px 0 0;color:var(--muted);font-size:13px}
+.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px}
+.metric b{display:block;font-size:24px}.metric span{font-size:12px;color:var(--muted)}
+@media(max-width:900px){.cards{grid-template-columns:repeat(2,1fr)}}@media(max-width:560px){.cards{grid-template-columns:1fr}}
+.home-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
+@media(max-width:900px){.home-grid{grid-template-columns:1fr}}
+.table-wrap{overflow:auto;border-radius:16px;border:1px solid var(--line);background:#fff}
+table{width:100%;border-collapse:collapse;min-width:1050px}
+th,td{padding:12px 10px;border-bottom:1px solid var(--line);text-align:right;vertical-align:middle;font-size:13px}
+th{background:#f7f9fd;color:#66738b;font-size:12px;position:sticky;top:0;z-index:1}
+tr.stock-row{cursor:pointer}tr.stock-row:hover{background:#f8fbff}
+.company{display:flex;gap:10px;align-items:center;min-width:180px}
+.logo{width:38px;height:38px;border-radius:10px;border:1px solid var(--line);background:#fff;object-fit:contain;padding:4px}
+.logo-fallback{width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,#e8edff,#f3efff);display:grid;place-items:center;font-weight:900;color:#324dba;border:1px solid #dfe5f7}
+.company b{font-size:14px}.small{font-size:11px;color:var(--muted)}
+.score{display:inline-flex;align-items:center;gap:6px;font-weight:800}.score-dot{width:9px;height:9px;border-radius:50%}
+.s-high{color:var(--good)}.s-mid{color:var(--warn)}.s-low{color:var(--bad)}
+.badge{display:inline-block;padding:5px 8px;border-radius:999px;background:#f1f4fa;color:#55627a;font-size:11px;font-weight:700}
+.positive{color:var(--good);font-weight:700}.negative{color:var(--bad);font-weight:700}
+.top-card{display:flex;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line);cursor:pointer}
+.top-card:last-child{border-bottom:0}.rank{font-size:20px;font-weight:900;color:#aab3c4;width:28px}.top-card .grow{flex:1}
+.news-pill{font-size:11px;padding:4px 7px;border-radius:999px;background:#eef8f4;color:#0c7d5a}
+.detail{display:grid;grid-template-columns:1.35fr .65fr;gap:14px}
+@media(max-width:960px){.detail{grid-template-columns:1fr}}
+.detail-hero{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}
+.detail-company{display:flex;gap:12px;align-items:center}.detail-company .logo,.detail-company .logo-fallback{width:54px;height:54px;border-radius:14px}
+.detail-company h3{margin:0 0 3px;font-size:22px}
+.kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin:14px 0}
+@media(max-width:760px){.kpis{grid-template-columns:repeat(2,1fr)}}
+.kpi{background:var(--surface2);border:1px solid var(--line);border-radius:14px;padding:12px}.kpi b{font-size:18px;display:block}.kpi span{font-size:11px;color:var(--muted)}
+.ranges{display:flex;gap:6px;flex-wrap:wrap}.ranges button{border:1px solid var(--line);background:#fff;padding:7px 10px;border-radius:9px;cursor:pointer}.ranges button.active{background:#263f9d;color:#fff;border-color:#263f9d}
+canvas{width:100%;height:300px;border:1px solid var(--line);border-radius:14px;background:#fbfcff}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media(max-width:650px){.info-grid{grid-template-columns:1fr}}
+.info{background:#f9fbff;border:1px solid var(--line);border-radius:14px;padding:12px}.info h4{margin:0 0 6px;font-size:13px}.info p{margin:0;color:var(--muted);font-size:13px;line-height:1.55}
+.criteria{display:grid;gap:9px}.crit{display:grid;grid-template-columns:125px 1fr 40px;gap:8px;align-items:center;font-size:12px}.bar{height:8px;border-radius:999px;background:#e9edf5;overflow:hidden}.fill{height:100%;background:linear-gradient(90deg,var(--brand),var(--brand2))}
+.trade-plan{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0}
+@media(max-width:760px){.trade-plan{grid-template-columns:repeat(2,1fr)}}
+.plan-card{border:1px solid var(--line);background:#fff;border-radius:14px;padding:12px}
+.plan-card b{display:block;font-size:18px;margin-bottom:2px}.plan-card span{font-size:11px;color:var(--muted)}
+.tech-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:9px;margin:12px 0}
+@media(max-width:850px){.tech-grid{grid-template-columns:repeat(2,1fr)}}
+.tech{background:#f7f9fd;border:1px solid var(--line);border-radius:12px;padding:10px}
+.tech b{display:block;font-size:15px}.tech span{font-size:10px;color:var(--muted)}
+.rr-good{color:var(--good)}.rr-bad{color:var(--bad)}.rr-mid{color:var(--warn)}
+.plan-note{padding:10px 12px;border-radius:12px;background:#f8faff;border:1px solid #dfe6fb;font-size:12px;line-height:1.55;margin-bottom:12px}
+.signal{display:inline-flex;align-items:center;gap:7px;border-radius:999px;padding:7px 11px;font-size:12px;font-weight:900}
+.signal-buy{background:#e9f8f1;color:#08734f;border:1px solid #bcebd7}
+.signal-wait{background:#fff7e5;color:#9a6810;border:1px solid #f1d695}
+.signal-no{background:#fff0f0;color:#b33838;border:1px solid #f1c6c6}
+.signal-dot{width:9px;height:9px;border-radius:50%;background:currentColor}
+.live-strip{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0;padding:10px 12px;background:#f8faff;border:1px solid var(--line);border-radius:12px}
+.live-badge{padding:5px 8px;border-radius:999px;background:#eef2fb;color:#40516d;font-size:11px;font-weight:800}
+.live-on{background:#e9f8f1;color:#08734f}
+.live-delayed{background:#fff7e5;color:#9a6810}
+.live-eod{background:#f1f3f8;color:#6d778b}
+.live-iex{background:#e9f8f1;color:#08734f}
+.live-sip{background:#e8edff;color:#3049af}
+.live-error{background:#fff0f0;color:#b33838}
+.provider-note{font-size:11px;color:var(--muted);line-height:1.5;margin-top:6px}
+.backtest-table{min-width:1000px}
+.pass{color:var(--good);font-weight:800}.fail{color:var(--bad);font-weight:800}
+.position-box{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+@media(max-width:650px){.position-box{grid-template-columns:1fr}}
+.position-card{background:#f9fbff;border:1px solid var(--line);border-radius:14px;padding:12px}
+.quick-chart{background:#eef2ff;color:#2f4db5}
+.news-list{display:grid;gap:8px}.news{padding:10px;border:1px solid var(--line);border-radius:12px;background:#fbfcff}.news b{font-size:12px;line-height:1.4;display:block}.news span{font-size:11px;color:var(--muted)}
+.portfolio-table{min-width:1050px}
+.empty{padding:28px;text-align:center;color:var(--muted)}
+.upload{border:2px dashed #b8c4ea;border-radius:16px;padding:20px;text-align:center;background:#f8faff;cursor:pointer}
+.modal{display:none;position:fixed;inset:0;background:rgba(17,28,60,.55);z-index:50;align-items:center;justify-content:center;padding:16px}.modal.open{display:flex}
+.modal-card{background:#fff;border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.22);width:min(720px,100%);max-height:90vh;overflow:auto;padding:18px}
+input,textarea{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;font:inherit}textarea{min-height:100px}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media(max-width:650px){.form-grid{grid-template-columns:1fr}}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.btn-primary{background:var(--brand);color:#fff}.btn-secondary{background:#eef2fb;color:#40516d}.btn-danger{background:#fff0f0;color:#b33a3a}
+.note{font-size:12px;color:var(--muted);line-height:1.55}
+.backtest-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}@media(max-width:850px){.backtest-grid{grid-template-columns:1fr}}
+.bt{border:1px solid var(--line);background:#fff;border-radius:16px;padding:14px}
+.settings-row{display:grid;grid-template-columns:180px 1fr;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line)}
+@media(max-width:620px){.settings-row{grid-template-columns:1fr}}
+.statusbar{font-size:12px;color:#dfe5ff;margin-top:8px}
+.hide{display:none!important}
+
+/* UX refresh */
+button,.btn,input,select{min-height:44px}
+button:focus-visible,.btn:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid rgba(49,91,234,.28);outline-offset:2px}
+.clockbar{max-width:1400px;margin:0 auto;padding:10px 20px;display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.clockitem{background:#fff;border:1px solid var(--line);border-radius:14px;padding:10px 12px;box-shadow:var(--shadow);display:grid;gap:2px}
+.clockitem span,.clockitem small{font-size:11px;color:var(--muted)}.clockitem b{font-size:15px}
+.market-state b.market-open{color:var(--good)}.market-state b.market-pre{color:var(--warn)}.market-state b.market-closed{color:var(--bad)}
+.detail-subnav{display:flex;gap:8px;overflow:auto;position:sticky;top:64px;z-index:15;background:rgba(245,247,251,.96);backdrop-filter:blur(12px);padding:8px 0 12px;margin-bottom:4px}
+.detail-subnav button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:8px 13px;white-space:nowrap;color:#526079;font-weight:700}
+.detail-section{scroll-margin-top:130px}.detail-wide{display:grid;gap:14px;margin-top:14px}
+.mini-head{display:flex;justify-content:space-between;gap:10px;align-items:center;margin:10px 0}.mini-head h3{margin:0}
+.compact-table{min-width:680px}.compact-table th,.compact-table td{padding:9px 10px}
+.compact-actions{margin-top:0}
+#homeLearningPanel{margin-top:16px}
+@media(max-width:760px){
+  .hero{padding:20px 16px 16px}.hero h1{font-size:29px}.shell{padding:12px 12px 92px}
+  .clockbar{grid-template-columns:1fr 1fr;padding:8px 12px}
+  .nav{position:fixed;bottom:0;top:auto;left:0;right:0;z-index:40;background:rgba(255,255,255,.97);padding:7px 8px calc(7px + env(safe-area-inset-bottom));border-top:1px solid var(--line);justify-content:space-around;box-shadow:0 -8px 28px rgba(35,48,74,.08)}
+  .nav button{border:0;background:transparent;display:grid;gap:2px;justify-items:center;padding:6px 8px;min-width:62px;font-size:18px}
+  .nav button span{font-size:10px}.nav button.active{border-radius:12px}
+  .detail-subnav{top:0}
+  .cards{grid-template-columns:1fr 1fr}.metric b{font-size:20px}
+  .detail{gap:10px}.card{padding:13px;border-radius:15px}
+  table{min-width:820px}
+  th,td{font-size:12px}
+}
+@media(max-width:430px){
+  .clockbar{grid-template-columns:1fr 1fr}.clockitem{padding:8px}.clockitem b{font-size:13px}
+  .cards{grid-template-columns:1fr 1fr}
+}
+
+
+.health-good{border-inline-start:4px solid #159947}.health-watch{border-inline-start:4px solid #d89b13}.health-bad{border-inline-start:4px solid #d14b4b}
+
+
+.session-kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin:10px 0 14px}
+.session-kpi{background:#f8faff;border:1px solid var(--line);border-radius:12px;padding:10px}
+.session-kpi b{display:block;font-size:16px}.session-kpi span{font-size:11px;color:var(--muted)}
+.chart-wrap canvas,#detailChart,#fiveYearChart,#portfolioChart{width:100%;max-width:100%;min-height:280px;display:block}
+.api-warning{background:#fff5e6;border:1px solid #f2ca7d;border-radius:12px;padding:10px 12px;color:#79510b;margin-top:8px}
+@media(max-width:900px){.session-kpis{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:560px){.session-kpis{grid-template-columns:repeat(2,1fr)}}
+
+</style>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#16213e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="apple-touch-icon" sizes="180x180" href="/static/icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="application-name" content="היועץ החכם להשקעות">
+</head>
+<body><div id="appUpdateBanner" style="display:none;position:fixed;left:12px;right:12px;bottom:84px;z-index:9998;background:#18264d;color:#fff;border-radius:14px;padding:12px 14px;box-shadow:0 12px 35px rgba(0,0,0,.2);direction:rtl;align-items:center;justify-content:space-between;gap:12px"><span>קיימת גרסה חדשה של האפליקציה.</span><button id="applyUpdateBtn" style="border:0;border-radius:10px;padding:9px 12px;font-weight:800;cursor:pointer">עדכן עכשיו</button></div><div id="directFileWarning" style="display:none;position:fixed;inset:0;z-index:9999;background:#f4f7fb;padding:24px;align-items:center;justify-content:center"><div style="max-width:620px;background:white;border:1px solid #dfe5ef;border-radius:20px;padding:28px;box-shadow:0 18px 55px rgba(20,30,55,.14);text-align:right"><h2 style="margin-top:0">האפליקציה נפתחה בלי השרת</h2><p>כדי שמחירים, גרפים, חדשות ונתוני 5 שנים יעבדו, אל תפתח את קובץ ה-HTML ישירות.</p><p><b>Windows:</b> הפעל את הקובץ <code>START_APP.bat</code> שבתיקייה הראשית.</p><p><b>Mac/Linux:</b> הפעל <code>./start_app.sh</code> ואז פתח <code>http://127.0.0.1:8000</code>.</p></div></div>
+<div class="app">
+  <header class="hero">
+    <div class="hero-inner">
+      <div>
+        <h1>היועץ החכם להשקעות</h1>
+        <p>סינון, דירוג ומעקב אחר מניות לפי השיטה שלנו — השקעה ארוכת טווח ומסחר יומי.</p>
+        <div class="statusbar" id="apiStatus">נתוני שוק: ממתין לחיבור API</div>
+      </div>
+      <div class="hero-actions">
+        <button id="installAppBtn" class="btn btn-light" onclick="promptInstallApp()" style="display:none">📲 התקן אפליקציה</button>
+        <button class="btn btn-light" onclick="go('portfolio')">התיק שלי</button>
+        <button class="btn btn-ghost" onclick="go('settings')">הגדרות</button>
+      </div>
+    </div>
+  </header>
+  <div class="clockbar" id="globalClockBar" role="status" aria-live="polite">
+    <div class="clockitem"><span>🇮🇱 ישראל</span><b id="israelClock">—</b><small id="israelDate">—</small></div>
+    <div class="clockitem"><span>🇺🇸 ניו־יורק</span><b id="nyClock">—</b><small id="nyDate">—</small></div>
+    <div class="clockitem market-state"><span>וול סטריט</span><b id="marketState">בודק...</b><small id="marketNext">—</small></div>
+    <div class="clockitem"><span>סנכרון</span><b id="clockSync">זמן שרת</b><small id="clockSyncAge">—</small></div>
+  </div>
+
+
+  <main class="shell">
+    <nav class="nav" aria-label="ניווט ראשי">
+      <button data-page="home" class="active" aria-label="דף הבית">🏠 <span>ראשי</span></button>
+      <button data-page="day" aria-label="מסחר יומי">⚡ <span>מסחר יומי</span></button>
+      <button data-page="long" aria-label="השקעות">📈 <span>השקעות</span></button>
+      <button data-page="portfolio" aria-label="התיק שלי">💼 <span>התיק שלי</span></button>
+      <button data-page="settings" aria-label="הגדרות">⚙️ <span>הגדרות</span></button>
+    </nav>
+
+    <section id="page-home" class="page active">
+      <div class="section-head"><div><h2>תמונת מצב</h2><p>הדברים החשובים בלבד — בלי עומס.</p></div></div>
+      <div class="cards">
+        <div class="card metric"><b id="homeLongCount">10</b><span>מניות מובילות להשקעה</span></div>
+        <div class="card metric"><b id="homeDayCount">10</b><span>מועמדות למסחר יומי</span></div>
+        <div class="card metric"><b id="homePortfolioCount">0</b><span>פוזיציות בתיק שלך</span></div>
+        <div class="card metric"><b id="homeBestScore">—</b><span>הציון הגבוה ביותר</span></div>
+      </div>
+      <div class="home-grid">
+        <div class="card"><div class="section-head"><div><h2 style="font-size:19px">5 המובילות להשקעה</h2><p>החברות החזקות ביותר לפי השיטה.</p></div><button class="btn btn-secondary" onclick="go('long')">לכל ה־10</button></div><div id="homeLong"></div></div>
+        <div class="card"><div class="section-head"><div><h2 style="font-size:19px">5 המובילות למסחר יומי</h2><p>המועמדות החזקות ביותר כרגע.</p></div><button class="btn btn-secondary" onclick="go('day')">לכל ה־10</button></div><div id="homeDay"></div></div>
+      </div>
+    
+
+<div class="card" id="livePerformancePanel" style="margin-top:16px">
+  <div class="section-head">
+    <div>
+      <h2 style="margin:0">📡 ביצועי האותות בזמן אמת</h2>
+      <p>מה קרה בפועל למניות שהשיטה סימנה — לא Backtest אלא אותות שנשמרו בזמן אמת.</p>
+    </div>
+    <button class="btn btn-secondary" onclick="loadLivePerformance(true)">רענן תוצאות</button>
+  </div>
+  <div class="cards">
+    <div class="card metric"><b id="liveDayHit">—</b><span>הצלחה היום</span></div>
+    <div class="card metric"><b id="liveWeekHit">—</b><span>הצלחה 7 ימים</span></div>
+    <div class="card metric"><b id="liveMonthHit">—</b><span>הצלחה 30 יום</span></div>
+    <div class="card metric"><b id="liveMonthR">—</b><span>R ממוצע 30 יום</span></div>
+  </div>
+  <div class="cards" style="margin-top:10px">
+    <div class="card metric"><b id="liveWeekSignals">—</b><span>אותות ב־7 ימים</span></div>
+    <div class="card metric"><b id="liveMonthSignals">—</b><span>אותות ב־30 יום</span></div>
+    <div class="card metric"><b id="liveMonthStops">—</b><span>Stop ב־30 יום</span></div>
+    <div class="card metric"><b id="liveVsBacktest">—</b><span>חי מול Backtest</span></div>
+  </div>
+  <div id="livePerformanceNote" class="note" style="margin-top:10px">המערכת מתחילה לצבור נתונים מהאותות החדשים. ככל שיצטבר מדגם גדול יותר, ההשוואה תהיה אמינה יותר.</div>
+  <div class="table-wrap" style="margin-top:12px">
+    <table>
+      <thead><tr><th>זמן</th><th>מניה</th><th>ציון</th><th>כניסה</th><th>מחיר אחרון</th><th>תשואה</th><th>מצב</th><th>R</th></tr></thead>
+      <tbody id="liveSignalsBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card" id="systemHealthPanel" style="margin-top:16px">
+  <div class="section-head">
+    <div>
+      <h2 style="margin:0">🩺 בריאות המערכת והשיטה</h2>
+      <p>בקרה על טריות הנתונים ועל השאלה האם השיטה עדיין מציגה יתרון.</p>
+    </div>
+    <button class="btn btn-secondary" onclick="refreshHealth()">בדוק עכשיו</button>
+  </div>
+  <div class="cards">
+    <div class="card metric"><b id="healthData">בודק...</b><span>מצב נתונים</span></div>
+    <div class="card metric"><b id="healthFeed">—</b><span>מקור מסחר</span></div>
+    <div class="card metric"><b id="healthStrategy">—</b><span>בריאות השיטה</span></div>
+    <div class="card metric"><b id="healthAge">—</b><span>גיל Backtest</span></div>
+  </div>
+  <div class="cards" style="margin-top:10px">
+    <div class="card metric"><b id="healthRecentHit">—</b><span>הצלחה בתקופה האחרונה</span></div>
+    <div class="card metric"><b id="healthRecentR">—</b><span>Expectancy אחרון</span></div>
+    <div class="card metric"><b id="healthDelta">—</b><span>שינוי מול התקופה הקודמת</span></div>
+    <div class="card metric"><b id="healthStops">—</b><span>שיעור Stop אחרון</span></div>
+  </div>
+  <div id="healthRecommendations" class="note" style="margin-top:10px">טוען המלצות...</div>
+</div>
+
+<div id="homeLearningPanel" class="card" style="margin-top:16px">
+  <div class="section-head">
+    <div>
+      <h2 style="margin:0">🧠 למידת השיטה</h2>
+      <p>תוצאות ה־Backtest האחרון — כמה אותות השיטה נתנה וכמה מהם הצליחו בפועל.</p>
+    </div>
+    <div class="actions compact-actions"><button class="btn btn-secondary" onclick="runHistoricalBacktest(6)">בדוק 6 חודשים</button><button class="btn btn-secondary" onclick="runHistoricalBacktest(12)">בדוק שנה</button></div>
+  </div>
+  <div id="learningEmpty" class="plan-note">עדיין אין בדיקה היסטורית מלאה. אפשר להריץ כאן בדיקה של 6 חודשים או שנה.</div>
+  <div id="learningContent" style="display:none">
+    <div class="cards">
+      <div class="card metric"><b id="learnSuccess">—</b><span>אחוז הצלחה T1</span></div>
+      <div class="card metric"><b id="learnCorrect">—</b><span>מניות שהאות הצליח בהן</span></div>
+      <div class="card metric"><b id="learnSignals">—</b><span>מניות שקיבלו אות 🟢</span></div>
+      <div class="card metric"><b id="learnUniverse">—</b><span>Universe שנבדק</span></div>
+    </div>
+    <div class="cards" style="margin-top:10px">
+      <div class="card metric"><b id="learnT2">—</b><span>הצלחה T2</span></div>
+      <div class="card metric"><b id="learnRecall">—</b><span>Recall של “מתפוצצות”</span></div>
+      <div class="card metric"><b id="learnExpectancy">—</b><span>Expectancy</span></div>
+      <div class="card metric"><b id="learnMissed">—</b><span>פיצוצים שהשיטה פספסה</span></div>
+    </div>
+
+    <h3>אחוז הצלחה לפי ציון</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>טווח ציון</th><th>מס׳ מקרים</th><th>הצלחה T1</th><th>הצלחה T2</th><th>R ממוצע</th><th>תשואה ממוצעת</th></tr></thead>
+        <tbody id="learningBuckets"></tbody>
+      </table>
+    </div>
+
+    
+<h3 style="margin-top:16px">מה פרופיל 5 השנים מלמד אותנו?</h3>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>מאפיין</th><th>מס׳ אותות</th><th>הצלחה T1</th><th>R ממוצע</th><th>תשואה ממוצעת</th></tr></thead>
+    <tbody id="featureLearningBody"></tbody>
+  </table>
+</div>
+<div class="note" id="featureLearningNote" style="margin-top:8px">הטבלה משתמשת רק בפרופיל שהיה קיים לפני יום האות.</div>
+<h3 style="margin-top:16px">מניות שהשיטה סימנה</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>תאריך</th><th>מניה</th><th>ציון</th><th>Gap</th><th>RVOL</th><th>תוצאה</th><th>T1</th><th>T2</th><th>תשואה לסגירה</th></tr></thead>
+        <tbody id="learningSignalsTable"></tbody>
+      </table>
+    </div>
+    <div id="learningNote" class="note" style="margin-top:10px"></div>
+<div id="learn5yNote" class="note" style="margin-top:8px">פרופיל 5 השנים נטען אוטומטית בכל מניה ומשמש לזיהוי דפוסי תנודתיות, Gap וימי פיצוץ. הוא אינו מוכנס לאות היסטורי אם המידע לא היה זמין בזמן אמת באותו תאריך.</div>
+  </div>
+</div>
+
+</section>
+
+    <section id="page-long" class="page">
+      <div class="section-head">
+        <div><h2>עשרת המניות המובילות להשקעה</h2><p>דירוג לטווח בינוני–ארוך לפי צמיחה, שוק, קטליזטור, מצב פיננסי, תמחור, מומנטום ותקשורת.</p></div>
+        <button class="btn btn-secondary" onclick="refreshAll()">רענון נתונים</button>
+      </div>
+      <div class="table-wrap"><table><thead><tr><th>#</th><th>חברה</th><th>מחיר</th><th>שינוי</th><th>ציון</th><th>סיכון</th><th>תקשורת</th><th>למה היא כאן?</th><th>גרף</th><th>פעולה</th></tr></thead><tbody id="longTable"></tbody></table></div>
+    </section>
+
+    
+<section id="page-day" class="page">
+      <div class="section-head">
+        <div><h2>עשרת המניות המובילות למסחר יומי</h2><p>סריקה אוטומטית של Movers + Most Active, העשרה במחזור יחסי, חדשות, נזילות ומומנטום, ואז דירוג לפי השיטה.</p></div>
+        <div class="actions">
+          <span class="live-badge" id="scannerStatus">סורק: ממתין</span>
+          <button class="btn btn-primary" id="autoScanBtn" onclick="toggleAutoScanner()">סריקה אוטומטית: כבויה</button>
+          <button class="btn btn-secondary" onclick="refreshDayScanner(true)">סרוק עכשיו</button>
+        </div>
+      </div>
+      <div class="table-wrap"><table><thead><tr><th>#</th><th>חברה</th><th>מחיר</th><th>Gap / שינוי</th><th>ציון</th><th>סיכון</th><th>אות כניסה</th><th>קטליזטור</th><th>RVOL</th><th>מחזור</th><th>גרף</th><th>פעולה</th></tr></thead><tbody id="dayTable"></tbody></table></div>
+    </section>
+
+    <section id="page-detail" class="page">
+      <button class="btn btn-secondary" onclick="go(lastListPage)">← חזרה לרשימה</button>
+      
+      <div class="detail-subnav" aria-label="ניווט בתוך המניה">
+        <button onclick="scrollDetail('detailOverview')">סקירה</button>
+        <button onclick="scrollDetail('detailPlanSection')">תוכנית מסחר</button>
+        <button onclick="scrollDetail('detailChartSection')">גרף</button>
+        <button onclick="scrollDetail('detailNewsSection')">חדשות</button>
+        <button onclick="scrollDetail('fiveYearProfile')">5 שנים</button>
+        <button onclick="scrollDetail('recentWeekPanel')">שבוע אחרון</button>
+        <button onclick="scrollDetail('stockLearningPanel')">למידת השיטה</button>
+      </div>
+<div class="detail" style="margin-top:12px">
+        <div class="card" id="detailOverview">
+          <div class="detail-hero">
+            <div class="detail-company"><div id="detailLogo"></div><div><h3 id="dName"></h3><div class="small" id="dTicker"></div></div></div>
+            <div class="ranges"><button data-r="1D" class="active">יום</button><button data-r="1M">חודש</button><button data-r="1Y">שנה</button><button data-r="5Y">5 שנים</button></div>
+          </div>
+          
+<div class="live-strip">
+  <span class="live-badge" id="liveModeBadge">מצב נתונים: לא ידוע</span><span class="live-badge" id="liveProviderBadge">מקור: —</span><span class="live-badge" id="dataFreshnessBadge">טריות: —</span>
+  <span class="small" id="lastחיUpdate">עדכון אחרון: —</span>
+  <span id="entrySignal" class="signal signal-wait"><span class="signal-dot"></span>ממתין לנתונים</span>
+  <button class="btn btn-secondary" id="toggleחיBtn" onclick="toggleחי()">הפעל חי</button>
+</div>
+<div class="kpis">
+            <div class="kpi"><b id="dPrice">—</b><span>מחיר</span></div>
+            <div class="kpi"><b id="dChange">—</b><span>שינוי</span></div>
+            <div class="kpi"><b id="dScore">—</b><span>ציון כולל</span></div>
+            <div class="kpi"><b id="dMedia">—</b><span>ציון תקשורת</span></div>
+            <div class="kpi"><b id="dRisk">—</b><span>סיכון</span></div>
+          </div>
+          <div class="session-kpis">
+            <div class="session-kpi"><b id="dOpen">—</b><span>פתיחה</span></div>
+            <div class="session-kpi"><b id="dHigh">—</b><span>גבוה</span></div>
+            <div class="session-kpi"><b id="dLow">—</b><span>נמוך</span></div>
+            <div class="session-kpi"><b id="dVolume">—</b><span>מחזור</span></div>
+            <div class="session-kpi"><b id="dBarTime">—</b><span>זמן נתון אחרון</span></div>
+            <div class="session-kpi"><b id="dMarketSession">—</b><span>מצב שוק</span></div>
+          </div>
+          
+<div class="trade-plan" id="detailPlanSection">
+  <div class="plan-card"><b id="entryPrice">—</b><span>כניסה מועדפת</span></div>
+  <div class="plan-card"><b id="stopPrice" class="negative">—</b><span>עצירת הפסד</span></div>
+  <div class="plan-card"><b id="target1Price" class="positive">—</b><span>יעד 1</span></div>
+  <div class="plan-card"><b id="target2Price" class="positive">—</b><span>יעד 2</span></div>
+</div>
+<div class="tech-grid">
+  <div class="tech"><b id="atrVal">—</b><span>ATR(14)</span></div>
+  <div class="tech"><b id="vwapVal">—</b><span>VWAP</span></div>
+  <div class="tech"><b id="pmHighVal">—</b><span>שיא טרום מסחר</span></div>
+  <div class="tech"><b id="pmLowVal">—</b><span>שפל טרום מסחר</span></div>
+  <div class="tech"><b id="rrVal">—</b><span>סיכון / סיכוי ליעד 2</span></div>
+</div>
+<div class="plan-note" id="planQuality">ממתין לנתונים טכניים.</div>
+<div class="position-box">
+  <div class="position-card"><b>מיקום נוכחי בטווח</b><div id="rangePosition" class="note">—</div></div>
+  <div class="position-card"><b>תמיכה / התנגדות</b><div id="srLevels" class="note">—</div></div>
+</div>
+<div class="detail-section" id="detailChartSection"><div class="mini-head"><h3>גרף מחיר</h3><span class="small">בחר טווח זמן מעל הגרף</span></div><canvas id="detailChart" width="1100" height="300"></canvas>
+          <div class="small" id="chartNote"></div></div>
+          <div class="info-grid" style="margin-top:12px">
+            <div class="info"><h4>מה החברה עושה?</h4><p id="dWhat"></p></div>
+            <div class="info"><h4>למה היא מובילה אצלנו?</h4><p id="dWhy"></p></div>
+            <div class="info"><h4>מה יכול להקפיץ אותה?</h4><p id="dCatalyst"></p></div>
+            <div class="info"><h4>מה הסיכון העיקרי?</h4><p id="dRiskText"></p></div>
+          </div>
+        </div>
+        <aside class="card" id="detailNewsSection">
+          <h3 style="margin-top:0">פירוט הציון</h3><div class="criteria" id="dCriteria"></div>
+          <h3>חדשות אחרונות</h3><div class="news-list" id="dNews"><div class="note">חבר API כדי להציג חדשות.</div></div>
+          <button class="btn btn-primary" style="width:100%;margin-top:12px" onclick="openBuyModalFromDetail()">קניתי את המניה</button>
+        </aside>
+      </div>
+        <div class="detail-wide">
+          <section class="card detail-section" id="fiveYearProfile">
+            <div class="section-head">
+              <div><h2>היסטוריה של 5 שנים</h2><p>התנהגות ארוכת טווח של המניה, כדי להבין מגמה, תנודתיות וסיכון.</p></div>
+              <span class="live-badge" id="fiveYearStatus">טוען...</span>
+            </div>
+            <div class="cards">
+              <div class="card metric"><b id="fyReturn">—</b><span>תשואה 5 שנים</span></div>
+              <div class="card metric"><b id="fyCagr">—</b><span>ממוצע שנתי</span></div>
+              <div class="card metric"><b id="fyVol">—</b><span>תנודתיות שנתית</span></div>
+              <div class="card metric"><b id="fyDD">—</b><span>ירידה מרבית</span></div>
+            </div>
+            <div class="cards" style="margin-top:10px">
+              <div class="card metric"><b id="fyHigh">—</b><span>שיא 5 שנים</span></div>
+              <div class="card metric"><b id="fyLow">—</b><span>שפל 5 שנים</span></div>
+              <div class="card metric"><b id="fyMA">—</b><span>ממוצע 50 / 200</span></div>
+              <div class="card metric"><b id="fyExplosions">—</b><span>ימי זינוק 15%+</span></div>
+            </div>
+            <div class="cards" style="margin-top:10px">
+              <div class="card metric"><b id="fyGap">—</b><span>פער פתיחה ממוצע</span></div>
+              <div class="card metric"><b id="fyGap10">—</b><span>ימי פער 10%+</span></div>
+              <div class="card metric"><b id="fyDays">—</b><span>ימי מסחר שנבדקו</span></div>
+              <div class="card metric"><b id="fyTrend">—</b><span>מגמה ארוכה</span></div>
+            </div>
+            <div class="chart-wrap" style="margin-top:12px"><canvas id="fiveYearChart"></canvas></div>
+            <div class="table-wrap" style="margin-top:12px"><table class="compact-table"><thead><tr><th>שנה</th><th>תשואה</th></tr></thead><tbody id="fyAnnualBody"></tbody></table></div>
+            <div id="fyLearningNote" class="note" style="margin-top:10px"></div>
+          </section>
+
+          <section class="card detail-section" id="recentWeekPanel">
+            <div class="section-head"><div><h2>השבוע האחרון</h2><p>מה המניה עשתה בחמשת ימי המסחר האחרונים.</p></div><b id="weekTotalMove">—</b></div>
+            <div class="table-wrap"><table class="compact-table"><thead><tr><th>תאריך</th><th>סגירה</th><th>שינוי יומי</th><th>גבוה</th><th>נמוך</th><th>מחזור</th></tr></thead><tbody id="recentWeekBody"></tbody></table></div>
+          </section>
+
+          <section class="card detail-section" id="stockLearningPanel">
+            <div class="section-head"><div><h2>איך השיטה למדה מהמניה הזאת?</h2><p>תוצאות היסטוריות של האותות עבור הסימול הזה בבדיקה האחרונה.</p></div><span class="live-badge" id="stockLearningStatus">—</span></div>
+            <div class="cards">
+              <div class="card metric"><b id="slSignals">—</b><span>אותות היסטוריים</span></div>
+              <div class="card metric"><b id="slSuccess">—</b><span>הצלחה ליעד 1</span></div>
+              <div class="card metric"><b id="slTarget2">—</b><span>הצלחה ליעד 2</span></div>
+              <div class="card metric"><b id="slAvgR">—</b><span>תוצאה ממוצעת</span></div>
+            </div>
+            <div class="table-wrap" style="margin-top:12px"><table class="compact-table"><thead><tr><th>תאריך</th><th>ציון</th><th>פער פתיחה</th><th>מחזור יחסי</th><th>תוצאה</th><th>R</th></tr></thead><tbody id="stockLearningBody"></tbody></table></div>
+          </section>
+        </div>
+
+    </section>
+
+    <section id="page-portfolio" class="page">
+      <div class="section-head">
+        <div><h2>התיק שלי</h2><p>פוזיציות שקנית בפועל, רווח/הפסד, ציון השיטה וגרפים.</p></div>
+        <div><button class="btn btn-primary" onclick="openHolding()">הוסף מניה</button> <button class="btn btn-secondary" onclick="openImport()">ייבוא מצילום</button></div>
+      </div>
+      <div class="cards">
+        <div class="card metric"><b id="pCost">$0.00</b><span>עלות כוללת</span></div>
+        <div class="card metric"><b id="pValue">—</b><span>שווי נוכחי</span></div>
+        <div class="card metric"><b id="pPnl">—</b><span>רווח / הפסד</span></div>
+        <div class="card metric"><b id="pPct">—</b><span>תשואה</span></div>
+      </div>
+      <div class="table-wrap" style="margin-top:14px"><table class="portfolio-table"><thead><tr><th>מניה</th><th>כמות</th><th>מחיר קנייה</th><th>מחיר נוכחי</th><th>שווי</th><th>רווח/הפסד</th><th>ציון</th><th>מצב</th><th>פעולות</th></tr></thead><tbody id="portfolioBody"></tbody></table></div>
+      <div id="portfolioChartWrap" class="card hide" style="margin-top:14px"><div class="section-head"><div><h2 id="portfolioChartTitle" style="font-size:19px"></h2></div><div class="ranges"><button class="pr active" data-r="1M">חודש</button><button class="pr" data-r="1Y">שנה</button><button class="pr" data-r="5Y">5 שנים</button></div></div><canvas id="portfolioChart" width="1100" height="300"></canvas><div class="small" id="portfolioChartNote"></div></div>
+    </section>
+
+    <section id="page-backtest" class="page">
+      <div class="section-head"><div><h2>בדיקת עבר</h2><p>האם השיטה הייתה מזהה מניות שכבר ביצעו מהלכים חריגים?</p></div></div>
+      <div class="backtest-grid" id="backtestGrid"></div>
+    </section>
+
+    
+<section id="page-weekly" class="page">
+  <div class="section-head">
+    <div>
+      <h2>בדיקת שבוע המסחר הקודם</h2>
+      <p>שחזור של מניות שביצעו מהלכים חריגים בשבוע 7–11 בספטמבר 2026, ובדיקה האם הקריטריונים שלנו היו מזהים אותן בזמן.</p>
+    </div>
+  </div>
+  <div class="cards">
+    <div class="card metric"><b id="wkPass">—</b><span>עברו את הסינון</span></div>
+    <div class="card metric"><b id="wkAvg">—</b><span>תנועה ממוצעת</span></div>
+    <div class="card metric"><b id="wkFalse">—</b><span>איתותים חלשים/מסוכנים</span></div>
+    <div class="card metric"><b id="wkLesson">3</b><span>שיפורים לשיטה</span></div>
+  </div>
+  <div class="table-wrap" style="margin-top:14px">
+    <table class="backtest-table">
+      <thead><tr><th>תאריך</th><th>מניה</th><th>מהלך</th><th>קטליזטור</th><th>מחזור/Float</th><th>ציון משוחזר</th><th>האם השיטה הייתה מכניסה?</th><th>לקח</th></tr></thead>
+      <tbody id="weeklyBody"></tbody>
+    </table>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <h3 style="margin-top:0">מה למדנו מהשבוע?</h3>
+    <p class="note">1. חדשות אמיתיות + מחזור חריג עדיפות על “עלייה בלי סיבה”. 2. Low-float יכול להקפיץ מניה, אבל גם להפוך כניסה מאוחרת למסוכנת מאוד. 3. אות קנייה צריך לדרוש גם מבנה מחיר טוב — מעל VWAP, יחס Risk/Reward סביר, ולא מרחק גדול מדי מהכניסה.</p>
+  </div>
+</section>
+
+
+<section id="page-lab" class="page">
+  <div class="section-head">
+    <div><h2>מעבדת השיטה — Backtest היסטורי</h2>
+    <p>בדיקה על Universe רחב של מניות ארה״ב. הציון מחושב רק מנתונים שהיו זמינים עד 09:45 ניו־יורק. בנוסף מחושב Rolling Profile של עד 5 שנים שהסתיימו לפני אותו יום — ללא מידע עתידי.</p></div>
+  </div>
+  <div class="actions" style="margin-bottom:12px">
+    <button class="btn btn-primary" onclick="runHistoricalBacktest(6)">הרץ 6 חודשים</button>
+    <button class="btn btn-primary" onclick="runHistoricalBacktest(12)">הרץ שנה</button>
+    <button class="btn btn-secondary" onclick="loadBacktestRuns()">טען תוצאות אחרונות</button>
+  </div>
+  <div id="btProgress" class="plan-note">עדיין לא הורץ Backtest מלא במחשב הזה.</div>
+  <div class="cards">
+    <div class="card metric"><b id="btSuccess">—</b><span>Target 1 לפני Stop</span></div>
+    <div class="card metric"><b id="btT2">—</b><span>Target 2</span></div>
+    <div class="card metric"><b id="btExpectancy">—</b><span>Expectancy ב־R</span></div>
+    <div class="card metric"><b id="btRecall">—</b><span>Recall של ימים מתפוצצים</span></div>
+  </div>
+  <div class="cards" style="margin-top:12px">
+    <div class="card metric"><b id="btSignals">—</b><span>אותות 🟢</span></div>
+    <div class="card metric"><b id="btFalse">—</b><span>False Positive</span></div>
+    <div class="card metric"><b id="btMedian">—</b><span>חציון תשואה לסגירה</span></div>
+    <div class="card metric"><b id="btUniverse">—</b><span>Universe שנבדק</span></div>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <h3 style="margin-top:0">איך אנחנו לומדים מהתוצאה?</h3>
+    <div id="btLessons" class="note">לאחר הרצה המערכת תראה אם צריך לשנות את סף הציון, משקל החדשות, RVOL, Gap, VWAP ורמת ה־Stop.</div>
+  </div>
+  <div class="table-wrap" style="margin-top:14px">
+    <table><thead><tr><th>הרצה</th><th>תקופה</th><th>Universe</th><th>אירועים</th><th>אותות</th><th>הצלחה T1</th><th>Recall</th><th>Expectancy</th></tr></thead>
+    <tbody id="btRunsBody"></tbody></table>
+  </div>
+</section>
+
+<section id="page-premarket" class="page">
+  <div class="section-head">
+    <div><h2>סריקת Premarket מלאה</h2><p>Gap, שיא טרום מסחר/Low, מחזור טרום־מסחר, חדשות וציון לפני פתיחת וול סטריט.</p></div>
+    <button class="btn btn-primary" onclick="loadPremarket()">סרוק Premarket עכשיו</button>
+  </div>
+  <div id="pmStatus" class="plan-note">ממתין לסריקה.</div>
+  <div class="table-wrap">
+    <table><thead><tr><th>#</th><th>מניה</th><th>מחיר</th><th>Gap</th><th>ציון</th><th>PM High</th><th>PM Low</th><th>PM Volume</th><th>חדשות</th><th>קטליזטור</th></tr></thead>
+    <tbody id="pmBody"></tbody></table>
+  </div>
+</section>
+
+<section id="page-settings" class="page">
+  <div class="section-head">
+    <div><h2>הגדרות</h2><p>חיבור מקורות נתוני השוק וניהול זמן אמת.</p></div>
+  </div>
+
+  <div class="card">
+    <div class="section-head">
+      <div>
+        <h3 style="margin:0">חיבור Alpaca</h3>
+        <p>הדבק פעם אחת את המפתחות שקיבלת מ-Alpaca. הם נשמרים רק בצד השרת המקומי ואינם מוצגים מחדש בדפדפן.</p>
+      </div>
+      <span id="alpacaSetupBadge" class="live-badge">בודק...</span>
+    </div>
+
+    <div class="form-grid">
+      <div>
+        <label>API Key</label>
+        <input id="alpacaApiKeyInput" type="password" autocomplete="off" placeholder="APCA-API-KEY-ID">
+      </div>
+      <div>
+        <label>Secret Key</label>
+        <input id="alpacaSecretInput" type="password" autocomplete="off" placeholder="APCA-API-SECRET-KEY">
+      </div>
+      <div>
+        <label>מקור נתונים</label>
+        <select id="alpacaFeedSelect">
+          <option value="iex">IEX — ברירת מחדל / חינם</option>
+          <option value="delayed_sip">SIP מושהה</option>
+          <option value="sip">SIP — כל הבורסות / דורש הרשאה</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-secondary" onclick="testAlpacaSetup()">בדוק חיבור</button>
+      <button class="btn btn-primary" onclick="saveAlpacaSetup()">שמור והפעל</button>
+      <button class="btn btn-danger" onclick="clearAlpacaSetup()">נתק Alpaca</button>
+    </div>
+    <div id="alpacaSetupStatus" class="note" style="margin-top:10px">לא נשמר שום מפתח בדפדפן.</div>
+  </div>
+
+  <div class="card" style="margin-top:14px">
+    <div class="settings-row">
+      <div><b>מצב השרת</b><div class="small">בדיקת החיבור הפעיל כרגע</div></div>
+      <div>
+        <div id="backendStatus" class="note">בודק את מצב השרת...</div>
+        <div class="actions"><button class="btn btn-secondary" onclick="checkBackendStatus()">בדוק שוב</button></div>
+      </div>
+    </div>
+    <div class="settings-row">
+      <div><b>Alpha Vantage</b><div class="small">חדשות ונתונים משלימים</div></div>
+      <div class="note">אם מוגדר בשרת, האפליקציה משתמשת בו כמקור משלים וגיבוי.</div>
+    </div>
+    <div class="settings-row">
+      <div><b>סריקה אוטומטית</b><div class="small">10 המניות המובילות למסחר יומי</div></div>
+      <div class="note">כאשר Alpaca מחובר, הסורק מעדיף אותו. ב-SIP מתקבלת תמונת שוק רחבה יותר; ב-IEX הכיסוי מצומצם יותר.</div>
+    </div>
+    <div class="settings-row">
+      <div><b>רענון חי</b><div class="small">WebSocket</div></div>
+      <div class="note">במניה פתוחה, עסקאות ו-bars מתעדכנים דרך החיבור החי כאשר ההרשאה מאפשרת זאת.</div>
+    </div>
+    <div class="settings-row"><div><b>שפת הממשק</b></div><div>עברית</div></div>
+    <div class="settings-row"><div><b>הערה</b></div><div class="note">ציון המניות הוא כלי סינון והשוואה ולא הבטחה לתשואה.</div></div>
+  </div>
+</section>
+  </main>
+</div>
+
+<div id="holdingModal" class="modal"><div class="modal-card"><h3>הוסף מניה שקנית</h3><div class="form-grid"><div><label>סימול</label><input id="hSymbol"></div><div><label>כמות</label><input id="hQty" type="number" step="0.0001"></div><div><label>מחיר קנייה</label><input id="hBuy" type="number" step="0.0001"></div><div><label>תאריך</label><input id="hDate" type="date"></div></div><div class="actions"><button class="btn btn-primary" onclick="saveHolding()">שמור</button><button class="btn btn-secondary" onclick="closeModal('holdingModal')">סגור</button></div></div></div>
+
+<div id="importModal" class="modal"><div class="modal-card"><h3>ייבוא תיק מצילום מסך</h3><label class="upload" for="imgInput">לחץ לבחירת צילום<input id="imgInput" type="file" accept="image/*" style="display:none"></label><p class="note" id="ocrStatus">לא נבחרה תמונה.</p><textarea id="ocrRaw" placeholder="טקסט מזוהה"></textarea><div class="table-wrap"><table><thead><tr><th>סימול</th><th>כמות</th><th>מחיר קנייה</th><th></th></tr></thead><tbody id="ocrRows"></tbody></table></div><div class="actions"><button class="btn btn-secondary" onclick="addOcrRow()">הוסף שורה</button><button class="btn btn-primary" onclick="saveOcrRows()">שמור את כל הפוזיציות</button><button class="btn btn-secondary" onclick="closeModal('importModal')">סגור</button></div></div></div>
+
+<script>
+const longData=[
+{ticker:"TSSI",name:"TSS, Inc.",domain:"tssiusa.com",score:86,risk:4,price:null,change:null,media:72,what:"חברת תשתיות ואינטגרציה למרכזי נתונים ומערכות מחשוב עתירות ביצועים.",why:"נהנית ישירות מהשקעות בתשתיות בינה מלאכותית ומציגה צמיחה חזקה בפעילויות הליבה.",catalyst:"הזמנות חדשות, הרחבת קיבולת ולקוחות גדולים בתחום AI.",riskText:"תלות בלקוחות גדולים ותנודתיות גבוהה של חברה קטנה.",summary:"תשתיות AI עם צמיחה גבוהה.",criteria:{"צמיחה":23,"שוק":18,"קטליזטור":17,"פיננסים":13,"תמחור":8,"מומנטום":7}},
+{ticker:"NVTS",name:"Navitas Semiconductor",domain:"navitassemi.com",score:85,risk:4,price:11.66,change:null,media:70,what:"יצרנית שבבי הספק מסוג GaN ו-SiC לניהול חשמל יעיל.",why:"ממוקמת בשכבת החשמל הקריטית למרכזי נתונים ורשתות אנרגיה.",catalyst:"אימוץ במרכזי נתונים, עסקאות OEM וגדילת תחום AI.",riskText:"עדיין עסק קטן יחסית עם סיכון ביצוע ותחרות.",summary:"שבבי הספק ל-AI ורשת החשמל.",criteria:{"צמיחה":20,"שוק":20,"קטליזטור":18,"פיננסים":15,"תמחור":6,"מומנטום":6}},
+{ticker:"CTRI",name:"Centuri Holdings",domain:"centuri.com",score:83,risk:3,price:20.73,change:null,media:66,what:"קבלנית תשתיות חשמל וגז בארה״ב.",why:"נהנית מהרחבת רשת החשמל ומחיבור מרכזי נתונים חדשים.",catalyst:"צבר הזמנות, חוזי חשמל ומרכזי נתונים.",riskText:"שולי רווח נמוכים יחסית וסיכון ביצוע בפרויקטים.",summary:"חשיפה לתשתיות החשמל של מהפכת AI.",criteria:{"צמיחה":18,"שוק":18,"קטליזטור":16,"פיננסים":13,"תמחור":9,"מומנטום":6}},
+{ticker:"CRMD",name:"CorMedix",domain:"cormedix.com",score:82,risk:4,price:7.83,change:null,media:62,what:"חברת ביופארמה עם מוצר מסחרי להפחתת זיהומים בצנתרים.",why:"שילוב של צמיחה גבוהה והכנסות מסחריות אמיתיות.",catalyst:"הרחבת מכירות, חדירה לספקי דיאליזה והרחבת התוויות.",riskText:"תלות במוצרים מרכזיים ורגולציה רפואית.",summary:"ביופארמה בצמיחה עם הכנסות ממשיות.",criteria:{"צמיחה":22,"שוק":15,"קטליזטור":16,"פיננסים":15,"תמחור":8,"מומנטום":6}},
+{ticker:"POET",name:"POET Technologies",domain:"poet-technologies.com",score:78,risk:5,price:7.88,change:null,media:74,what:"חברת פוטוניקה המפתחת רכיבים אופטיים להעברת מידע במרכזי נתונים.",why:"יכולה ליהנות מצוואר הבקבוק של קישוריות במערכות AI.",catalyst:"הזמנות ייצור, לקוחות hyperscale ומעבר לייצור המוני.",riskText:"הכנסות קטנות וסיכון גבוה מאוד בביצוע.",summary:"פוטוניקה ל-AI עם פוטנציאל גבוה וסיכון גבוה.",criteria:{"צמיחה":17,"שוק":20,"קטליזטור":19,"פיננסים":13,"תמחור":4,"מומנטום":5}},
+{ticker:"RKLB",name:"Rocket Lab",domain:"rocketlabusa.com",score:77,risk:4,price:null,change:null,media:76,what:"חברת חלל המספקת שיגורים ומערכות לוויין.",why:"צבר הזמנות גדול וחשיפה לצמיחה מסחרית וממשלתית בחלל.",catalyst:"Neutron, חוזים ביטחוניים ושיגורים.",riskText:"השקעות כבדות, עיכובים טכנולוגיים ושריפת מזומנים.",summary:"חלל וצבר הזמנות משמעותי.",criteria:{"צמיחה":17,"שוק":18,"קטליזטור":18,"פיננסים":10,"תמחור":6,"מומנטום":8}},
+{ticker:"PLTR",name:"Palantir",domain:"palantir.com",score:76,risk:3,price:null,change:null,media:80,what:"חברת תוכנה ו-AI לממשלות וארגונים.",why:"צמיחה, רווחיות וחשיפה ישירה להטמעת AI בארגונים.",catalyst:"AIP, חוזים ממשלתיים ולקוחות מסחריים.",riskText:"תמחור גבוה מאוד שעלול להגביל תשואה עתידית.",summary:"AI ארגוני איכותי אך יקר.",criteria:{"צמיחה":18,"שוק":20,"קטליזטור":17,"פיננסים":15,"תמחור":2,"מומנטום":4}},
+{ticker:"APP",name:"AppLovin",domain:"applovin.com",score:75,risk:4,price:null,change:null,media:78,what:"פלטפורמת פרסום ואופטימיזציה מבוססת תוכנה.",why:"מנוע תוכנה יעיל וצמיחה חזקה.",catalyst:"שיפור AI בפרסום והתרחבות מעבר לגיימינג.",riskText:"תמחור, רגולציה ותלות במחזורי פרסום.",summary:"מנוע פרסום מבוסס AI עם צמיחה גבוהה.",criteria:{"צמיחה":19,"שוק":17,"קטליזטור":16,"פיננסים":14,"תמחור":4,"מומנטום":5}},
+{ticker:"SMCI",name:"Super Micro Computer",domain:"supermicro.com",score:74,risk:5,price:null,change:null,media:55,what:"יצרנית שרתים ותשתיות מחשוב למרכזי נתונים.",why:"חשיפה חזקה לביקוש לשרתי AI.",catalyst:"ביקוש למערכות GPU וקירור נוזלי.",riskText:"סיכוני ממשל תאגידי, תחרות ושולי רווח.",summary:"שרתים ל-AI עם סיכון מוגבר.",criteria:{"צמיחה":18,"שוק":19,"קטליזטור":17,"פיננסים":10,"תמחור":5,"מומנטום":5}},
+{ticker:"MYRG",name:"MYR Group",domain:"myrgroup.com",score:73,risk:3,price:null,change:null,media:61,what:"חברת הנדסה וקבלנות לתשתיות הולכה והפצת חשמל.",why:"נהנית מהשקעות ברשת החשמל וממרכזי נתונים.",catalyst:"הרחבת רשת החשמל, data centers ופרויקטים גדולים.",riskText:"עסק מחזורי ותלוי בביצוע פרויקטים.",summary:"תשתיות חשמל יציבות יותר.",criteria:{"צמיחה":15,"שוק":17,"קטליזטור":14,"פיננסים":13,"תמחור":8,"מומנטום":6}}
+];
+
+let dayData=[
+{ticker:"TNON",name:"Tenon Medical",domain:"tenonmed.com",score:91,risk:5,price:7.99,change:50.6,media:88,catalyst:"מומנטום חד בעקבות אירוע הון/חדשות.",volume:"22.3M",entry:7.60,stop:6.95,t1:8.80,t2:9.90},
+{ticker:"ACVA",name:"ACV Auctions",domain:"acvauctions.com",score:88,risk:4,price:10.44,change:44.5,media:82,catalyst:"תנועה חריגה עם מחזור גבוה.",volume:"25.4M",entry:10.10,stop:9.35,t1:11.25,t2:12.20},
+{ticker:"AENT",name:"Alliance Entertainment",domain:"aent.com",score:84,risk:5,price:7.45,change:33.7,media:76,catalyst:"מומנטום חד ומחזור מוגבר.",volume:"4.2M"},
+{ticker:"LBGJ",name:"Li Bang International",domain:"libang.com",score:81,risk:5,price:2.58,change:33.1,media:68,catalyst:"Low-float momentum.",volume:"3.6M"},
+{ticker:"INDP",name:"Indaptus Therapeutics",domain:"indaptusrx.com",score:80,risk:5,price:2.77,change:28.4,media:75,catalyst:"ביוטק ומומנטום חד.",volume:"גבוה"},
+{ticker:"CHPT",name:"ChargePoint",domain:"chargepoint.com",score:79,risk:4,price:9.06,change:18.2,media:84,catalyst:"דוחות ותנועה המשכית.",volume:"חריג"},
+{ticker:"IRD",name:"Opus Genetics",domain:"opusgtx.com",score:77,risk:5,price:6.04,change:22.1,media:73,catalyst:"קטליזטור ביוטק.",volume:"גבוה"},
+{ticker:"BNC",name:"BNC",domain:"bnc.com",score:75,risk:5,price:4.80,change:16.4,media:69,catalyst:"מומנטום/חדשות.",volume:"גבוה"},
+{ticker:"AOUT",name:"American Outdoor Brands",domain:"aob.com",score:73,risk:4,price:15.68,change:12.9,media:66,catalyst:"דוחות חזקים.",volume:"מוגבר"},
+{ticker:"KPLT",name:"Katapult Holdings",domain:"katapult.com",score:71,risk:5,price:9.43,change:11.7,media:64,catalyst:"מומנטום חודשי חזק.",volume:"מוגבר"}
+];
+
+const backtests=[
+{ticker:"APP",name:"AppLovin",score:92,actual:"+713% ב-2024",why:"צמיחת תוכנה חדה, EBITDA עולה וקטליזטור AI."},
+{ticker:"PLTR",name:"Palantir",score:86,actual:"+340% ב-2024",why:"מעבר לרווחיות, לקוחות גדלים ושוק AI גדול."},
+{ticker:"RKLB",name:"Rocket Lab",score:84,actual:"+361% ב-2024",why:"צבר הזמנות יותר מהוכפל וחוזים גדולים."},
+{ticker:"NVDA",name:"NVIDIA",score:83,actual:"+239% ב-2023",why:"Data Center צמח ו-H100 התחיל להתרחב."},
+{ticker:"SMCI",name:"Super Micro Computer",score:90,actual:"מהלך חד נוסף עד 2024",why:"שרתים +47% ורווח נקי יותר מהוכפל."}
+];
+
+const weeklyValidation=[
+ {date:"08.09.2026",ticker:"GCDT",move:151.3,catalyst:"שותפות אסטרטגית",flow:"מחזור ≈5× מהממוצע; Micro-cap",score:91,enter:true,lesson:"חדשות + מחזור + שווי קטן = מועמדת חזקה, אבל דורשת Stop הדוק."},
+ {date:"09.09.2026",ticker:"YMAT",move:72.8,catalyst:"ללא קטליזטור מאומת",flow:"מחזור ≈19×; Free float נמוך מאוד",score:72,enter:false,lesson:"המהלך היה חד, אבל ללא חדשות מאומתות השיטה צריכה להימנע מרדיפה."},
+ {date:"10.09.2026",ticker:"TNON",move:72.1,catalyst:"פירעון מוקדם של אג״ח להמרה",flow:"מחזור חריג",score:89,enter:true,lesson:"קטליזטור הוני אמיתי + Volume נתנו בסיס טוב לאיתות."},
+ {date:"10.09.2026",ticker:"DBGI",move:49.9,catalyst:"מומנטום/חדשות חברה",flow:"מניה ירדה ~99% ב-12 חודשים",score:66,enter:false,lesson:"היסטוריה חלשה ודילול אפשרי צריכים להוריד ציון גם ביום של זינוק."},
+ {date:"11.09.2026",ticker:"ACVA",move:44.5,catalyst:"חדשות/תוצאות ומומנטום",flow:"≈25.4M מניות",score:87,enter:true,lesson:"נזילות גבוהה + סיבה ברורה עדיפות על low-float טהור."},
+ {date:"11.09.2026",ticker:"AENT",move:33.7,catalyst:"מומנטום חד",flow:"מחזור גבוה",score:78,enter:true,lesson:"מועמדת אפשרית רק אם המחיר אינו מורחב מדי מעל VWAP."}
+];
+
+
+if(location.protocol==="file:"){const w=document.getElementById("directFileWarning");if(w)w.style.display="flex";}
+let apiKey="backend";
+let entitlement="";
+let liveRefreshSec=60;
+let liveTimer=null,liveEnabled=false;
+let alpacaKey="backend";
+let alpacaSecret="backend";
+let alpacaFeed="iex";
+let alpacaWS=null,alpacaAuthed=false,liveBars=[],lastTradePrice=null;
+let autoScanEnabled=localStorage.getItem("auto_day_scanner")==="1";
+let autoScanTimer=null;
+let scannerRefreshSec=60;
+let scannerBusy=false;
+let backendInfo={alpaca_configured:false,alpha_vantage_configured:false,alpaca_feed:"iex"};
+let holdings=JSON.parse(localStorage.getItem("explosive_holdings")||"[]");
+let selected=null,lastListPage="long",detailRange="1D",portfolioSymbol=null,portfolioRange="1M";
+const cache={};
+
+function logoHtml(s,big=false){
+ const initials=(s.ticker||"?").slice(0,3);
+ if(!s.domain)return `<div class="logo-fallback">${initials}</div>`;
+ return `<img class="logo" src="https://logo.clearbit.com/${s.domain}" alt="${s.name}" onerror="this.outerHTML='<div class=&quot;logo-fallback&quot;>${initials}</div>'">`;
+}
+function scoreClass(x){return x>=85?"s-high":x>=75?"s-mid":"s-low"}
+function riskLabel(n){return ["","נמוך","בינוני","בינוני-גבוה","גבוה","גבוה מאוד"][n]||"—"}
+function money(x){return Number.isFinite(x)?"$"+x.toFixed(2):"—"}
+
+let serverClockOffsetMs=0;
+let marketClockData=null;
+let marketClockSyncedAt=0;
+
+function fmtClock(date,tz){
+  return new Intl.DateTimeFormat("he-IL",{timeZone:tz,hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}).format(date);
+}
+function fmtDate(date,tz){
+  return new Intl.DateTimeFormat("he-IL",{timeZone:tz,weekday:"short",day:"2-digit",month:"2-digit",year:"numeric"}).format(date);
+}
+function syncedNow(){return new Date(Date.now()+serverClockOffsetMs)}
+function updateClockUI(){
+  const now=syncedNow();
+  const ic=document.getElementById("israelClock"),nc=document.getElementById("nyClock");
+  if(ic)ic.textContent=fmtClock(now,"Asia/Jerusalem");
+  if(nc)nc.textContent=fmtClock(now,"America/New_York");
+  const id=document.getElementById("israelDate"),nd=document.getElementById("nyDate");
+  if(id)id.textContent=fmtDate(now,"Asia/Jerusalem");
+  if(nd)nd.textContent=fmtDate(now,"America/New_York");
+  const age=document.getElementById("clockSyncAge");
+  if(age&&marketClockSyncedAt)age.textContent="סונכרן לפני "+Math.max(0,Math.floor((Date.now()-marketClockSyncedAt)/1000))+" שנ׳";
+}
+function marketClass(session){return session==="regular"?"market-open":session==="premarket"||session==="afterhours"?"market-pre":"market-closed"}
+function formatNextMarketEvent(iso,label){
+  if(!iso)return "—";
+  const d=new Date(iso);
+  return `${label}: ${new Intl.DateTimeFormat("he-IL",{timeZone:"America/New_York",weekday:"short",hour:"2-digit",minute:"2-digit",hour12:false}).format(d)} ניו־יורק`;
+}
+
+function initializeVisibleClocks(){
+ updateClockUI();
+ const st=document.getElementById("marketState");if(st&&st.textContent==="בודק...")st.textContent="מסנכרן...";
+ const sync=document.getElementById("clockSync");if(sync)sync.textContent="מסנכרן זמן";
+}
+
+async function syncMarketClock(){
+  try{
+    const t0=Date.now();
+    const r=await fetch("/api/market/status",{cache:"no-store"});
+    const j=await r.json();
+    if(!r.ok)throw new Error("clock");
+    const t1=Date.now();
+    const serverMs=new Date(j.server_utc).getTime();
+    serverClockOffsetMs=serverMs-(t0+t1)/2;
+    marketClockData=j;marketClockSyncedAt=Date.now();
+    const st=document.getElementById("marketState");
+    if(st){
+      st.textContent=j.market?.session_he||"לא ידוע";
+      st.className=marketClass(j.market?.session);
+    }
+    const nx=document.getElementById("marketNext");
+    if(nx){
+      if(j.market?.session==="regular")nx.textContent=formatNextMarketEvent(j.market.next_close,"סגירה");
+      else nx.textContent=formatNextMarketEvent(j.market?.next_open,"פתיחה הבאה");
+    }
+    const sync=document.getElementById("clockSync");
+    if(sync)sync.textContent=j.market?.source==="alpaca_clock"?"Alpaca + זמן שרת":"זמן שרת";
+    updateClockUI();
+  }catch(e){
+    const sync=document.getElementById("clockSync");if(sync)sync.textContent="זמן מכשיר"; updateClockUI(); const st=document.getElementById("marketState");if(st)st.textContent="סטטוס שוק לא זמין";
+  }
+}
+function scrollDetail(id){
+  document.getElementById(id)?.scrollIntoView({behavior:"smooth",block:"start"});
+}
+
+async function loadStockLearning(symbol){
+  const st=document.getElementById("stockLearningStatus");
+  try{
+    const r=await fetch(`/api/learning/stock/${encodeURIComponent(symbol)}`);
+    const j=await r.json();
+    if(!r.ok||!j.has_data){
+      if(st)st.textContent="אין מספיק נתוני עבר";
+      document.getElementById("stockLearningBody").innerHTML='<tr><td colspan="6" class="empty">אין עדיין מספיק אירועים היסטוריים למניה הזו.</td></tr>';
+      return;
+    }
+    st.textContent=`בדיקה אחרונה: ${j.months} חודשים`;
+    document.getElementById("slSignals").textContent=j.signals;
+    document.getElementById("slSuccess").textContent=j.success_rate_pct==null?"—":j.success_rate_pct.toFixed(1)+"%";
+    document.getElementById("slTarget2").textContent=j.target2_rate_pct==null?"—":j.target2_rate_pct.toFixed(1)+"%";
+    document.getElementById("slAvgR").textContent=j.avg_r==null?"—":j.avg_r.toFixed(2)+"R";
+    document.getElementById("stockLearningBody").innerHTML=(j.rows||[]).map(x=>`<tr>
+      <td>${x.date}</td><td>${Number(x.score||0).toFixed(0)}/100</td>
+      <td>${Number.isFinite(+x.gap_pct)?(+x.gap_pct).toFixed(1)+"%":"—"}</td>
+      <td>${Number.isFinite(+x.rvol_open)?(+x.rvol_open).toFixed(2)+"×":"—"}</td>
+      <td>${x.hit1?"✅ הצליח":x.stopped?"❌ עצירת הפסד":"—"}</td>
+      <td>${Number.isFinite(+x.result_r)?(+x.result_r).toFixed(2)+"R":"—"}</td></tr>`).join("");
+  }catch(e){if(st)st.textContent="לא זמין כרגע"}
+}
+function renderRecentWeek(bars){
+  const body=document.getElementById("recentWeekBody");if(!body)return;
+  const rows=(bars||[]).slice(-6);
+  if(rows.length<2){body.innerHTML='<tr><td colspan="6" class="empty">אין מספיק נתונים לשבוע האחרון.</td></tr>';return}
+  const shown=rows.slice(1);
+  body.innerHTML=shown.map((x,i)=>{
+    const prev=rows[i];
+    const ch=prev?.v?((x.v/prev.v-1)*100):null;
+    return `<tr><td>${x.d}</td><td>${money(x.v)}</td>
+      <td class="${ch>=0?'positive':'negative'}">${Number.isFinite(ch)?(ch>=0?'+':'')+ch.toFixed(2)+'%':'—'}</td>
+      <td>${money(x.h)}</td><td>${money(x.l)}</td><td>${formatVolume(x.volume)}</td></tr>`;
+  }).join("");
+  const first=rows[0].v,last=rows[rows.length-1].v;
+  const total=first?((last/first-1)*100):null;
+  const el=document.getElementById("weekTotalMove");
+  if(el&&Number.isFinite(total)){el.textContent=(total>=0?"+":"")+total.toFixed(2)+"%";el.className=total>=0?"positive":"negative"}
+}
+function go(page){
+ if(page!=="detail" && liveEnabled){liveEnabled=false;clearInterval(liveTimer);liveTimer=null;closeAlpaca();}
+ document.querySelectorAll(".page").forEach(x=>x.classList.remove("active"));
+ document.querySelectorAll(".nav button").forEach(x=>x.classList.toggle("active",x.dataset.page===page));
+ document.getElementById("page-"+page)?.classList.add("active");
+ if(page==="home")loadLearningSummary(); if(page==="portfolio")renderPortfolio(); if(page==="day")refreshDayScanner(false); if(page==="lab")loadBacktestRuns(); if(page==="premarket")loadPremarket();
+ window.scrollTo({top:150,behavior:"smooth"});
+}
+document.querySelectorAll(".nav button").forEach(b=>b.onclick=()=>go(b.dataset.page));
+
+
+
+let lastMarketMessageAt=0;
+let liveReconnectTimer=null;
+let liveReconnectAttempts=0;
+
+function freshnessText(f){
+  if(!f)return {text:"לא ידוע",cls:"live-eod"};
+  if(f.state==="live_or_near_live")return {text:"חי",cls:"live-on"};
+  if(f.state==="delayed")return {text:"מושהה",cls:"live-delayed"};
+  if(f.state==="stale")return {text:"ישן",cls:"live-error"};
+  if(f.state==="fallback")return {text:"מקור גיבוי",cls:"live-eod"};
+  return {text:"היסטורי",cls:"live-eod"};
+}
+function setFreshnessBadge(f){
+  const el=document.getElementById("dataFreshnessBadge");if(!el)return;
+  const x=freshnessText(f);
+  let age="";
+  if(Number.isFinite(+f?.age_seconds)){
+    const a=+f.age_seconds;
+    age=a<90?` · ${Math.round(a)} שנ׳`:a<3600?` · ${Math.round(a/60)} דק׳`:` · ${Math.round(a/3600)} שע׳`;
+  }
+  el.textContent="טריות: "+x.text+age;
+  el.className="live-badge "+x.cls;
+}
+
+
+function pctOrDash(v){return v==null||!Number.isFinite(+v)?"—":(+v).toFixed(1)+"%"}
+function liveStatusHe(x){
+  if(x==="target2")return "✅ יעד 2";
+  if(x==="target1")return "✅ יעד 1";
+  if(x==="stopped")return "❌ עצירת הפסד";
+  return "⏳ פתוח";
+}
+async function loadLivePerformance(force=false){
+  try{
+    const url=`/api/live-signals/summary?refresh=${force?'true':'false'}`;
+    const r=await fetch(url,{cache:"no-store"});
+    const j=await r.json();
+    if(!r.ok)throw new Error(j.detail||"live signals");
+    const d=j.day||{},w=j.week||{},m=j.month||{};
+    document.getElementById("liveDayHit").textContent=pctOrDash(d.hit1_pct);
+    document.getElementById("liveWeekHit").textContent=pctOrDash(w.hit1_pct);
+    document.getElementById("liveMonthHit").textContent=pctOrDash(m.hit1_pct);
+    document.getElementById("liveMonthR").textContent=m.avg_r==null?"—":Number(m.avg_r).toFixed(2)+"R";
+    document.getElementById("liveWeekSignals").textContent=w.signals??0;
+    document.getElementById("liveMonthSignals").textContent=m.signals??0;
+    document.getElementById("liveMonthStops").textContent=pctOrDash(m.stop_pct);
+
+    let bt=null;
+    try{const br=await fetch("/api/strategy/health",{cache:"no-store"});bt=await br.json()}catch(e){}
+    const vs=document.getElementById("liveVsBacktest");
+    const note=document.getElementById("livePerformanceNote");
+    if(bt?.has_data && m.hit1_pct!=null && bt.recent?.hit1!=null){
+      const diff=Number(m.hit1_pct)-Number(bt.recent.hit1);
+      vs.textContent=(diff>=0?"+":"")+diff.toFixed(1)+" נק׳";
+      vs.className=diff>=-5?"positive":"negative";
+      const enough=m.signals>=20;
+      note.textContent=enough
+        ?`ב־30 הימים האחרונים: ${m.signals} אותות. הצלחת זמן אמת ${Number(m.hit1_pct).toFixed(1)}% לעומת ${Number(bt.recent.hit1).toFixed(1)}% בבדיקה ההיסטורית. ${diff<-10?'יש פער שלילי שמצדיק בדיקה לפני שינוי משקלים.':'אין כרגע סטייה חריגה.'}`
+        :`נצברו ${m.signals} אותות ב־30 יום. עדיין אין מדגם מספיק גדול לשינוי השיטה; יעד ראשוני: לפחות 20–30 אותות.`;
+    }else{
+      vs.textContent="—";
+      note.textContent=`נצברו ${m.signals||0} אותות ב־30 יום. הנתונים נשמרים אוטומטית מהסורק.`;
+    }
+    const body=document.getElementById("liveSignalsBody");
+    if(body)body.innerHTML=(j.recent||[]).slice(0,20).map(x=>`<tr>
+      <td>${new Date(x.created_at).toLocaleString("he-IL")}</td><td><b>${x.symbol}</b></td><td>${Number(x.score||0).toFixed(0)}/100</td>
+      <td>${money(x.entry)}</td><td>${x.last_price?money(x.last_price):"—"}</td>
+      <td class="${(+x.current_return_pct)>=0?'positive':'negative'}">${x.current_return_pct==null?'—':((+x.current_return_pct)>=0?'+':'')+(+x.current_return_pct).toFixed(2)+'%'}</td>
+      <td>${liveStatusHe(x.status)}</td><td>${x.result_r==null?'—':Number(x.result_r).toFixed(2)+'R'}</td></tr>`).join("") || '<tr><td colspan="8" class="empty">עדיין אין אותות חיים שנשמרו. הסריקה האוטומטית תתחיל לצבור אותם.</td></tr>';
+  }catch(e){
+    const note=document.getElementById("livePerformanceNote");if(note)note.textContent="לא ניתן לטעון כרגע את מעקב האותות החיים.";
+  }
+}
+
+async function refreshHealth(){
+  try{
+    const [s,h]=await Promise.all([
+      fetch("/api/status",{cache:"no-store"}).then(r=>r.json()),
+      fetch("/api/strategy/health",{cache:"no-store"}).then(r=>r.json())
+    ]);
+    const data=document.getElementById("healthData");
+    const feed=document.getElementById("healthFeed");
+    if(data){
+      data.textContent=s.alpaca_configured?"מחובר":"גיבוי";
+      data.className=s.alpaca_configured?"positive":"";
+    }
+    if(feed)feed.textContent=s.alpaca_configured?`Alpaca ${String(s.alpaca_feed||"").toUpperCase()}`:(s.alpha_vantage_configured?"Alpha Vantage":"ציבורי");
+    document.getElementById("healthStrategy").textContent=h.status_he||"לא ידוע";
+    document.getElementById("healthAge").textContent=h.has_data?`${h.backtest_age_days} ימים`:"אין בדיקה";
+    document.getElementById("healthRecentHit").textContent=h.has_data&&h.recent?`${h.recent.hit1.toFixed(1)}%`:"—";
+    document.getElementById("healthRecentR").textContent=h.has_data&&h.recent?`${h.recent.avg_r.toFixed(2)}R`:"—";
+    document.getElementById("healthDelta").textContent=h.delta_hit1_pct_points==null?"—":`${h.delta_hit1_pct_points>=0?"+":""}${h.delta_hit1_pct_points.toFixed(1)} נק׳`;
+    document.getElementById("healthStops").textContent=h.has_data&&h.recent?`${h.recent.stops.toFixed(1)}%`:"—";
+    const box=document.getElementById("healthRecommendations");
+    const lines=[...(h.reasons||[]),...(h.recommendations||[])];
+    box.innerHTML=lines.length?lines.map(x=>`<div>• ${x}</div>`).join(""):"אין כרגע המלצה לשינוי.";
+    box.className="note "+(h.status==="weak"?"health-bad":h.status==="watch"?"health-watch":"health-good");
+  }catch(e){
+    const box=document.getElementById("healthRecommendations");
+    if(box)box.textContent="לא ניתן לבדוק כרגע את בריאות המערכת.";
+  }
+}
+
+function scheduleLiveReconnect(symbol){
+  if(!liveEnabled||!alpacaReady()||!selected||selected.ticker!==symbol)return;
+  clearTimeout(liveReconnectTimer);
+  liveReconnectAttempts=Math.min(liveReconnectAttempts+1,6);
+  const wait=Math.min(30000,1000*Math.pow(2,liveReconnectAttempts));
+  setProviderBadge(`מנסה להתחבר מחדש (${Math.round(wait/1000)} שנ׳)`,"live-delayed");
+  liveReconnectTimer=setTimeout(async()=>{
+    if(!liveEnabled||!selected||selected.ticker!==symbol)return;
+    try{await connectAlpaca(symbol);liveReconnectAttempts=0;}
+    catch(e){scheduleLiveReconnect(symbol);}
+  },wait);
+}
+
+function startDataWatchdog(){
+  setInterval(()=>{
+    if(!liveEnabled||!selected||!alpacaReady())return;
+    const age=Date.now()-lastMarketMessageAt;
+    if(lastMarketMessageAt&&age>45000){
+      setProviderBadge("חיבור חי לא מעדכן","live-error");
+      scheduleLiveReconnect(selected.ticker);
+    }
+  },10000);
+}
+
+async function loadLearningSummary(){
+  const empty=document.getElementById("learningEmpty");
+  const content=document.getElementById("learningContent");
+  if(!empty||!content)return;
+  try{
+    const r=await fetch("/api/learning/summary");
+    const j=await r.json();
+    if(!r.ok||!j.has_data){
+      empty.style.display="block";content.style.display="none";return;
+    }
+    empty.style.display="none";content.style.display="block";
+    document.getElementById("learnSuccess").textContent=j.success_rate_pct.toFixed(1)+"%";
+    document.getElementById("learnCorrect").textContent=`${j.correct_target1}/${j.signals}`;
+    document.getElementById("learnSignals").textContent=j.signals;
+    document.getElementById("learnUniverse").textContent=j.universe_size;
+    document.getElementById("learnT2").textContent=j.target2_rate_pct.toFixed(1)+"%";
+    document.getElementById("learnRecall").textContent=j.recall_pct.toFixed(1)+"%";
+    document.getElementById("learnExpectancy").textContent=j.expectancy_r.toFixed(2)+"R";
+    document.getElementById("learnMissed").textContent=j.false_negatives;
+
+    document.getElementById("learningBuckets").innerHTML=(j.buckets||[]).map(x=>`<tr>
+      <td><b>${x.bucket}</b></td><td>${x.signals}</td>
+      <td class="${x.target1_pct>=50?'positive':'negative'}">${x.target1_pct.toFixed(1)}%</td>
+      <td>${x.target2_pct.toFixed(1)}%</td><td>${x.avg_r.toFixed(2)}R</td>
+      <td class="${x.avg_return_pct>=0?'positive':'negative'}">${x.avg_return_pct>=0?'+':''}${x.avg_return_pct.toFixed(2)}%</td>
+    </tr>`).join("");
+
+    
+    const featureNames={
+      volatility_35_90:"תנודתיות 35%–90%",
+      high_explosion_history:"היסטוריה גבוהה של ימי +15%",
+      gap_profile_1_5_4_5:"Gap ממוצע 1.5%–4.5%",
+      above_ma200:"מעל MA200",
+      extreme_volatility:"תנודתיות קיצונית >130%",
+      deep_drawdown:"Drawdown היסטורי עמוק מ־85%-"
+    };
+    const fl=j.feature_learning||[];
+    const fb=document.getElementById("featureLearningBody");
+    if(fb)fb.innerHTML=fl.map(x=>`<tr>
+      <td><b>${featureNames[x.feature]||x.feature}</b></td>
+      <td>${x.signals}</td>
+      <td class="${x.success_pct>=50?'positive':'negative'}">${x.success_pct.toFixed(1)}%</td>
+      <td class="${x.avg_r>=0?'positive':'negative'}">${x.avg_r.toFixed(2)}R</td>
+      <td class="${x.avg_return_pct>=0?'positive':'negative'}">${x.avg_return_pct>=0?'+':''}${x.avg_return_pct.toFixed(2)}%</td>
+    </tr>`).join("");
+    const fn=document.getElementById("featureLearningNote");
+    if(fn&&fl.length){
+      const useful=fl.filter(x=>x.signals>=10).sort((a,b)=>b.avg_r-a.avg_r);
+      if(useful.length)fn.textContent=`המאפיין החזק כרגע: ${featureNames[useful[0].feature]||useful[0].feature} · ${useful[0].success_pct.toFixed(1)}% הצלחה · ${useful[0].avg_r.toFixed(2)}R. נדרש מדגם מספיק גדול לפני שינוי משקל.`;
+    }
+
+document.getElementById("learningSignalsTable").innerHTML=(j.recent_signals||[]).map(x=>{
+      const ok=!!x.hit1, t2=!!x.hit2;
+      return `<tr>
+        <td>${x.date}</td><td><b>${x.symbol}</b></td><td>${Number(x.score).toFixed(0)}/100</td>
+        <td>${Number.isFinite(+x.gap_pct)?(+x.gap_pct).toFixed(1)+"%":"—"}</td>
+        <td>${Number.isFinite(+x.rvol_open)?(+x.rvol_open).toFixed(2)+"×":"—"}</td>
+        <td><span class="${ok?'positive':'negative'}">${ok?'✅ הצליח':'❌ נכשל'}</span></td>
+        <td>${ok?'✅':'—'}</td><td>${t2?'✅':'—'}</td>
+        <td class="${(+x.close_return_pct)>=0?'positive':'negative'}">${Number.isFinite(+x.close_return_pct)?((+x.close_return_pct)>=0?'+':'')+(+x.close_return_pct).toFixed(2)+'%':'—'}</td>
+      </tr>`;
+    }).join("");
+
+    const when=new Date(j.created_at).toLocaleString("he-IL");
+    document.getElementById("learningNote").textContent=
+      `הרצה #${j.run_id} · ${j.months} חודשים · עודכנה ${when}. “הצלחה” במסך זה = Target 1 של 1.5R הושג לפני ה-Stop. הנתון אינו תחזית עתידית אלא ביצוע היסטורי של השיטה.`;
+  }catch(e){
+    empty.style.display="block";content.style.display="none";
+    empty.textContent="לא ניתן לטעון כרגע את נתוני הלמידה.";
+  }
+}
+
+function renderHome(){
+ document.getElementById("homePortfolioCount").textContent=holdings.length;
+ document.getElementById("homeBestScore").textContent=Math.max(...longData.map(x=>x.score))+"/100";
+ const renderTop=(arr,target,page)=>document.getElementById(target).innerHTML=arr.slice(0,5).map((s,i)=>`
+  <div class="top-card" onclick="openDetail('${page}','${s.ticker}')"><div class="rank">${i+1}</div>${logoHtml(s)}
+  <div class="grow"><b>${s.ticker} · ${s.name}</b><div class="small">${s.summary||s.catalyst||""}</div></div>
+  <div><div class="score ${scoreClass(s.score)}">${s.score}/100</div><div class="small">${s.price?money(s.price):""}</div></div></div>`).join("");
+ renderTop(longData,"homeLong","long");renderTop(dayData,"homeDay","day");
+}
+
+function formatVolume(v){
+  if(typeof v==="string")return v;
+  if(!Number.isFinite(+v))return "—";
+  const n=+v;if(n>=1e9)return (n/1e9).toFixed(1)+"B";if(n>=1e6)return (n/1e6).toFixed(1)+"M";if(n>=1e3)return (n/1e3).toFixed(0)+"K";return String(n);
+}
+function updateScannerButton(){
+ const b=document.getElementById("autoScanBtn");if(!b)return;
+ b.textContent=autoScanEnabled?"סריקה אוטומטית: פעילה":"סריקה אוטומטית: כבויה";
+ b.className=autoScanEnabled?"btn btn-primary":"btn btn-secondary";
+}
+async function refreshDayScanner(manual=false){
+ if(scannerBusy)return;
+ scannerBusy=true;
+ const st=document.getElementById("scannerStatus");
+ if(st){st.textContent="סורק את השוק...";st.className="live-badge live-delayed"}
+ try{
+   const r=await fetch("/api/scanner/day?top=10&candidates=40");
+   const j=await r.json();
+   if(!r.ok)throw new Error(j.detail||"Scanner error");
+   if(Array.isArray(j.results)&&j.results.length){
+     dayData=j.results.map(x=>({
+       ...x,
+       name:x.name||x.ticker,
+       summary:`RVOL ${Number.isFinite(x.rvol)?x.rvol.toFixed(2)+"×":"—"} · ${x.news_count||0} חדשות`
+     }));
+     renderTables();renderHome();loadLivePerformance(false);
+   }else if(st){
+     st.textContent="הסריקה הסתיימה ללא נתונים — בדוק חיבור נתונים";
+     st.className="live-badge live-error";
+   }
+   const mode=j.full_market?"סריקת שוק מלאה":"סריקת גיבוי";
+   if(st){
+     st.textContent=`${mode} · מקור ${j.feed||"—"} · ${new Date(j.generated_at).toLocaleTimeString("he-IL")}`;
+     st.className="live-badge "+(j.full_market?"live-on":"live-delayed");
+     st.title=j.screener_error||"";
+   }
+ }catch(e){
+   if(st){st.textContent="שגיאת סריקה";st.className="live-badge live-error";st.title=e.message}
+ }finally{scannerBusy=false}
+}
+function startAutoScanner(){
+ clearInterval(autoScanTimer);
+ if(autoScanEnabled){
+   refreshDayScanner(false);
+   autoScanTimer=setInterval(()=>refreshDayScanner(false),scannerRefreshSec*1000);
+ }
+ updateScannerButton();
+}
+function toggleAutoScanner(){
+ autoScanEnabled=!autoScanEnabled;
+ localStorage.setItem("auto_day_scanner",autoScanEnabled?"1":"0");
+ startAutoScanner();
+}
+
+function renderTables(){
+ document.getElementById("longTable").innerHTML=longData.map((s,i)=>`
+ <tr class="stock-row" onclick="openDetail('long','${s.ticker}')">
+ <td>${i+1}</td><td><div class="company">${logoHtml(s)}<div><b>${s.ticker}</b><div class="small">${s.name}</div></div></div></td>
+ <td>${s.price?money(s.price):"API"}</td><td id="chg-${s.ticker}">${s.change==null?"—":`<span class="${s.change>=0?'positive':'negative'}">${s.change>=0?'+':''}${s.change.toFixed(1)}%</span>`}</td>
+ <td><span class="score ${scoreClass(s.score)}"><span class="score-dot" style="background:currentColor"></span>${s.score}/100</span></td>
+ <td><span class="badge">${riskLabel(s.risk)}</span></td><td><span class="news-pill">${s.media}/100</span></td>
+ <td>${s.summary}</td><td><button class="btn quick-chart" onclick="event.stopPropagation();openDetail('long','${s.ticker}')">גרף</button></td><td><button class="btn btn-secondary" onclick="event.stopPropagation();openDetail('long','${s.ticker}')">פרטים</button></td></tr>`).join("");
+ document.getElementById("dayTable").innerHTML=dayData.map((s,i)=>`
+ <tr class="stock-row" onclick="openDetail('day','${s.ticker}')">
+ <td>${i+1}</td><td><div class="company">${logoHtml(s)}<div><b>${s.ticker}</b><div class="small">${s.name||s.ticker}</div></div></div></td>
+ <td>${money(s.price)}</td><td>${Number.isFinite(s.change)?`<span class="${s.change>=0?'positive':'negative'}">${s.change>=0?'+':''}${s.change.toFixed(1)}%</span>`:"—"}</td>
+ <td><span class="score ${scoreClass(s.score)}">${s.score}/100</span></td><td><span class="badge">${riskLabel(s.risk)}</span></td>
+ <td id="sig-${s.ticker}">${signalHtml(baseSignal(s))}</td>
+ <td title="${(s.catalyst||"").replace(/"/g,"'")}">${(s.catalyst||"").slice(0,90)}</td>
+ <td>${Number.isFinite(s.rvol)?s.rvol.toFixed(2)+"×":"—"}</td>
+ <td>${formatVolume(s.volume)}</td>
+ <td><button class="btn quick-chart" onclick="event.stopPropagation();openDetail('day','${s.ticker}')">גרף</button></td>
+ <td><button class="btn btn-secondary" onclick="event.stopPropagation();openDetail('day','${s.ticker}')">פרטים</button></td></tr>`).join("");
+}
+async function alphaFetch(params){
+ const u=new URL("/api/alpha",window.location.origin);
+ Object.entries(params).forEach(([k,v])=>u.searchParams.set(k,v));
+ const r=await fetch(u);
+ const j=await r.json();
+ if(!r.ok||j.Note||j.Information||j["Error Message"]||j.error)throw new Error(j.detail||j.error||j.Note||j.Information||j["Error Message"]||"שגיאת נתונים");
+ return j;
+}
+function withEntitlement(params){ return params; }
+async function getBundle(symbol,r="1M"){
+ const ck="bundle:"+symbol+":"+r;
+ if(cache[ck]&&Date.now()-cache[ck].t<120000)return cache[ck].d;
+ const res=await fetch(`/api/stock/${encodeURIComponent(symbol)}/bundle?range=${encodeURIComponent(r)}`,{cache:"no-store"});
+ const j=await res.json();
+ if(!res.ok)throw new Error(j.detail||"שגיאת נתוני מניה");
+ cache[ck]={t:Date.now(),d:j};
+ if(selected&&selected.ticker===symbol)setFreshnessBadge(j.freshness);
+ return j;
+}
+async function getQuote(symbol){
+ const j=await getBundle(symbol,"1M");
+ if(j.quote&&Number.isFinite(+j.quote.price))return {price:+j.quote.price,change:Number.isFinite(+j.quote.change)?+j.quote.change:0,date:j.quote.date,provider:j.provider};
+ const arr=j.bars||[];
+ if(arr.length){const last=arr[arr.length-1],prev=arr.length>1?arr[arr.length-2]:null;return {price:+last.v,change:prev&&prev.v?((+last.v/+prev.v-1)*100):0,date:String(last.d).slice(0,10),provider:j.provider};}
+ throw new Error("אין מחיר זמין");
+}
+async function getSeries(symbol,r){
+ const j=await getBundle(symbol,r);
+ const rows=(j.bars||[]).map(x=>({d:x.d,o:+x.o,h:+x.h,l:+x.l,v:+x.v,volume:+(x.volume||0)})).filter(x=>Number.isFinite(x.v));
+ if(!rows.length)throw new Error("אין סדרת מחירים זמינה");
+ return rows;
+}
+async function getNews(symbol){
+ const j=await getBundle(symbol,"1M");
+ return (j.news||[]).map(x=>({title:x.title||x.headline,source:x.source||"",url:x.url||"",time_published:x.published_at||""}));
+}
+function draw(canvas,pts,buy=null){
+ const c=document.getElementById(canvas); if(!c)return;
+ const rect=c.getBoundingClientRect();
+ const cssW=Math.max(320,Math.round(rect.width||c.clientWidth||900));
+ const cssH=300;
+ const dpr=Math.min(window.devicePixelRatio||1,2);
+ c.width=Math.round(cssW*dpr); c.height=Math.round(cssH*dpr);
+ c.style.height=cssH+"px";
+ const x=c.getContext("2d"); x.setTransform(dpr,0,0,dpr,0,0);
+ x.clearRect(0,0,cssW,cssH);x.fillStyle="#fbfcff";x.fillRect(0,0,cssW,cssH);
+ if(!pts||pts.length<2){x.fillStyle="#8894a8";x.font="16px Arial";x.textAlign="center";x.fillText("אין כרגע נתוני גרף זמינים",cssW/2,cssH/2);return}
+ const clean=pts.filter(p=>Number.isFinite(+p.v));
+ if(clean.length<2){x.fillStyle="#8894a8";x.font="16px Arial";x.textAlign="center";x.fillText("אין מספיק נתוני מחיר",cssW/2,cssH/2);return}
+ const vs=clean.map(p=>+p.v),mn=Math.min(...vs),mx=Math.max(...vs),p=38;
+ x.strokeStyle="#e4e9f2";x.lineWidth=1;
+ for(let i=1;i<5;i++){let y=p+(cssH-2*p)*i/5;x.beginPath();x.moveTo(p,y);x.lineTo(cssW-p,y);x.stroke()}
+ x.fillStyle="#6f7b91";x.font="11px Arial";x.textAlign="left";
+ x.fillText("$"+mx.toFixed(mx<10?2:1),5,p+4);x.fillText("$"+mn.toFixed(mn<10?2:1),5,cssH-p);
+ x.strokeStyle="#315bea";x.lineWidth=2.5;x.beginPath();
+ clean.forEach((o,i)=>{let xx=p+(cssW-2*p)*i/(clean.length-1),yy=cssH-p-(o.v-mn)/(mx-mn||1)*(cssH-2*p);i?x.lineTo(xx,yy):x.moveTo(xx,yy)});x.stroke();
+ if(buy&&buy>=mn&&buy<=mx){let y=cssH-p-(buy-mn)/(mx-mn||1)*(cssH-2*p);x.setLineDash([6,5]);x.strokeStyle="#c58a18";x.beginPath();x.moveTo(p,y);x.lineTo(cssW-p,y);x.stroke();x.setLineDash([])}
+}
+
+
+function alpacaReady(){return !!backendInfo.alpaca_configured}
+function setProviderBadge(text,cls=""){
+ const el=document.getElementById("liveProviderBadge");if(!el)return;
+ el.textContent="מקור: "+text;el.className="live-badge "+cls;
+}
+function closeAlpaca(){
+ if(alpacaWS){try{alpacaWS.close()}catch(e){}}
+ alpacaWS=null;alpacaAuthed=false;liveBars=[];lastTradePrice=null;
+}
+function connectAlpaca(symbol){
+ return new Promise((resolve,reject)=>{
+   closeAlpaca();
+   const proto=location.protocol==="https:"?"wss":"ws";
+   const ws=new WebSocket(`${proto}://${location.host}/ws/market/${encodeURIComponent(symbol)}`);
+   alpacaWS=ws; let settled=false;
+   ws.onopen=()=>{};
+   ws.onerror=()=>{if(!settled){settled=true;reject(new Error("שגיאת WebSocket לשרת"))}};
+   ws.onclose=()=>{alpacaAuthed=false;if(liveEnabled){setProviderBadge("מנותק","live-error");scheduleLiveReconnect(symbol)}};
+   ws.onmessage=(ev)=>{
+     let arr;try{arr=JSON.parse(ev.data)}catch(e){return}
+     if(!Array.isArray(arr))arr=[arr];
+     lastMarketMessageAt=Date.now();
+     for(const m of arr){
+       if(m.type==="proxy_status" && m.status==="connected"){
+         alpacaAuthed=true; liveReconnectAttempts=0; lastMarketMessageAt=Date.now();
+         setProviderBadge(m.feed==="sip"?"Alpaca SIP":m.feed==="delayed_sip"?"Alpaca delayed SIP":"Alpaca IEX",m.feed==="sip"?"live-sip":"live-iex");
+         alpacaFeed=m.feed||"iex";
+         if(!settled){settled=true;resolve(true)}
+       }else if(m.type==="proxy_error"){
+         setProviderBadge("שגיאת חי","live-error");
+         if(!settled){settled=true;reject(new Error(m.message||"חי error"))}
+       }else if((m.T==="t"||m.T==="q") && m.S===symbol){
+         const p=m.T==="t"?Number(m.p):(Number(m.bp)+Number(m.ap))/2;
+         if(Number.isFinite(p)){lastTradePrice=p;applyחיPrice(p,m.t)}
+       }else if((m.T==="b"||m.T==="u") && m.S===symbol){
+         const bar={d:m.t,o:+m.o,h:+m.h,l:+m.l,v:+m.c,volume:+m.v,vwap:+m.vw};
+         if(Number.isFinite(bar.v)){
+           const idx=liveBars.findIndex(x=>x.d===bar.d);
+           if(idx>=0)liveBars[idx]=bar;else liveBars.push(bar);
+           liveBars=liveBars.sort((a,b)=>a.d.localeCompare(b.d)).slice(-180);
+           applyחיBar(bar);
+         }
+       }
+     }
+   };
+   setTimeout(()=>{if(!settled){settled=true;reject(new Error("פג זמן החיבור לשרת חי"))}},10000);
+ });
+}
+function applyחיPrice(price,timestamp){
+ if(!selected)return;
+ document.getElementById("dPrice").textContent=money(price);
+ document.getElementById("lastחיUpdate").textContent="עדכון אחרון: "+new Date(timestamp||Date.now()).toLocaleTimeString("he-IL");
+}
+async function applyחיBar(bar){
+ if(!selected)return;
+ document.getElementById("dPrice").textContent=money(bar.v);
+ document.getElementById("lastחיUpdate").textContent="עדכון אחרון: "+new Date(bar.d).toLocaleTimeString("he-IL");
+ let base=[];
+ try{base=await getSeries(selected.ticker,"1D")}catch(e){}
+ const merged=[...base];
+ for(const b of liveBars){
+   const i=merged.findIndex(x=>x.d===b.d); if(i>=0)merged[i]=b; else merged.push(b);
+ }
+ merged.sort((a,b)=>a.d.localeCompare(b.d));
+ draw("detailChart",merged.slice(-180));
+ const plan=await buildTechnicalPlan(selected.ticker,bar.v,lastListPage);
+ showPlan(plan,bar.v,lastListPage);
+ if(lastListPage==="day"){
+   const sig=calculateEntrySignal(plan,bar.v,selected);
+   recordTechnicalSignal(sig,plan,bar.v,selected);
+   document.getElementById("entrySignal").outerHTML=signalHtml(sig).replace('<span class="signal','<span id="entrySignal" class="signal');
+   const cell=document.getElementById("sig-"+selected.ticker);if(cell)cell.innerHTML=signalHtml(sig);
+ }
+}
+async function startTrueחי(){
+ if(!selected)return;
+ if(alpacaReady()){
+   try{
+     await connectAlpaca(selected.ticker);
+     liveEnabled=true;
+     const b=document.getElementById("toggleחיBtn");b.textContent="עצור חי";b.className="btn btn-primary";
+     setחיBadge();
+     return true;
+   }catch(e){
+     setProviderBadge("Alpaca לא התחבר","live-error");
+   }
+ }
+ return false;
+}
+async function testAlpaca(){return checkBackendStatus()}
+function saveAlpaca(){alert("מפתחות חי מנוהלים בשרת דרך קובץ .env.")}
+function clearAlpaca(){alert("כדי לשנות מפתחות, ערוך את קובץ .env בשרת.")}
+function baseSignal(s){
+  if(s.score>=88 && s.media>=75) return {state:"wait",text:"מועמדת חזקה — ממתין לטריגר"};
+  if(s.score<75) return {state:"no",text:"לא להיכנס כרגע"};
+  return {state:"wait",text:"מעקב"};
+}
+function signalHtml(sig){
+  const cls=sig.state==="buy"?"signal-buy":sig.state==="no"?"signal-no":"signal-wait";
+  return `<span class="signal ${cls}"><span class="signal-dot"></span>${sig.text}</span>`;
+}
+
+const recordedTechnicalSignals=new Set();
+async function recordTechnicalSignal(sig,plan,current,s){
+  if(sig?.state!=="buy"||!s||!plan)return;
+  const key=`${new Date().toISOString().slice(0,10)}:${s.ticker}`;
+  if(recordedTechnicalSignals.has(key))return;
+  if(![current,plan.stop,plan.t1,plan.t2].every(Number.isFinite))return;
+  recordedTechnicalSignals.add(key);
+  try{
+    const u=new URL("/api/live-signals/confirm",location.origin);
+    u.searchParams.set("symbol",s.ticker);u.searchParams.set("score",s.score||0);
+    u.searchParams.set("entry",current);u.searchParams.set("stop",plan.stop);u.searchParams.set("target1",plan.t1);u.searchParams.set("target2",plan.t2);
+    u.searchParams.set("source","אישור טכני חי");
+    const r=await fetch(u,{method:"POST"});if(!r.ok)throw new Error("save");
+    loadLivePerformance(false);
+  }catch(e){recordedTechnicalSignals.delete(key)}
+}
+function calculateEntrySignal(plan,current,s){
+  if(!plan||!Number.isFinite(current)) return {state:"wait",text:"ממתין לנתונים"};
+  let points=0,reasons=[];
+  if(s?.score>=85){points+=2;reasons.push("ציון גבוה")}
+  if((s?.media||0)>=75){points+=1;reasons.push("חדשות תומכות")}
+  if(Number.isFinite(plan.vwap)){
+    if(current>plan.vwap){points+=2;reasons.push("מעל VWAP")} else {points-=2;reasons.push("מתחת VWAP")}
+  }
+  if(Number.isFinite(plan.pmHigh)&&current>plan.pmHigh){points+=2;reasons.push("פרץ שיא טרום מסחר")}
+  if(Number.isFinite(plan.pmLow)&&current<plan.pmLow){points-=3;reasons.push("מתחת שפל טרום מסחר")}
+  if(plan.rr>=2){points+=2;reasons.push("R/R ≥ 1:2")} else if(plan.rr<1.5){points-=2;reasons.push("R/R חלש")}
+  if(Number.isFinite(plan.atr)&&Number.isFinite(plan.entry)){
+    const extension=(current-plan.entry)/plan.atr;
+    if(extension>1.2){points-=2;reasons.push("מורחבת מדי מהכניסה")}
+    else if(Math.abs(extension)<=0.45){points+=1;reasons.push("קרובה לאזור הכניסה")}
+  }
+  if(points>=6) return {state:"buy",text:"אזור כניסה אפשרי",reasons};
+  if(points<=1) return {state:"no",text:"לא להיכנס כרגע",reasons};
+  return {state:"wait",text:"להמתין לאישור",reasons};
+}
+function setחיBadge(){
+  const el=document.getElementById("liveModeBadge"); if(!el)return;
+  if(entitlement==="realtime"){el.textContent="זמן אמת";el.className="live-badge live-on"}
+  else if(entitlement==="delayed"){el.textContent="15 דקות עיכוב";el.className="live-badge live-delayed"}
+  else {el.textContent="סוף יום / היסטורי";el.className="live-badge live-eod"}
+}
+async function liveTick(){
+  if(!liveEnabled||!selected)return;
+  try{
+    delete cache["q"+selected.ticker];delete cache["s"+selected.ticker+"1D"];
+    await loadDetailחי();
+    document.getElementById("lastחיUpdate").textContent="עדכון אחרון: "+new Date().toLocaleTimeString("he-IL");
+  }catch(e){}
+}
+async function toggleחי(){
+  if(liveEnabled){
+    liveEnabled=false;clearInterval(liveTimer);liveTimer=null;closeAlpaca();
+    const b=document.getElementById("toggleחיBtn");b.textContent="הפעל חי";b.className="btn btn-secondary";
+    return;
+  }
+  if(alpacaReady()){
+    const ok=await startTrueחי();
+    if(ok)return;
+  }
+  if(!apiKey){go("settings");return}
+  liveEnabled=true;
+  const b=document.getElementById("toggleחיBtn");b.textContent="עצור חי";b.className="btn btn-primary";
+  setProviderBadge("Alpha Vantage polling",entitlement==="realtime"?"live-on":entitlement==="delayed"?"live-delayed":"live-eod");
+  liveTick();clearInterval(liveTimer);liveTimer=setInterval(liveTick,liveRefreshSec*1000);
+}
+async function openDetail(type,ticker){
+ lastListPage=type;selected=(type==="long"?longData:dayData).find(x=>x.ticker===ticker);
+ if(!selected){alert("לא הצלחתי לזהות את המניה שנבחרה. רענן את הסריקה ונסה שוב.");return}
+ go("detail");
+ document.getElementById("detailLogo").innerHTML=logoHtml(selected);document.getElementById("dName").textContent=selected.name;document.getElementById("dTicker").textContent=selected.ticker;
+ document.getElementById("dPrice").textContent=selected.price?money(selected.price):"—";document.getElementById("dChange").textContent=selected.change!=null?(selected.change>=0?"+":"")+selected.change+"%":"—";
+ document.getElementById("dScore").textContent=selected.score+"/100";document.getElementById("dMedia").textContent=(selected.media||"—")+(selected.media?"/100":"");document.getElementById("dRisk").textContent=riskLabel(selected.risk);
+ document.getElementById("dWhat").textContent=selected.what||"מועמדת למסחר יומי; המידע המלא נטען מהסריקה והחדשות.";
+ document.getElementById("dWhy").textContent=selected.why||selected.catalyst;document.getElementById("dCatalyst").textContent=selected.catalyst||"—";document.getElementById("dRiskText").textContent=selected.riskText||"תנודתיות גבוהה במסחר יומי.";
+ showPlan(null,selected.price,type); loadFiveYearProfile(selected.ticker); loadStockLearning(selected.ticker);
+ const crit=selected.criteria||{"תקשורת":28,"קטליזטור":20,"מחזור":17,"Float":10,"מומנטום":10,"נזילות":7,"גרף":5,"Short":3};
+ const mx=Math.max(...Object.values(crit));document.getElementById("dCriteria").innerHTML=Object.entries(crit).map(([k,v])=>`<div class="crit"><span>${k}</span><div class="bar"><div class="fill" style="width:${v/mx*100}%"></div></div><b>${v}</b></div>`).join("");
+ await loadDetailחי();
+ if(alpacaReady() && !liveEnabled){ try{await startTrueחי()}catch(e){} }
+}
+
+
+function calcATR(rows,period=14){
+  if(!rows||rows.length<period+1)return null;
+  const tr=[];
+  for(let i=1;i<rows.length;i++){
+    const h=rows[i].h,l=rows[i].l,pc=rows[i-1].v;
+    if([h,l,pc].every(Number.isFinite))tr.push(Math.max(h-l,Math.abs(h-pc),Math.abs(l-pc)));
+  }
+  const recent=tr.slice(-period);
+  return recent.length?recent.reduce((a,b)=>a+b,0)/recent.length:null;
+}
+function calcVWAP(rows){
+  if(!rows||!rows.length)return null;
+  let pv=0,vol=0;
+  rows.forEach(x=>{
+    const typical=[x.h,x.l,x.v].every(Number.isFinite)?(x.h+x.l+x.v)/3:x.v;
+    const vv=Number.isFinite(x.volume)?x.volume:0;
+    pv+=typical*vv;vol+=vv;
+  });
+  return vol?pv/vol:null;
+}
+function intradayToday(rows){
+  if(!rows||!rows.length)return [];
+  const lastDate=rows[rows.length-1].d.slice(0,10);
+  return rows.filter(x=>x.d.startsWith(lastDate));
+}
+function premarketStats(rows){
+  const today=intradayToday(rows);
+  // Alpha Vantage timestamps are US market-local in most stock feeds.
+  const pm=today.filter(x=>{
+    const t=x.d.slice(11,16);
+    return t>="04:00" && t<"09:30";
+  });
+  if(!pm.length)return {high:null,low:null};
+  return {high:Math.max(...pm.map(x=>x.h)),low:Math.min(...pm.map(x=>x.l))};
+}
+function supportResistance(rows,current){
+  if(!rows||rows.length<8)return {support:null,resistance:null,low:null,high:null};
+  const recent=rows.slice(-30);
+  const lows=recent.map(x=>Number.isFinite(x.l)?x.l:x.v).sort((a,b)=>a-b);
+  const highs=recent.map(x=>Number.isFinite(x.h)?x.h:x.v).sort((a,b)=>a-b);
+  const supportCandidates=lows.filter(x=>x<current);
+  const resistanceCandidates=highs.filter(x=>x>current);
+  const support=supportCandidates.length?supportCandidates[Math.floor(supportCandidates.length*.75)]:Math.min(...lows);
+  const resistance=resistanceCandidates.length?resistanceCandidates[Math.floor(resistanceCandidates.length*.25)]:Math.max(...highs);
+  return {support,resistance,low:Math.min(...lows),high:Math.max(...highs)};
+}
+async function buildTechnicalPlan(symbol,current,type){
+  let intraday=null,daily=null;
+  try{intraday=await getSeries(symbol,"1D")}catch(e){}
+  try{daily=(await getSeries(symbol,"1Y")).slice(-60)}catch(e){}
+  const atr=calcATR(daily||[],14);
+  const vwap=calcVWAP(intradayToday(intraday||[]));
+  const pm=premarketStats(intraday||[]);
+  const sr=supportResistance((type==="day"?(intraday||[]):(daily||intraday||[])),current);
+  let entry,stop,t1,t2;
+  if(type==="day"){
+    const baseSupport=[sr.support,pm.low,vwap].filter(x=>Number.isFinite(x)&&x<current);
+    const strongestSupport=baseSupport.length?Math.max(...baseSupport):current-(atr||current*.03);
+    const breakoutLevel=[sr.resistance,pm.high].filter(Number.isFinite);
+    const resistance=breakoutLevel.length?Math.min(...breakoutLevel.filter(x=>x>current).concat([current+(atr||current*.03)])):current+(atr||current*.03);
+    entry = Number.isFinite(vwap) && current>vwap ? Math.max(vwap,current-(atr||current*.02)*.35) : current;
+    stop = strongestSupport - (atr||current*.03)*.25;
+    if(stop>=entry)stop=entry-(atr||current*.03)*.65;
+    const risk=Math.max(entry-stop,current*.01);
+    t1=Math.max(resistance,entry+risk*1.5);
+    t2=entry+risk*2.5;
+  }else{
+    entry=Number.isFinite(sr.support)?Math.min(current,(current+sr.support)/2):current;
+    stop=entry-(atr||current*.05)*1.25;
+    const risk=Math.max(entry-stop,current*.03);
+    t1=entry+risk*2;
+    t2=entry+risk*3;
+  }
+  const rr=(Number.isFinite(t2)&&Number.isFinite(entry)&&Number.isFinite(stop)&&entry>stop)?(t2-entry)/(entry-stop):null;
+  return {entry,stop,t1,t2,atr,vwap,pmHigh:pm.high,pmLow:pm.low,support:sr.support,resistance:sr.resistance,mn:sr.low,mx:sr.high,rr};
+}
+function technicalQuality(plan,current,type){
+ if(!plan)return {text:"אין מספיק נתונים טכניים לחישוב.",cls:"rr-mid"};
+ const notes=[];
+ let score=0;
+ if(plan.rr>=2){score+=2;notes.push("יחס סיכון/סיכוי טוב")}else if(plan.rr<1.5){notes.push("יחס סיכון/סיכוי חלש")}
+ if(Number.isFinite(plan.vwap)){if(current>=plan.vwap){score++;notes.push("המחיר מעל VWAP")}else notes.push("המחיר מתחת ל-VWAP")}
+ if(Number.isFinite(plan.pmHigh)&&current>plan.pmHigh){score++;notes.push("פריצה מעל שיא טרום-מסחר")}
+ if(Number.isFinite(plan.pmLow)&&current<plan.pmLow){score--;notes.push("מתחת לשפל טרום-מסחר")}
+ if(Number.isFinite(plan.resistance)&&current>=plan.resistance*.995){notes.push("קרובה להתנגדות")}
+ if(Number.isFinite(plan.support)&&current<=plan.support*1.01){score++;notes.push("קרובה לתמיכה")}
+ const verdict=score>=3?"מבנה טכני חזק יחסית":score<=0?"מבנה טכני חלש/מסוכן כרגע":"מבנה טכני בינוני";
+ return {text:verdict+" — "+notes.join(" • "),cls:score>=3?"rr-good":score<=0?"rr-bad":"rr-mid"};
+}
+function calcPlanFromSeries(pts,current,type){
+ if(!pts||pts.length<8||!Number.isFinite(current)) return null;
+ const vals=pts.map(x=>x.v), recent=vals.slice(-20);
+ const mn=Math.min(...recent), mx=Math.max(...recent);
+ const sorted=[...recent].sort((a,b)=>a-b);
+ const support=sorted[Math.floor(sorted.length*.25)];
+ const resistance=sorted[Math.floor(sorted.length*.75)];
+ if(type==="day"){
+   const entry=Math.max(support,current*0.985);
+   const stop=Math.min(entry*0.94,support*0.985);
+   const risk=Math.max(entry-stop,entry*.025);
+   return {entry,stop,t1:entry+risk*1.5,t2:entry+risk*2.5,support,resistance,mn,mx};
+ }
+ const entry=Math.min(current,(support+current)/2);
+ const stop=Math.min(entry*.90,support*.97);
+ const risk=Math.max(entry-stop,entry*.06);
+ return {entry,stop,t1:entry+risk*2,t2:entry+risk*3.2,support,resistance,mn,mx};
+}
+function showPlan(plan,current,type){
+ const f=x=>Number.isFinite(x)?money(x):"—";
+ document.getElementById("entryPrice").textContent=f(plan?.entry);
+ document.getElementById("stopPrice").textContent=f(plan?.stop);
+ document.getElementById("target1Price").textContent=f(plan?.t1);
+ document.getElementById("target2Price").textContent=f(plan?.t2);
+ document.getElementById("atrVal").textContent=f(plan?.atr);
+ document.getElementById("vwapVal").textContent=f(plan?.vwap);
+ document.getElementById("pmHighVal").textContent=f(plan?.pmHigh);
+ document.getElementById("pmLowVal").textContent=f(plan?.pmLow);
+ const rr=plan?.rr;
+ const rrEl=document.getElementById("rrVal");
+ rrEl.textContent=Number.isFinite(rr)?("1:"+rr.toFixed(2)):"—";
+ rrEl.className=Number.isFinite(rr)?(rr>=2?"rr-good":rr<1.5?"rr-bad":"rr-mid"):"";
+ const q=technicalQuality(plan,current,type);
+ const qel=document.getElementById("planQuality");qel.textContent=q.text;qel.className="plan-note "+q.cls;
+ if(plan&&Number.isFinite(current)&&Number.isFinite(plan.mn)&&Number.isFinite(plan.mx)){
+   const pct=plan.mx===plan.mn?50:Math.max(0,Math.min(100,(current-plan.mn)/(plan.mx-plan.mn)*100));
+   document.getElementById("rangePosition").textContent=`המחיר נמצא בערך ב-${pct.toFixed(0)}% מהטווח שנבדק (${money(plan.mn)}–${money(plan.mx)}).`;
+   document.getElementById("srLevels").textContent=`תמיכה משוערת: ${money(plan.support)} | התנגדות משוערת: ${money(plan.resistance)}.`;
+ }else{
+   document.getElementById("rangePosition").textContent="אין מספיק נתונים לחישוב.";
+   document.getElementById("srLevels").textContent="אין מספיק נתונים לחישוב.";
+ }
+}
+
+let fiveYearCache={};
+async function loadFiveYearProfile(symbol){
+  const st=document.getElementById("fiveYearStatus");
+  if(st){st.textContent="טוען 5Y...";st.className="live-badge live-delayed"}
+  try{
+    let j=fiveYearCache[symbol];
+    if(!j){
+      const r=await fetch(`/api/history/5y/${encodeURIComponent(symbol)}`);
+      j=await r.json();
+      if(!r.ok)throw new Error(j.detail||"5Y unavailable");
+      fiveYearCache[symbol]=j;
+    }
+    const s=j.stats||{};
+    const set=(id,val)=>{const e=document.getElementById(id);if(e)e.textContent=val};
+    set("fyReturn",Number.isFinite(+s.total_return_pct)?((+s.total_return_pct)>=0?"+":"")+(+s.total_return_pct).toFixed(1)+"%":"—");
+    set("fyCagr",Number.isFinite(+s.cagr_pct)?((+s.cagr_pct)>=0?"+":"")+(+s.cagr_pct).toFixed(1)+"%":"—");
+    set("fyVol",Number.isFinite(+s.annualized_volatility_pct)?(+s.annualized_volatility_pct).toFixed(1)+"%":"—");
+    set("fyDD",Number.isFinite(+s.max_drawdown_pct)?(+s.max_drawdown_pct).toFixed(1)+"%":"—");
+    set("fyHigh",money(s.high_5y));
+    set("fyLow",money(s.low_5y));
+    set("fyMA",`${money(s.ma50)} / ${money(s.ma200)}`);
+    set("fyExplosions",`${s.explosive_days_15pct??0} (${Number.isFinite(+s.explosive_day_rate_pct)?(+s.explosive_day_rate_pct).toFixed(2)+"%":"—"})`);
+    set("fyGap",Number.isFinite(+s.avg_abs_gap_pct)?(+s.avg_abs_gap_pct).toFixed(2)+"%":"—");
+    set("fyGap10",s.gap10_days??"—");
+    set("fyDays",s.trading_days??"—");
+    set("fyTrend",s.above_ma200===true?"מעל MA200":s.above_ma200===false?"מתחת MA200":"—");
+    document.getElementById("fyAnnualBody").innerHTML=(j.annual_returns||[]).map(x=>`<tr>
+      <td>${x.year}</td>
+      <td class="${(+x.return_pct)>=0?'positive':'negative'}">${Number.isFinite(+x.return_pct)?((+x.return_pct)>=0?'+':'')+(+x.return_pct).toFixed(1)+'%':'—'}</td>
+    </tr>`).join("");
+    draw("fiveYearChart",j.bars||[]); renderRecentWeek(j.bars||[]);
+    if(st){st.textContent=`${j.from} → ${j.to} · ${j.provider||""}`;st.className="live-badge live-on"}
+    const note=document.getElementById("fyLearningNote");
+    if(note){
+      let profile=[];
+      if(s.explosive_day_rate_pct>=1)profile.push("היסטוריה של תנועות חדות");
+      if(s.annualized_volatility_pct>=60)profile.push("תנודתיות גבוהה");
+      if(s.avg_abs_gap_pct>=3)profile.push("נטייה ל-Gap חריג");
+      if(s.above_ma200===true)profile.push("מגמה ארוכה חיובית");
+      if(s.above_ma200===false)profile.push("מתחת לממוצע 200");
+      note.textContent=`פרופיל למידה: ${profile.length?profile.join(" · "):"התנהגות היסטורית מתונה יחסית"}. נתוני 5Y הם רקע; Backtest היסטורי משתמש רק במידע שהיה זמין באותו תאריך.`;
+    }
+  }catch(e){
+    if(st){st.textContent="5 שנים לא זמינות כרגע";st.className="live-badge live-error";st.title=e.message||"שגיאת נתונים"}
+    const note=document.getElementById("fyLearningNote");
+    if(note)note.textContent="לא התקבלו כרגע נתוני 5 שנים מאף ספק. בדוק חיבור אינטרנט או הגדרת Alpaca/Alpha Vantage.";
+    draw("fiveYearChart",null);
+    const body=document.getElementById("fyAnnualBody"); if(body)body.innerHTML='<tr><td colspan="2" class="empty">אין כרגע נתונים היסטוריים זמינים</td></tr>';
+  }
+}
+
+
+function fmtMarketTimestamp(raw){
+ if(!raw)return "—";
+ const d=new Date(raw); if(Number.isNaN(d.getTime()))return String(raw).slice(11,16)||"—";
+ return new Intl.DateTimeFormat("he-IL",{timeZone:"America/New_York",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}).format(d)+" ניו־יורק";
+}
+function renderSessionStats(pts){
+ const arr=(pts||[]).filter(x=>Number.isFinite(+x.v));
+ if(!arr.length)return;
+ const lastDate=String(arr[arr.length-1].d).slice(0,10);
+ const today=arr.filter(x=>String(x.d).slice(0,10)===lastDate);
+ const src=today.length?today:arr.slice(-1);
+ const open=src.find(x=>Number.isFinite(+x.o))?.o;
+ const high=Math.max(...src.map(x=>Number.isFinite(+x.h)?+x.h:+x.v));
+ const low=Math.min(...src.map(x=>Number.isFinite(+x.l)?+x.l:+x.v));
+ const volume=src.reduce((a,x)=>a+(Number.isFinite(+x.volume)?+x.volume:0),0);
+ const last=src[src.length-1];
+ const put=(id,val)=>{const e=document.getElementById(id);if(e)e.textContent=val};
+ put("dOpen",Number.isFinite(+open)?money(+open):"—");
+ put("dHigh",Number.isFinite(high)?money(high):"—");
+ put("dLow",Number.isFinite(low)?money(low):"—");
+ put("dVolume",volume?formatVolume(volume):"—");
+ put("dBarTime",fmtMarketTimestamp(last?.d));
+ put("dMarketSession",marketClockData?.market?.session_he||"—");
+}
+
+async function loadDetailחי(){
+ if(!selected)return;
+ const newsEl=document.getElementById("dNews"); if(newsEl)newsEl.innerHTML='<div class="note">טוען נתונים...</div>';
+ const chartNote=document.getElementById("chartNote"); if(chartNote)chartNote.textContent="טוען גרף...";
+ let bundle=null,price=Number(selected.price),change=Number(selected.change),pts=[],news=[];
+ try{
+   bundle=await getBundle(selected.ticker,detailRange);
+   if(bundle.quote&&Number.isFinite(+bundle.quote.price)){price=+bundle.quote.price;change=Number.isFinite(+bundle.quote.change)?+bundle.quote.change:change;}
+   pts=(bundle.bars||[]).map(x=>({d:x.d,o:+x.o,h:+x.h,l:+x.l,v:+x.v,volume:+(x.volume||0)})).filter(x=>Number.isFinite(x.v));
+   news=bundle.news||[];
+   if(!pts.length && detailRange==="1D"){
+     try{
+       const fallbackBundle=await getBundle(selected.ticker,"1M");
+       const fallbackPts=(fallbackBundle.bars||[]).map(x=>({d:x.d,o:+x.o,h:+x.h,l:+x.l,v:+x.v,volume:+(x.volume||0)})).filter(x=>Number.isFinite(x.v));
+       if(fallbackPts.length){bundle=fallbackBundle;pts=fallbackPts;if(chartNote)chartNote.textContent="נתוני תוך־יומי לא זמינים — מוצג חודש אחרון כגיבוי.";}
+     }catch(_e){}
+   }
+ }catch(e){
+   if(chartNote)chartNote.textContent="לא ניתן להגיע כרגע לספק הנתונים; מוצגים הנתונים האחרונים שנשמרו בטבלה.";
+ }
+ if(Number.isFinite(price))document.getElementById("dPrice").textContent=money(price);
+ if(Number.isFinite(change))document.getElementById("dChange").innerHTML=`<span class="${change>=0?'positive':'negative'}">${change>=0?'+':''}${change.toFixed(2)}%</span>`;
+ if(pts.length){draw("detailChart",pts);renderSessionStats(pts);setFreshnessBadge(bundle?.freshness);if(chartNote&&!chartNote.textContent.includes("כגיבוי"))chartNote.textContent=`מקור: ${bundle?.provider||"שרת"} · ${pts.length} נקודות מחיר · טווח ${detailRange}`;}
+ else {draw("detailChart",null);if(chartNote&&!chartNote.textContent.includes("לא ניתן"))chartNote.textContent="אין כרגע נתוני גרף מהספקים. האפליקציה ניסתה Alpaca, Alpha Vantage ומקור גיבוי ציבורי.";}
+ let plan=null;
+ if(Number.isFinite(price)){
+   try{plan=await buildTechnicalPlan(selected.ticker,price,lastListPage)}catch(e){}
+   if(!plan&&pts.length)plan=calcPlanFromSeries(pts,price,lastListPage);
+ }
+ showPlan(plan,price,lastListPage);
+ const sig=lastListPage==="day"?calculateEntrySignal(plan,price,selected):{state:"wait",text:"טווח פעולה להשקעה"};
+ if(lastListPage==="day")recordTechnicalSignal(sig,plan,price,selected);
+ const sigEl=document.getElementById("entrySignal");if(sigEl)sigEl.outerHTML=signalHtml(sig).replace('<span class="signal','<span id="entrySignal" class="signal');
+ const cell=document.getElementById("sig-"+selected.ticker);if(cell)cell.innerHTML=signalHtml(sig);
+ const provider=bundle?.provider||"נתוני טבלה";setProviderBadge(provider,provider.includes("Alpaca")?"live-on":provider.includes("Alpha")?"live-delayed":"live-eod");
+ const upd=document.getElementById("lastחיUpdate");if(upd)upd.textContent="עדכון אחרון: "+new Date().toLocaleTimeString("he-IL");
+ if(newsEl){
+   newsEl.innerHTML=news.length?news.map(n=>`<div class="news"><b>${n.title||n.headline||"ללא כותרת"}</b><span>${n.source||""}</span></div>`).join(""):'<div class="note">אין כרגע חדשות זמינות למניה. שאר הנתונים ממשיכים לפעול.</div>';
+ }
+}
+document.querySelectorAll("#page-detail .ranges button").forEach(b=>b.onclick=async()=>{document.querySelectorAll("#page-detail .ranges button").forEach(x=>x.classList.remove("active"));b.classList.add("active");detailRange=b.dataset.r;await loadDetailחי()});
+
+function saveHoldings(){localStorage.setItem("explosive_holdings",JSON.stringify(holdings));renderHome()}
+function openHolding(){document.getElementById("hDate").value=new Date().toISOString().slice(0,10);document.getElementById("holdingModal").classList.add("open")}
+function openBuyModalFromDetail(){openHolding();document.getElementById("hSymbol").value=selected?.ticker||""}
+function closeModal(id){document.getElementById(id).classList.remove("open")}
+function saveHolding(){
+ const symbol=document.getElementById("hSymbol").value.trim().toUpperCase(),qty=+document.getElementById("hQty").value,buy=+document.getElementById("hBuy").value,date=document.getElementById("hDate").value;
+ if(!symbol||qty<=0||buy<=0){alert("יש למלא סימול, כמות ומחיר קנייה.");return}
+ holdings.push({symbol,qty,buyPrice:buy,date,currentPrice:null});saveHoldings();closeModal("holdingModal");renderPortfolio();
+}
+function portfolioScore(symbol){const s=longData.find(x=>x.ticker===symbol);return s?s.score:null}
+async function renderPortfolio(){
+ const b=document.getElementById("portfolioBody");
+ if(!holdings.length)b.innerHTML='<tr><td colspan="9"><div class="empty">עדיין לא הוספת מניות לתיק.</div></td></tr>';
+ else{
+  await Promise.all(holdings.map(async h=>{try{h.currentPrice=(await getQuote(h.symbol)).price}catch(e){}}));saveHoldings();
+  b.innerHTML=holdings.map((h,i)=>{let val=h.currentPrice?h.currentPrice*h.qty:null,cost=h.buyPrice*h.qty,pnl=val==null?null:val-cost,sc=portfolioScore(h.symbol),st=sc==null?"לא נבדקה":sc>=85?"חזקה":sc>=75?"מעקב":"בדיקה מחדש";return `<tr><td><b>${h.symbol}</b><div class="small">${h.date||""}</div></td><td>${h.qty}</td><td>${money(h.buyPrice)}</td><td>${h.currentPrice?money(h.currentPrice):"—"}</td><td>${val?money(val):"—"}</td><td class="${pnl==null?'':pnl>=0?'positive':'negative'}">${pnl==null?"—":money(pnl)}</td><td>${sc?sc+"/100":"—"}</td><td>${st}</td><td><button class="btn btn-secondary" onclick="showPChart('${h.symbol}')">גרף</button> <button class="btn btn-danger" onclick="delHold(${i})">מחק</button></td></tr>`}).join("");
+ }
+ const cost=holdings.reduce((a,h)=>a+h.qty*h.buyPrice,0),known=holdings.filter(h=>h.currentPrice),val=known.reduce((a,h)=>a+h.qty*h.currentPrice,0),kc=known.reduce((a,h)=>a+h.qty*h.buyPrice,0),p=val-kc;
+ document.getElementById("pCost").textContent=money(cost);document.getElementById("pValue").textContent=known.length?money(val):"—";document.getElementById("pPnl").textContent=known.length?money(p):"—";document.getElementById("pPct").textContent=known.length&&kc?(100*p/kc).toFixed(2)+"%":"—";
+}
+function delHold(i){holdings.splice(i,1);saveHoldings();renderPortfolio()}
+async function showPChart(sym){portfolioSymbol=sym;document.getElementById("portfolioChartWrap").classList.remove("hide");document.getElementById("portfolioChartTitle").textContent="גרף "+sym;await loadPChart()}
+async function loadPChart(){if(!portfolioSymbol)return;let h=holdings.find(x=>x.symbol===portfolioSymbol);try{draw("portfolioChart",await getSeries(portfolioSymbol,portfolioRange),h?.buyPrice);document.getElementById("portfolioChartNote").textContent=`מחיר הקנייה שלך: ${money(h.buyPrice)}`}catch(e){draw("portfolioChart",null);document.getElementById("portfolioChartNote").textContent="נדרש API להצגת גרף."}}
+document.querySelectorAll(".pr").forEach(b=>b.onclick=async()=>{document.querySelectorAll(".pr").forEach(x=>x.classList.remove("active"));b.classList.add("active");portfolioRange=b.dataset.r;await loadPChart()});
+
+
+
+function pct(v){return Number.isFinite(+v)?(+v).toFixed(1)+"%":"—"}
+function backtestLessons(r){
+ const out=[];
+ if(r.success_rate_target1_pct<45)out.push("אחוז הפגיעה ביעד 1 נמוך — להעלות את סף האות או לחזק את משקל ה־VWAP/חדשות.");
+ else if(r.success_rate_target1_pct>=60)out.push("דיוק יעד 1 טוב יחסית — לבדוק אם אפשר לשפר Recall בלי לפגוע בדיוק.");
+ if(r.expectancy_r<=0)out.push("Expectancy אינו חיובי — במצב כזה אסור להשתמש בשיטה בכסף אמיתי לפני שינוי Stop/Targets/סינון.");
+ else out.push(`Expectancy חיובי של ${r.expectancy_r.toFixed(2)}R לאות בממוצע.`);
+ if(r.recall_explosive_pct<40)out.push("אנחנו מפספסים הרבה ימים מתפוצצים — כדאי להרחיב את הסריקה למניות ללא Gap גדול אך עם חדשות/Volume חריג.");
+ if(r.false_positive_pct>55)out.push("יש יותר מדי False Positives — נבדוק העלאת RVOL מינימלי וסינון מניות מורחבות מדי.");
+ if(r.target2_rate_pct<20)out.push("יעד 2 רחוק מדי לרוב העסקאות; ייתכן שעדיף מימוש חלקי ב־T1 ו־Trailing Stop.");
+ return out.join(" ");
+}
+function showBacktestResult(r){
+ document.getElementById("btSuccess").textContent=pct(r.success_rate_target1_pct);
+ document.getElementById("btT2").textContent=pct(r.target2_rate_pct);
+ document.getElementById("btExpectancy").textContent=Number.isFinite(+r.expectancy_r)?(+r.expectancy_r).toFixed(2)+"R":"—";
+ document.getElementById("btRecall").textContent=pct(r.recall_explosive_pct);
+ document.getElementById("btSignals").textContent=r.signals??"—";
+ document.getElementById("btFalse").textContent=pct(r.false_positive_pct);
+ document.getElementById("btMedian").textContent=pct(r.median_close_return_pct);
+ document.getElementById("btUniverse").textContent=r.universe_size??"—";
+ document.getElementById("btLessons").textContent=backtestLessons(r);
+}
+async function runHistoricalBacktest(months){
+ const box=document.getElementById("btProgress");
+ box.textContent=`מריץ Backtest של ${months} חודשים. זו בדיקה כבדה: כל ה-Universe היומי נסרק ורק ימי מועמדות יורדים לרמת דקה וחדשות.`;
+ try{
+   const r=await fetch(`/api/backtest/day?months=${months}&signal_threshold=80`,{method:"POST"});
+   const j=await r.json();
+   if(!r.ok)throw new Error(j.detail||"Backtest failed");
+   box.textContent=`ההרצה הסתיימה: ${j.events_evaluated} אירועים, ${j.signals} אותות, ${j.universe_size} סימולים ב-Universe.`;
+   showBacktestResult(j);loadBacktestRuns();loadLearningSummary();
+ }catch(e){box.textContent="ההרצה נכשלה: "+e.message}
+}
+async function loadBacktestRuns(){
+ try{
+  const r=await fetch("/api/backtest/runs?limit=10");const j=await r.json();
+  const rows=j.runs||[];
+  document.getElementById("btRunsBody").innerHTML=rows.map(x=>`<tr>
+   <td>#${x.id}</td><td>${x.months} ח׳</td><td>${x.universe_size||"—"}</td><td>${x.event_count||0}</td>
+   <td>${x.signal_count||0}</td><td>${pct(x.precision_pct)}</td><td>${pct(x.recall_pct)}</td>
+   <td>${Number.isFinite(+x.avg_r)?(+x.avg_r).toFixed(2)+"R":"—"}</td></tr>`).join("");
+  if(rows.length){
+    const x=rows[0];
+    showBacktestResult({
+      success_rate_target1_pct:x.precision_pct,target2_rate_pct:x.signal_count?x.win2_count/x.signal_count*100:0,
+      expectancy_r:x.avg_r,recall_explosive_pct:x.recall_pct,signals:x.signal_count,
+      false_positive_pct:x.signal_count?(x.signal_count-x.win1_count)/x.signal_count*100:0,
+      median_close_return_pct:x.median_return_pct,universe_size:x.universe_size
+    });
+  }
+ }catch(e){}
+}
+async function loadPremarket(){
+ const st=document.getElementById("pmStatus");st.textContent="סורק מועמדות Premarket...";
+ try{
+  const r=await fetch("/api/scanner/premarket?top=10&candidates=50");const j=await r.json();
+  if(!r.ok)throw new Error(j.detail||"Premarket scan failed");
+  const rows=j.results||[];
+  document.getElementById("pmBody").innerHTML=rows.map((x,i)=>`<tr>
+   <td>${i+1}</td><td><b>${x.ticker}</b></td><td>${money(x.price)}</td>
+   <td>${Number.isFinite(x.gap)?(x.gap>=0?"+":"")+x.gap.toFixed(1)+"%":"—"}</td>
+   <td><span class="score ${scoreClass(x.score)}">${x.score}/100</span></td>
+   <td>${money(x.pm_high)}</td><td>${money(x.pm_low)}</td><td>${formatVolume(x.pm_volume)}</td>
+   <td>${x.news_count}</td><td>${x.catalyst||"—"}</td></tr>`).join("");
+  st.textContent=`עודכן ${new Date(j.generated_at).toLocaleTimeString("he-IL")} · מקור: ${j.source} · Feed: ${j.feed}`;
+ }catch(e){st.textContent="שגיאת Premarket: "+e.message}
+}
+
+function renderWeekly(){
+ const body=document.getElementById("weeklyBody"); if(!body)return;
+ body.innerHTML=weeklyValidation.map(x=>`<tr>
+   <td>${x.date}</td><td><b>${x.ticker}</b></td><td class="positive">+${x.move.toFixed(1)}%</td>
+   <td>${x.catalyst}</td><td>${x.flow}</td><td>${x.score}/100</td>
+   <td class="${x.enter?'pass':'fail'}">${x.enter?'כן — בתנאי טריגר טכני':'לא / להימנע'}</td><td>${x.lesson}</td>
+ </tr>`).join("");
+ const passed=weeklyValidation.filter(x=>x.enter).length;
+ const avg=weeklyValidation.reduce((a,x)=>a+x.move,0)/weeklyValidation.length;
+ document.getElementById("wkPass").textContent=`${passed}/${weeklyValidation.length}`;
+ document.getElementById("wkAvg").textContent=`+${avg.toFixed(1)}%`;
+ document.getElementById("wkFalse").textContent=weeklyValidation.length-passed;
+}
+function renderBacktests(){document.getElementById("backtestGrid").innerHTML=backtests.map(x=>`<div class="bt"><div class="company">${logoHtml({ticker:x.ticker,name:x.name,domain:(longData.find(s=>s.ticker===x.ticker)||{}).domain})}<div><b>${x.ticker} · ${x.name}</b><div class="small">ציון היסטורי ${x.score}/100</div></div></div><h3 class="positive">${x.actual}</h3><p class="note">${x.why}</p></div>`).join("")}
+
+
+
+function alpacaSetupMessage(msg,kind=""){
+  const el=document.getElementById("alpacaSetupStatus");
+  if(el){el.textContent=msg;el.className="note "+(kind||"");}
+}
+async function testAlpacaSetup(){
+  const key=document.getElementById("alpacaApiKeyInput")?.value.trim();
+  const secret=document.getElementById("alpacaSecretInput")?.value.trim();
+  const feed=document.getElementById("alpacaFeedSelect")?.value||"iex";
+  if(!key||!secret){alpacaSetupMessage("יש להזין API Key ו-Secret.","health-watch");return}
+  alpacaSetupMessage("בודק חיבור ל-Alpaca...");
+  try{
+    const r=await fetch("/api/settings/alpaca/test",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({api_key:key,secret_key:secret,feed})});
+    const j=await r.json();
+    if(!r.ok)throw new Error(j.detail||"בדיקת החיבור נכשלה");
+    alpacaSetupMessage("✅ החיבור תקין. אפשר ללחוץ 'שמור והפעל'.","health-good");
+  }catch(e){alpacaSetupMessage("❌ "+e.message,"health-bad")}
+}
+async function saveAlpacaSetup(){
+  const key=document.getElementById("alpacaApiKeyInput")?.value.trim();
+  const secret=document.getElementById("alpacaSecretInput")?.value.trim();
+  const feed=document.getElementById("alpacaFeedSelect")?.value||"iex";
+  if(!key||!secret){alpacaSetupMessage("יש להזין API Key ו-Secret.","health-watch");return}
+  alpacaSetupMessage("מאמת ושומר את החיבור...");
+  try{
+    const r=await fetch("/api/settings/alpaca/save",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({api_key:key,secret_key:secret,feed})});
+    const j=await r.json();
+    if(!r.ok)throw new Error(j.detail||"שמירת החיבור נכשלה");
+    document.getElementById("alpacaApiKeyInput").value="";
+    document.getElementById("alpacaSecretInput").value="";
+    alpacaSetupMessage(`✅ ${j.message} Feed: ${String(j.alpaca_feed||feed).toUpperCase()}`,"health-good");
+    await checkBackendStatus();await syncMarketClock();await refreshHealth();
+    if(selected){try{await startTrueחי()}catch(e){}}
+  }catch(e){alpacaSetupMessage("❌ "+e.message,"health-bad")}
+}
+async function clearAlpacaSetup(){
+  if(!confirm("לנתק את Alpaca ולמחוק את המפתחות מהמחשב המקומי?"))return;
+  try{
+    const r=await fetch("/api/settings/alpaca",{method:"DELETE"});const j=await r.json();
+    if(!r.ok)throw new Error(j.detail||"הניתוק נכשל");
+    alpacaSetupMessage("Alpaca נותקה. האפליקציה תחזור למקורות הגיבוי.","health-watch");
+    await checkBackendStatus();
+  }catch(e){alpacaSetupMessage("❌ "+e.message,"health-bad")}
+}
+
+async function checkBackendStatus(){
+  const el=document.getElementById("backendStatus");
+  try{
+    const r=await fetch("/api/status"); const j=await r.json(); backendInfo=j||backendInfo;
+    const live=j.alpaca_configured?"Alpaca מחובר":"Alpaca לא מוגדר";
+    const av=j.alpha_vantage_configured?"Alpha Vantage מחובר":"Alpha Vantage לא מוגדר";
+    const badge=document.getElementById("alpacaSetupBadge");if(badge){badge.textContent=j.alpaca_configured?"מחובר":"לא מחובר";badge.className="live-badge "+(j.alpaca_configured?"live-on":"live-eod");}
+    const fs=document.getElementById("alpacaFeedSelect");if(fs&&j.alpaca_feed)fs.value=j.alpaca_feed;
+    if(el)el.textContent=`${live} · ${av} · Feed: ${j.alpaca_feed||"iex"}`;
+    alpacaFeed=j.alpaca_feed||"iex";
+    document.getElementById("apiStatus").textContent=`שרת פעיל · ${live} · ${av}`;
+    return j;
+  }catch(e){
+    if(el)el.textContent="השרת לא זמין.";
+    document.getElementById("apiStatus").textContent="שרת לא זמין";
+    return null;
+  }
+}
+
+function saveApi(){alert("המפתחות מנוהלים בקובץ .env של השרת.")}
+function clearApi(){alert("כדי לשנות מפתחות, ערוך את קובץ .env בשרת.")}
+async function refreshAll(){Object.keys(cache).forEach(k=>delete cache[k]);for(const s of longData.slice(0,10)){try{let q=await getQuote(s.ticker);s.price=q.price;s.change=q.change}catch(e){}}renderTables();renderHome()}
+
+function openImport(){document.getElementById("importModal").classList.add("open");if(!document.querySelector("#ocrRows tr"))addOcrRow()}
+function addOcrRow(sym="",qty="",buy=""){document.getElementById("ocrRows").insertAdjacentHTML("beforeend",`<tr><td><input class="os" value="${sym}"></td><td><input class="oq" type="number" value="${qty}"></td><td><input class="ob" type="number" value="${buy}"></td><td><button class="btn btn-danger" onclick="this.closest('tr').remove()">מחק</button></td></tr>`)}
+document.getElementById("imgInput").onchange=async e=>{const f=e.target.files[0];if(!f)return;document.getElementById("ocrStatus").textContent="קורא את התמונה...";try{if(typeof Tesseract==="undefined")throw new Error("OCR library unavailable");let r=await Tesseract.recognize(f,"eng"),text=r.data.text||"";document.getElementById("ocrRaw").value=text;document.getElementById("ocrRows").innerHTML="";const syms=[...text.matchAll(/\b[A-Z]{2,5}\b/g)].map(m=>m[0]).filter(x=>!["USD","TOTAL","PRICE","VALUE","NASDAQ","NYSE"].includes(x));[...new Set(syms)].slice(0,12).forEach(s=>addOcrRow(s,"",""));document.getElementById("ocrStatus").textContent="הזיהוי הסתיים. בדוק את הנתונים לפני שמירה."}catch(err){document.getElementById("ocrStatus").textContent="הזיהוי נכשל; אפשר להזין ידנית."}}
+function saveOcrRows(){let n=0;document.querySelectorAll("#ocrRows tr").forEach(tr=>{let s=tr.querySelector(".os").value.trim().toUpperCase(),q=+tr.querySelector(".oq").value,b=+tr.querySelector(".ob").value;if(s&&q>0&&b>0){holdings.push({symbol:s,qty:q,buyPrice:b,date:new Date().toISOString().slice(0,10),currentPrice:null});n++}});if(!n){alert("אין שורות תקינות.");return}saveHoldings();closeModal("importModal");renderPortfolio()}
+
+if(location.protocol==='file:'){
+  document.body.innerHTML='<div style="max-width:760px;margin:80px auto;font-family:Arial;direction:rtl;padding:24px"><h1>האפליקציה נפתחה בצורה לא נכונה</h1><p>אין לפתוח את index.html ישירות. יש להפעיל את השרת ואז להיכנס דרך http://127.0.0.1:8000 כדי שהגרפים, הנתונים והעדכונים החיים יעבדו.</p></div>';
+}else{
+  initializeVisibleClocks();renderHome();renderTables();renderBacktests();renderWeekly();updateApiStatus();setחיBadge();checkBackendStatus();updateScannerButton();startAutoScanner();loadLearningSummary();refreshHealth();loadLivePerformance(false);syncMarketClock();startDataWatchdog();
+  setInterval(updateClockUI,1000);setInterval(syncMarketClock,60000);setInterval(refreshHealth,300000);setInterval(()=>loadLivePerformance(true),300000);
+}
+
+
+
+
+// Install-to-home-screen support
+let deferredInstallPrompt=null;
+function isStandaloneApp(){
+  return window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone===true;
+}
+function refreshInstallButton(){
+  const b=document.getElementById('installAppBtn');
+  if(!b)return;
+  b.style.display=isStandaloneApp()?'none':'inline-flex';
+}
+window.addEventListener('beforeinstallprompt',e=>{
+  e.preventDefault();
+  deferredInstallPrompt=e;
+  refreshInstallButton();
+});
+window.addEventListener('appinstalled',()=>{
+  deferredInstallPrompt=null;
+  const b=document.getElementById('installAppBtn'); if(b)b.style.display='none';
+});
+async function promptInstallApp(){
+  if(isStandaloneApp()){alert('האפליקציה כבר מותקנת במסך הבית.');return;}
+  if(deferredInstallPrompt){
+    deferredInstallPrompt.prompt();
+    try{await deferredInstallPrompt.userChoice;}catch(e){}
+    deferredInstallPrompt=null;
+    refreshInstallButton();
+    return;
+  }
+  const ua=navigator.userAgent||'';
+  if(/iPhone|iPad|iPod/i.test(ua)){
+    alert('ב-iPhone: פתח ב-Safari → לחץ על שיתוף → הוסף למסך הבית.');
+  }else{
+    alert('ב-Android: פתח את תפריט Chrome (⋮) → התקנת אפליקציה / הוסף למסך הבית.');
+  }
+}
+window.addEventListener('load',refreshInstallButton);
+
+// PWA / zero-download update support
+(function setupPWAUpdates(){
+  if(!('serviceWorker' in navigator) || location.protocol==='file:') return;
+  let refreshing=false;
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{
+    if(refreshing)return;
+    refreshing=true;
+    location.reload();
+  });
+  window.addEventListener('load', async ()=>{
+    try{
+      const reg=await navigator.serviceWorker.register('/sw.js',{scope:'/'});
+      const banner=document.getElementById('appUpdateBanner');
+      const btn=document.getElementById('applyUpdateBtn');
+      const showUpdate=()=>{
+        if(!reg.waiting || !banner)return;
+        banner.style.display='flex';
+        if(btn)btn.onclick=()=>reg.waiting?.postMessage({type:'SKIP_WAITING'});
+      };
+      if(reg.waiting)showUpdate();
+      reg.addEventListener('updatefound',()=>{
+        const worker=reg.installing;
+        if(!worker)return;
+        worker.addEventListener('statechange',()=>{
+          if(worker.state==='installed' && navigator.serviceWorker.controller)showUpdate();
+        });
+      });
+      // Revalidate periodically while the app is open and whenever it becomes visible again.
+      const check=()=>reg.update().catch(()=>{});
+      setInterval(check, 5*60*1000);
+      document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')check()});
+    }catch(e){console.warn('PWA registration failed',e)}
+  });
+})();
+</script>
+</body></html>
