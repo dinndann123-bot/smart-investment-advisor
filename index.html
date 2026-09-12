@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>היועץ החכם להשקעות</title>
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js">syncMarketClock();setInterval(updateClockUI,1000);setInterval(syncMarketClock,60000);
+</script>
 <style>
 :root{
  --bg:#f5f7fb;--surface:#ffffff;--surface2:#f9fbff;--ink:#152033;--muted:#6f7b91;
@@ -145,15 +146,6 @@ button:focus-visible,.btn:focus-visible,input:focus-visible,select:focus-visible
 
 .health-good{border-inline-start:4px solid #159947}.health-watch{border-inline-start:4px solid #d89b13}.health-bad{border-inline-start:4px solid #d14b4b}
 
-
-.session-kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin:10px 0 14px}
-.session-kpi{background:#f8faff;border:1px solid var(--line);border-radius:12px;padding:10px}
-.session-kpi b{display:block;font-size:16px}.session-kpi span{font-size:11px;color:var(--muted)}
-.chart-wrap canvas,#detailChart,#fiveYearChart,#portfolioChart{width:100%;max-width:100%;min-height:280px;display:block}
-.api-warning{background:#fff5e6;border:1px solid #f2ca7d;border-radius:12px;padding:10px 12px;color:#79510b;margin-top:8px}
-@media(max-width:900px){.session-kpis{grid-template-columns:repeat(3,1fr)}}
-@media(max-width:560px){.session-kpis{grid-template-columns:repeat(2,1fr)}}
-
 </style>
 </head>
 <body><div id="directFileWarning" style="display:none;position:fixed;inset:0;z-index:9999;background:#f4f7fb;padding:24px;align-items:center;justify-content:center"><div style="max-width:620px;background:white;border:1px solid #dfe5ef;border-radius:20px;padding:28px;box-shadow:0 18px 55px rgba(20,30,55,.14);text-align:right"><h2 style="margin-top:0">האפליקציה נפתחה בלי השרת</h2><p>כדי שמחירים, גרפים, חדשות ונתוני 5 שנים יעבדו, אל תפתח את קובץ ה-HTML ישירות.</p><p><b>Windows:</b> הפעל את הקובץ <code>START_APP.bat</code> שבתיקייה הראשית.</p><p><b>Mac/Linux:</b> הפעל <code>./start_app.sh</code> ואז פתח <code>http://127.0.0.1:8000</code>.</p></div></div>
@@ -201,36 +193,6 @@ button:focus-visible,.btn:focus-visible,input:focus-visible,select:focus-visible
         <div class="card"><div class="section-head"><div><h2 style="font-size:19px">5 המובילות למסחר יומי</h2><p>המועמדות החזקות ביותר כרגע.</p></div><button class="btn btn-secondary" onclick="go('day')">לכל ה־10</button></div><div id="homeDay"></div></div>
       </div>
     
-
-<div class="card" id="livePerformancePanel" style="margin-top:16px">
-  <div class="section-head">
-    <div>
-      <h2 style="margin:0">📡 ביצועי האותות בזמן אמת</h2>
-      <p>מה קרה בפועל למניות שהשיטה סימנה — לא Backtest אלא אותות שנשמרו בזמן אמת.</p>
-    </div>
-    <button class="btn btn-secondary" onclick="loadLivePerformance(true)">רענן תוצאות</button>
-  </div>
-  <div class="cards">
-    <div class="card metric"><b id="liveDayHit">—</b><span>הצלחה היום</span></div>
-    <div class="card metric"><b id="liveWeekHit">—</b><span>הצלחה 7 ימים</span></div>
-    <div class="card metric"><b id="liveMonthHit">—</b><span>הצלחה 30 יום</span></div>
-    <div class="card metric"><b id="liveMonthR">—</b><span>R ממוצע 30 יום</span></div>
-  </div>
-  <div class="cards" style="margin-top:10px">
-    <div class="card metric"><b id="liveWeekSignals">—</b><span>אותות ב־7 ימים</span></div>
-    <div class="card metric"><b id="liveMonthSignals">—</b><span>אותות ב־30 יום</span></div>
-    <div class="card metric"><b id="liveMonthStops">—</b><span>Stop ב־30 יום</span></div>
-    <div class="card metric"><b id="liveVsBacktest">—</b><span>חי מול Backtest</span></div>
-  </div>
-  <div id="livePerformanceNote" class="note" style="margin-top:10px">המערכת מתחילה לצבור נתונים מהאותות החדשים. ככל שיצטבר מדגם גדול יותר, ההשוואה תהיה אמינה יותר.</div>
-  <div class="table-wrap" style="margin-top:12px">
-    <table>
-      <thead><tr><th>זמן</th><th>מניה</th><th>ציון</th><th>כניסה</th><th>מחיר אחרון</th><th>תשואה</th><th>מצב</th><th>R</th></tr></thead>
-      <tbody id="liveSignalsBody"></tbody>
-    </table>
-  </div>
-</div>
-
 <div class="card" id="systemHealthPanel" style="margin-top:16px">
   <div class="section-head">
     <div>
@@ -360,14 +322,6 @@ button:focus-visible,.btn:focus-visible,input:focus-visible,select:focus-visible
             <div class="kpi"><b id="dScore">—</b><span>ציון כולל</span></div>
             <div class="kpi"><b id="dMedia">—</b><span>ציון תקשורת</span></div>
             <div class="kpi"><b id="dRisk">—</b><span>סיכון</span></div>
-          </div>
-          <div class="session-kpis">
-            <div class="session-kpi"><b id="dOpen">—</b><span>פתיחה</span></div>
-            <div class="session-kpi"><b id="dHigh">—</b><span>גבוה</span></div>
-            <div class="session-kpi"><b id="dLow">—</b><span>נמוך</span></div>
-            <div class="session-kpi"><b id="dVolume">—</b><span>מחזור</span></div>
-            <div class="session-kpi"><b id="dBarTime">—</b><span>זמן נתון אחרון</span></div>
-            <div class="session-kpi"><b id="dMarketSession">—</b><span>מצב שוק</span></div>
           </div>
           
 <div class="trade-plan" id="detailPlanSection">
@@ -544,70 +498,57 @@ button:focus-visible,.btn:focus-visible,input:focus-visible,select:focus-visible
 </section>
 
 <section id="page-settings" class="page">
-  <div class="section-head">
-    <div><h2>הגדרות</h2><p>חיבור מקורות נתוני השוק וניהול זמן אמת.</p></div>
+      <div class="section-head"><div><h2>הגדרות</h2><p>חיבור נתוני שוק והתאמות בסיסיות.</p></div></div>
+      <div class="card">
+        <div class="settings-row">
+  <div><b>Alpha Vantage</b><div class="small">חדשות, היסטוריה ונתונים משלימים</div></div>
+  <div class="note">המפתח מוגדר בצד השרת בלבד.</div>
+</div><div><input id="apiKeyInput" type="password" placeholder="הדבק כאן API Key"><div class="actions"><button class="btn btn-primary" onclick="saveApi()">שמור</button><button class="btn btn-danger" onclick="clearApi()">מחק</button></div></div></div>
+        
+
+<div class="settings-row">
+  <div><b>Alpaca חי</b><div class="small">החיבור המאובטח מתבצע דרך השרת</div></div>
+  <div>
+    <div id="backendStatus" class="note">בודק את מצב השרת...</div>
+    <div class="actions"><button class="btn btn-secondary" onclick="checkBackendStatus()">בדוק חיבור</button></div>
+    <div class="provider-note">מפתחות Alpaca ו-Alpha Vantage נשמרים בקובץ .env בשרת ואינם נשלחים לדפדפן.</div>
   </div>
-
-  <div class="card">
-    <div class="section-head">
-      <div>
-        <h3 style="margin:0">חיבור Alpaca</h3>
-        <p>הדבק פעם אחת את המפתחות שקיבלת מ-Alpaca. הם נשמרים רק בצד השרת המקומי ואינם מוצגים מחדש בדפדפן.</p>
-      </div>
-      <span id="alpacaSetupBadge" class="live-badge">בודק...</span>
-    </div>
-
-    <div class="form-grid">
-      <div>
-        <label>API Key</label>
-        <input id="alpacaApiKeyInput" type="password" autocomplete="off" placeholder="APCA-API-KEY-ID">
-      </div>
-      <div>
-        <label>Secret Key</label>
-        <input id="alpacaSecretInput" type="password" autocomplete="off" placeholder="APCA-API-SECRET-KEY">
-      </div>
-      <div>
-        <label>מקור נתונים</label>
-        <select id="alpacaFeedSelect">
-          <option value="iex">IEX — ברירת מחדל / חינם</option>
-          <option value="delayed_sip">SIP מושהה</option>
-          <option value="sip">SIP — כל הבורסות / דורש הרשאה</option>
-        </select>
-      </div>
-    </div>
-
-    <div class="actions">
-      <button class="btn btn-secondary" onclick="testAlpacaSetup()">בדוק חיבור</button>
-      <button class="btn btn-primary" onclick="saveAlpacaSetup()">שמור והפעל</button>
-      <button class="btn btn-danger" onclick="clearAlpacaSetup()">נתק Alpaca</button>
-    </div>
-    <div id="alpacaSetupStatus" class="note" style="margin-top:10px">לא נשמר שום מפתח בדפדפן.</div>
+</div>
+<div class="settings-row">
+  <div><b>מקור נתוני Alpaca</b><div class="small">IEX / SIP נקבע בצד השרת</div></div>
+  <div class="note">שנה את <code>ALPACA_FEED</code> בקובץ <code>.env</code> והפעל את השרת מחדש.</div>
+</div>
+  <div>
+    <select id="entitlementSelect" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:10px">
+      <option value="">אוטומטי / סוף יום</option>
+      <option value="delayed">15 דקות עיכוב</option>
+      <option value="realtime">זמן אמת</option>
+    </select>
   </div>
+</div>
 
-  <div class="card" style="margin-top:14px">
-    <div class="settings-row">
-      <div><b>מצב השרת</b><div class="small">בדיקת החיבור הפעיל כרגע</div></div>
-      <div>
-        <div id="backendStatus" class="note">בודק את מצב השרת...</div>
-        <div class="actions"><button class="btn btn-secondary" onclick="checkBackendStatus()">בדוק שוב</button></div>
-      </div>
-    </div>
-    <div class="settings-row">
-      <div><b>Alpha Vantage</b><div class="small">חדשות ונתונים משלימים</div></div>
-      <div class="note">אם מוגדר בשרת, האפליקציה משתמשת בו כמקור משלים וגיבוי.</div>
-    </div>
-    <div class="settings-row">
-      <div><b>סריקה אוטומטית</b><div class="small">10 המניות המובילות למסחר יומי</div></div>
-      <div class="note">כאשר Alpaca מחובר, הסורק מעדיף אותו. ב-SIP מתקבלת תמונת שוק רחבה יותר; ב-IEX הכיסוי מצומצם יותר.</div>
-    </div>
-    <div class="settings-row">
-      <div><b>רענון חי</b><div class="small">WebSocket</div></div>
-      <div class="note">במניה פתוחה, עסקאות ו-bars מתעדכנים דרך החיבור החי כאשר ההרשאה מאפשרת זאת.</div>
-    </div>
-    <div class="settings-row"><div><b>שפת הממשק</b></div><div>עברית</div></div>
-    <div class="settings-row"><div><b>הערה</b></div><div class="note">ציון המניות הוא כלי סינון והשוואה ולא הבטחה לתשואה.</div></div>
+<div class="settings-row">
+  <div><b>סריקת מסחר יומי</b><div class="small">מניות בתנועה + המניות הפעילות ביותר</div></div>
+  <div class="note">במצב SIP, הסורק משתמש בסריקת שוק רחבה בזמן אמת. ללא SIP הוא עובר אוטומטית ל-Fallback. ה-10 המובילות מתרענן כל דקה כאשר Auto Scan פעיל.</div>
+</div>
+
+<div class="settings-row">
+  <div><b>רענון חי</b><div class="small">WebSocket</div></div>
+  <div class="note">במצב Alpaca חי אין רענון תקופתי קבוע — עסקאות ו-bars נדחפים ליישום בזמן שהם מגיעים.</div>
+</div>
+  <div>
+    <select id="refreshIntervalSelect" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:10px">
+      <option value="30">כל 30 שניות</option>
+      <option value="60">כל דקה</option>
+      <option value="120">כל 2 דקות</option>
+    </select>
   </div>
-</section>
+</div>
+
+<div class="settings-row"><div><b>שפת הממשק</b></div><div>עברית</div></div>
+        <div class="settings-row"><div><b>הערה</b></div><div class="note">ציון המניות הוא כלי סינון והשוואה ולא הבטחה לתשואה.</div></div>
+      </div>
+    </section>
   </main>
 </div>
 
@@ -715,13 +656,6 @@ function formatNextMarketEvent(iso,label){
   const d=new Date(iso);
   return `${label}: ${new Intl.DateTimeFormat("he-IL",{timeZone:"America/New_York",weekday:"short",hour:"2-digit",minute:"2-digit",hour12:false}).format(d)} ניו־יורק`;
 }
-
-function initializeVisibleClocks(){
- updateClockUI();
- const st=document.getElementById("marketState");if(st&&st.textContent==="בודק...")st.textContent="מסנכרן...";
- const sync=document.getElementById("clockSync");if(sync)sync.textContent="מסנכרן זמן";
-}
-
 async function syncMarketClock(){
   try{
     const t0=Date.now();
@@ -746,7 +680,7 @@ async function syncMarketClock(){
     if(sync)sync.textContent=j.market?.source==="alpaca_clock"?"Alpaca + זמן שרת":"זמן שרת";
     updateClockUI();
   }catch(e){
-    const sync=document.getElementById("clockSync");if(sync)sync.textContent="זמן מכשיר"; updateClockUI(); const st=document.getElementById("marketState");if(st)st.textContent="סטטוס שוק לא זמין";
+    const sync=document.getElementById("clockSync");if(sync)sync.textContent="זמן מכשיר";
   }
 }
 function scrollDetail(id){
@@ -827,56 +761,6 @@ function setFreshnessBadge(f){
   }
   el.textContent="טריות: "+x.text+age;
   el.className="live-badge "+x.cls;
-}
-
-
-function pctOrDash(v){return v==null||!Number.isFinite(+v)?"—":(+v).toFixed(1)+"%"}
-function liveStatusHe(x){
-  if(x==="target2")return "✅ יעד 2";
-  if(x==="target1")return "✅ יעד 1";
-  if(x==="stopped")return "❌ עצירת הפסד";
-  return "⏳ פתוח";
-}
-async function loadLivePerformance(force=false){
-  try{
-    const url=`/api/live-signals/summary?refresh=${force?'true':'false'}`;
-    const r=await fetch(url,{cache:"no-store"});
-    const j=await r.json();
-    if(!r.ok)throw new Error(j.detail||"live signals");
-    const d=j.day||{},w=j.week||{},m=j.month||{};
-    document.getElementById("liveDayHit").textContent=pctOrDash(d.hit1_pct);
-    document.getElementById("liveWeekHit").textContent=pctOrDash(w.hit1_pct);
-    document.getElementById("liveMonthHit").textContent=pctOrDash(m.hit1_pct);
-    document.getElementById("liveMonthR").textContent=m.avg_r==null?"—":Number(m.avg_r).toFixed(2)+"R";
-    document.getElementById("liveWeekSignals").textContent=w.signals??0;
-    document.getElementById("liveMonthSignals").textContent=m.signals??0;
-    document.getElementById("liveMonthStops").textContent=pctOrDash(m.stop_pct);
-
-    let bt=null;
-    try{const br=await fetch("/api/strategy/health",{cache:"no-store"});bt=await br.json()}catch(e){}
-    const vs=document.getElementById("liveVsBacktest");
-    const note=document.getElementById("livePerformanceNote");
-    if(bt?.has_data && m.hit1_pct!=null && bt.recent?.hit1!=null){
-      const diff=Number(m.hit1_pct)-Number(bt.recent.hit1);
-      vs.textContent=(diff>=0?"+":"")+diff.toFixed(1)+" נק׳";
-      vs.className=diff>=-5?"positive":"negative";
-      const enough=m.signals>=20;
-      note.textContent=enough
-        ?`ב־30 הימים האחרונים: ${m.signals} אותות. הצלחת זמן אמת ${Number(m.hit1_pct).toFixed(1)}% לעומת ${Number(bt.recent.hit1).toFixed(1)}% בבדיקה ההיסטורית. ${diff<-10?'יש פער שלילי שמצדיק בדיקה לפני שינוי משקלים.':'אין כרגע סטייה חריגה.'}`
-        :`נצברו ${m.signals} אותות ב־30 יום. עדיין אין מדגם מספיק גדול לשינוי השיטה; יעד ראשוני: לפחות 20–30 אותות.`;
-    }else{
-      vs.textContent="—";
-      note.textContent=`נצברו ${m.signals||0} אותות ב־30 יום. הנתונים נשמרים אוטומטית מהסורק.`;
-    }
-    const body=document.getElementById("liveSignalsBody");
-    if(body)body.innerHTML=(j.recent||[]).slice(0,20).map(x=>`<tr>
-      <td>${new Date(x.created_at).toLocaleString("he-IL")}</td><td><b>${x.symbol}</b></td><td>${Number(x.score||0).toFixed(0)}/100</td>
-      <td>${money(x.entry)}</td><td>${x.last_price?money(x.last_price):"—"}</td>
-      <td class="${(+x.current_return_pct)>=0?'positive':'negative'}">${x.current_return_pct==null?'—':((+x.current_return_pct)>=0?'+':'')+(+x.current_return_pct).toFixed(2)+'%'}</td>
-      <td>${liveStatusHe(x.status)}</td><td>${x.result_r==null?'—':Number(x.result_r).toFixed(2)+'R'}</td></tr>`).join("") || '<tr><td colspan="8" class="empty">עדיין אין אותות חיים שנשמרו. הסריקה האוטומטית תתחיל לצבור אותם.</td></tr>';
-  }catch(e){
-    const note=document.getElementById("livePerformanceNote");if(note)note.textContent="לא ניתן לטעון כרגע את מעקב האותות החיים.";
-  }
 }
 
 async function refreshHealth(){
@@ -1039,14 +923,11 @@ async function refreshDayScanner(manual=false){
        name:x.name||x.ticker,
        summary:`RVOL ${Number.isFinite(x.rvol)?x.rvol.toFixed(2)+"×":"—"} · ${x.news_count||0} חדשות`
      }));
-     renderTables();renderHome();loadLivePerformance(false);
-   }else if(st){
-     st.textContent="הסריקה הסתיימה ללא נתונים — בדוק חיבור נתונים";
-     st.className="live-badge live-error";
+     renderTables();renderHome();
    }
-   const mode=j.full_market?"סריקת שוק מלאה":"סריקת גיבוי";
+   const mode=j.full_market?"Full Market חי":"Fallback";
    if(st){
-     st.textContent=`${mode} · מקור ${j.feed||"—"} · ${new Date(j.generated_at).toLocaleTimeString("he-IL")}`;
+     st.textContent=`${mode} · ${j.feed||"—"} · ${new Date(j.generated_at).toLocaleTimeString("he-IL")}`;
      st.className="live-badge "+(j.full_market?"live-on":"live-delayed");
      st.title=j.screener_error||"";
    }
@@ -1125,26 +1006,12 @@ async function getNews(symbol){
  return (j.news||[]).map(x=>({title:x.title||x.headline,source:x.source||"",url:x.url||"",time_published:x.published_at||""}));
 }
 function draw(canvas,pts,buy=null){
- const c=document.getElementById(canvas); if(!c)return;
- const rect=c.getBoundingClientRect();
- const cssW=Math.max(320,Math.round(rect.width||c.clientWidth||900));
- const cssH=300;
- const dpr=Math.min(window.devicePixelRatio||1,2);
- c.width=Math.round(cssW*dpr); c.height=Math.round(cssH*dpr);
- c.style.height=cssH+"px";
- const x=c.getContext("2d"); x.setTransform(dpr,0,0,dpr,0,0);
- x.clearRect(0,0,cssW,cssH);x.fillStyle="#fbfcff";x.fillRect(0,0,cssW,cssH);
- if(!pts||pts.length<2){x.fillStyle="#8894a8";x.font="16px Arial";x.textAlign="center";x.fillText("אין כרגע נתוני גרף זמינים",cssW/2,cssH/2);return}
- const clean=pts.filter(p=>Number.isFinite(+p.v));
- if(clean.length<2){x.fillStyle="#8894a8";x.font="16px Arial";x.textAlign="center";x.fillText("אין מספיק נתוני מחיר",cssW/2,cssH/2);return}
- const vs=clean.map(p=>+p.v),mn=Math.min(...vs),mx=Math.max(...vs),p=38;
- x.strokeStyle="#e4e9f2";x.lineWidth=1;
- for(let i=1;i<5;i++){let y=p+(cssH-2*p)*i/5;x.beginPath();x.moveTo(p,y);x.lineTo(cssW-p,y);x.stroke()}
- x.fillStyle="#6f7b91";x.font="11px Arial";x.textAlign="left";
- x.fillText("$"+mx.toFixed(mx<10?2:1),5,p+4);x.fillText("$"+mn.toFixed(mn<10?2:1),5,cssH-p);
- x.strokeStyle="#315bea";x.lineWidth=2.5;x.beginPath();
- clean.forEach((o,i)=>{let xx=p+(cssW-2*p)*i/(clean.length-1),yy=cssH-p-(o.v-mn)/(mx-mn||1)*(cssH-2*p);i?x.lineTo(xx,yy):x.moveTo(xx,yy)});x.stroke();
- if(buy&&buy>=mn&&buy<=mx){let y=cssH-p-(buy-mn)/(mx-mn||1)*(cssH-2*p);x.setLineDash([6,5]);x.strokeStyle="#c58a18";x.beginPath();x.moveTo(p,y);x.lineTo(cssW-p,y);x.stroke();x.setLineDash([])}
+ const c=document.getElementById(canvas),x=c.getContext("2d");x.clearRect(0,0,c.width,c.height);x.fillStyle="#fbfcff";x.fillRect(0,0,c.width,c.height);
+ if(!pts||pts.length<2){x.fillStyle="#8894a8";x.font="17px Arial";x.textAlign="center";x.fillText("אין נתוני גרף",c.width/2,c.height/2);return}
+ const vs=pts.map(p=>p.v),mn=Math.min(...vs),mx=Math.max(...vs),p=38;x.strokeStyle="#e4e9f2";
+ for(let i=1;i<5;i++){let y=p+(c.height-2*p)*i/5;x.beginPath();x.moveTo(p,y);x.lineTo(c.width-p,y);x.stroke()}
+ x.strokeStyle="#315bea";x.lineWidth=3;x.beginPath();pts.forEach((o,i)=>{let xx=p+(c.width-2*p)*i/(pts.length-1),yy=c.height-p-(o.v-mn)/(mx-mn||1)*(c.height-2*p);i?x.lineTo(xx,yy):x.moveTo(xx,yy)});x.stroke();
+ if(buy&&buy>=mn&&buy<=mx){let y=c.height-p-(buy-mn)/(mx-mn||1)*(c.height-2*p);x.setLineDash([6,5]);x.strokeStyle="#c58a18";x.beginPath();x.moveTo(p,y);x.lineTo(c.width-p,y);x.stroke();x.setLineDash([])}
 }
 
 
@@ -1217,7 +1084,6 @@ async function applyחיBar(bar){
  showPlan(plan,bar.v,lastListPage);
  if(lastListPage==="day"){
    const sig=calculateEntrySignal(plan,bar.v,selected);
-   recordTechnicalSignal(sig,plan,bar.v,selected);
    document.getElementById("entrySignal").outerHTML=signalHtml(sig).replace('<span class="signal','<span id="entrySignal" class="signal');
    const cell=document.getElementById("sig-"+selected.ticker);if(cell)cell.innerHTML=signalHtml(sig);
  }
@@ -1248,23 +1114,6 @@ function baseSignal(s){
 function signalHtml(sig){
   const cls=sig.state==="buy"?"signal-buy":sig.state==="no"?"signal-no":"signal-wait";
   return `<span class="signal ${cls}"><span class="signal-dot"></span>${sig.text}</span>`;
-}
-
-const recordedTechnicalSignals=new Set();
-async function recordTechnicalSignal(sig,plan,current,s){
-  if(sig?.state!=="buy"||!s||!plan)return;
-  const key=`${new Date().toISOString().slice(0,10)}:${s.ticker}`;
-  if(recordedTechnicalSignals.has(key))return;
-  if(![current,plan.stop,plan.t1,plan.t2].every(Number.isFinite))return;
-  recordedTechnicalSignals.add(key);
-  try{
-    const u=new URL("/api/live-signals/confirm",location.origin);
-    u.searchParams.set("symbol",s.ticker);u.searchParams.set("score",s.score||0);
-    u.searchParams.set("entry",current);u.searchParams.set("stop",plan.stop);u.searchParams.set("target1",plan.t1);u.searchParams.set("target2",plan.t2);
-    u.searchParams.set("source","אישור טכני חי");
-    const r=await fetch(u,{method:"POST"});if(!r.ok)throw new Error("save");
-    loadLivePerformance(false);
-  }catch(e){recordedTechnicalSignals.delete(key)}
 }
 function calculateEntrySignal(plan,current,s){
   if(!plan||!Number.isFinite(current)) return {state:"wait",text:"ממתין לנתונים"};
@@ -1497,7 +1346,7 @@ async function loadFiveYearProfile(symbol){
       <td class="${(+x.return_pct)>=0?'positive':'negative'}">${Number.isFinite(+x.return_pct)?((+x.return_pct)>=0?'+':'')+(+x.return_pct).toFixed(1)+'%':'—'}</td>
     </tr>`).join("");
     draw("fiveYearChart",j.bars||[]); renderRecentWeek(j.bars||[]);
-    if(st){st.textContent=`${j.from} → ${j.to} · ${j.provider||""}`;st.className="live-badge live-on"}
+    if(st){st.textContent=`${j.from} → ${j.to}`;st.className="live-badge live-on"}
     const note=document.getElementById("fyLearningNote");
     if(note){
       let profile=[];
@@ -1509,38 +1358,8 @@ async function loadFiveYearProfile(symbol){
       note.textContent=`פרופיל למידה: ${profile.length?profile.join(" · "):"התנהגות היסטורית מתונה יחסית"}. נתוני 5Y הם רקע; Backtest היסטורי משתמש רק במידע שהיה זמין באותו תאריך.`;
     }
   }catch(e){
-    if(st){st.textContent="5 שנים לא זמינות כרגע";st.className="live-badge live-error";st.title=e.message||"שגיאת נתונים"}
-    const note=document.getElementById("fyLearningNote");
-    if(note)note.textContent="לא התקבלו כרגע נתוני 5 שנים מאף ספק. בדוק חיבור אינטרנט או הגדרת Alpaca/Alpha Vantage.";
-    draw("fiveYearChart",null);
-    const body=document.getElementById("fyAnnualBody"); if(body)body.innerHTML='<tr><td colspan="2" class="empty">אין כרגע נתונים היסטוריים זמינים</td></tr>';
+    if(st){st.textContent="5Y לא זמין";st.className="live-badge live-error";st.title=e.message}
   }
-}
-
-
-function fmtMarketTimestamp(raw){
- if(!raw)return "—";
- const d=new Date(raw); if(Number.isNaN(d.getTime()))return String(raw).slice(11,16)||"—";
- return new Intl.DateTimeFormat("he-IL",{timeZone:"America/New_York",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}).format(d)+" ניו־יורק";
-}
-function renderSessionStats(pts){
- const arr=(pts||[]).filter(x=>Number.isFinite(+x.v));
- if(!arr.length)return;
- const lastDate=String(arr[arr.length-1].d).slice(0,10);
- const today=arr.filter(x=>String(x.d).slice(0,10)===lastDate);
- const src=today.length?today:arr.slice(-1);
- const open=src.find(x=>Number.isFinite(+x.o))?.o;
- const high=Math.max(...src.map(x=>Number.isFinite(+x.h)?+x.h:+x.v));
- const low=Math.min(...src.map(x=>Number.isFinite(+x.l)?+x.l:+x.v));
- const volume=src.reduce((a,x)=>a+(Number.isFinite(+x.volume)?+x.volume:0),0);
- const last=src[src.length-1];
- const put=(id,val)=>{const e=document.getElementById(id);if(e)e.textContent=val};
- put("dOpen",Number.isFinite(+open)?money(+open):"—");
- put("dHigh",Number.isFinite(high)?money(high):"—");
- put("dLow",Number.isFinite(low)?money(low):"—");
- put("dVolume",volume?formatVolume(volume):"—");
- put("dBarTime",fmtMarketTimestamp(last?.d));
- put("dMarketSession",marketClockData?.market?.session_he||"—");
 }
 
 async function loadDetailחי(){
@@ -1553,20 +1372,13 @@ async function loadDetailחי(){
    if(bundle.quote&&Number.isFinite(+bundle.quote.price)){price=+bundle.quote.price;change=Number.isFinite(+bundle.quote.change)?+bundle.quote.change:change;}
    pts=(bundle.bars||[]).map(x=>({d:x.d,o:+x.o,h:+x.h,l:+x.l,v:+x.v,volume:+(x.volume||0)})).filter(x=>Number.isFinite(x.v));
    news=bundle.news||[];
-   if(!pts.length && detailRange==="1D"){
-     try{
-       const fallbackBundle=await getBundle(selected.ticker,"1M");
-       const fallbackPts=(fallbackBundle.bars||[]).map(x=>({d:x.d,o:+x.o,h:+x.h,l:+x.l,v:+x.v,volume:+(x.volume||0)})).filter(x=>Number.isFinite(x.v));
-       if(fallbackPts.length){bundle=fallbackBundle;pts=fallbackPts;if(chartNote)chartNote.textContent="נתוני תוך־יומי לא זמינים — מוצג חודש אחרון כגיבוי.";}
-     }catch(_e){}
-   }
  }catch(e){
    if(chartNote)chartNote.textContent="לא ניתן להגיע כרגע לספק הנתונים; מוצגים הנתונים האחרונים שנשמרו בטבלה.";
  }
  if(Number.isFinite(price))document.getElementById("dPrice").textContent=money(price);
  if(Number.isFinite(change))document.getElementById("dChange").innerHTML=`<span class="${change>=0?'positive':'negative'}">${change>=0?'+':''}${change.toFixed(2)}%</span>`;
- if(pts.length){draw("detailChart",pts);renderSessionStats(pts);setFreshnessBadge(bundle?.freshness);if(chartNote&&!chartNote.textContent.includes("כגיבוי"))chartNote.textContent=`מקור: ${bundle?.provider||"שרת"} · ${pts.length} נקודות מחיר · טווח ${detailRange}`;}
- else {draw("detailChart",null);if(chartNote&&!chartNote.textContent.includes("לא ניתן"))chartNote.textContent="אין כרגע נתוני גרף מהספקים. האפליקציה ניסתה Alpaca, Alpha Vantage ומקור גיבוי ציבורי.";}
+ if(pts.length){draw("detailChart",pts);if(chartNote)chartNote.textContent=`מקור: ${bundle?.provider||"שרת"} · ${pts.length} נקודות מחיר`;}
+ else {draw("detailChart",null);if(chartNote&&!chartNote.textContent.includes("לא ניתן"))chartNote.textContent="אין כרגע נתוני גרף לטווח הזה. בדוק שהוגדר Alpaca או Alpha Vantage בהגדרות השרת.";}
  let plan=null;
  if(Number.isFinite(price)){
    try{plan=await buildTechnicalPlan(selected.ticker,price,lastListPage)}catch(e){}
@@ -1574,7 +1386,6 @@ async function loadDetailחי(){
  }
  showPlan(plan,price,lastListPage);
  const sig=lastListPage==="day"?calculateEntrySignal(plan,price,selected):{state:"wait",text:"טווח פעולה להשקעה"};
- if(lastListPage==="day")recordTechnicalSignal(sig,plan,price,selected);
  const sigEl=document.getElementById("entrySignal");if(sigEl)sigEl.outerHTML=signalHtml(sig).replace('<span class="signal','<span id="entrySignal" class="signal');
  const cell=document.getElementById("sig-"+selected.ticker);if(cell)cell.innerHTML=signalHtml(sig);
  const provider=bundle?.provider||"נתוני טבלה";setProviderBadge(provider,provider.includes("Alpaca")?"live-on":provider.includes("Alpha")?"live-delayed":"live-eod");
@@ -1697,59 +1508,12 @@ function renderWeekly(){
 function renderBacktests(){document.getElementById("backtestGrid").innerHTML=backtests.map(x=>`<div class="bt"><div class="company">${logoHtml({ticker:x.ticker,name:x.name,domain:(longData.find(s=>s.ticker===x.ticker)||{}).domain})}<div><b>${x.ticker} · ${x.name}</b><div class="small">ציון היסטורי ${x.score}/100</div></div></div><h3 class="positive">${x.actual}</h3><p class="note">${x.why}</p></div>`).join("")}
 
 
-
-function alpacaSetupMessage(msg,kind=""){
-  const el=document.getElementById("alpacaSetupStatus");
-  if(el){el.textContent=msg;el.className="note "+(kind||"");}
-}
-async function testAlpacaSetup(){
-  const key=document.getElementById("alpacaApiKeyInput")?.value.trim();
-  const secret=document.getElementById("alpacaSecretInput")?.value.trim();
-  const feed=document.getElementById("alpacaFeedSelect")?.value||"iex";
-  if(!key||!secret){alpacaSetupMessage("יש להזין API Key ו-Secret.","health-watch");return}
-  alpacaSetupMessage("בודק חיבור ל-Alpaca...");
-  try{
-    const r=await fetch("/api/settings/alpaca/test",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({api_key:key,secret_key:secret,feed})});
-    const j=await r.json();
-    if(!r.ok)throw new Error(j.detail||"בדיקת החיבור נכשלה");
-    alpacaSetupMessage("✅ החיבור תקין. אפשר ללחוץ 'שמור והפעל'.","health-good");
-  }catch(e){alpacaSetupMessage("❌ "+e.message,"health-bad")}
-}
-async function saveAlpacaSetup(){
-  const key=document.getElementById("alpacaApiKeyInput")?.value.trim();
-  const secret=document.getElementById("alpacaSecretInput")?.value.trim();
-  const feed=document.getElementById("alpacaFeedSelect")?.value||"iex";
-  if(!key||!secret){alpacaSetupMessage("יש להזין API Key ו-Secret.","health-watch");return}
-  alpacaSetupMessage("מאמת ושומר את החיבור...");
-  try{
-    const r=await fetch("/api/settings/alpaca/save",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({api_key:key,secret_key:secret,feed})});
-    const j=await r.json();
-    if(!r.ok)throw new Error(j.detail||"שמירת החיבור נכשלה");
-    document.getElementById("alpacaApiKeyInput").value="";
-    document.getElementById("alpacaSecretInput").value="";
-    alpacaSetupMessage(`✅ ${j.message} Feed: ${String(j.alpaca_feed||feed).toUpperCase()}`,"health-good");
-    await checkBackendStatus();await syncMarketClock();await refreshHealth();
-    if(selected){try{await startTrueחי()}catch(e){}}
-  }catch(e){alpacaSetupMessage("❌ "+e.message,"health-bad")}
-}
-async function clearAlpacaSetup(){
-  if(!confirm("לנתק את Alpaca ולמחוק את המפתחות מהמחשב המקומי?"))return;
-  try{
-    const r=await fetch("/api/settings/alpaca",{method:"DELETE"});const j=await r.json();
-    if(!r.ok)throw new Error(j.detail||"הניתוק נכשל");
-    alpacaSetupMessage("Alpaca נותקה. האפליקציה תחזור למקורות הגיבוי.","health-watch");
-    await checkBackendStatus();
-  }catch(e){alpacaSetupMessage("❌ "+e.message,"health-bad")}
-}
-
 async function checkBackendStatus(){
   const el=document.getElementById("backendStatus");
   try{
     const r=await fetch("/api/status"); const j=await r.json(); backendInfo=j||backendInfo;
     const live=j.alpaca_configured?"Alpaca מחובר":"Alpaca לא מוגדר";
     const av=j.alpha_vantage_configured?"Alpha Vantage מחובר":"Alpha Vantage לא מוגדר";
-    const badge=document.getElementById("alpacaSetupBadge");if(badge){badge.textContent=j.alpaca_configured?"מחובר":"לא מחובר";badge.className="live-badge "+(j.alpaca_configured?"live-on":"live-eod");}
-    const fs=document.getElementById("alpacaFeedSelect");if(fs&&j.alpaca_feed)fs.value=j.alpaca_feed;
     if(el)el.textContent=`${live} · ${av} · Feed: ${j.alpaca_feed||"iex"}`;
     alpacaFeed=j.alpaca_feed||"iex";
     document.getElementById("apiStatus").textContent=`שרת פעיל · ${live} · ${av}`;
@@ -1767,14 +1531,14 @@ async function refreshAll(){Object.keys(cache).forEach(k=>delete cache[k]);for(c
 
 function openImport(){document.getElementById("importModal").classList.add("open");if(!document.querySelector("#ocrRows tr"))addOcrRow()}
 function addOcrRow(sym="",qty="",buy=""){document.getElementById("ocrRows").insertAdjacentHTML("beforeend",`<tr><td><input class="os" value="${sym}"></td><td><input class="oq" type="number" value="${qty}"></td><td><input class="ob" type="number" value="${buy}"></td><td><button class="btn btn-danger" onclick="this.closest('tr').remove()">מחק</button></td></tr>`)}
-document.getElementById("imgInput").onchange=async e=>{const f=e.target.files[0];if(!f)return;document.getElementById("ocrStatus").textContent="קורא את התמונה...";try{if(typeof Tesseract==="undefined")throw new Error("OCR library unavailable");let r=await Tesseract.recognize(f,"eng"),text=r.data.text||"";document.getElementById("ocrRaw").value=text;document.getElementById("ocrRows").innerHTML="";const syms=[...text.matchAll(/\b[A-Z]{2,5}\b/g)].map(m=>m[0]).filter(x=>!["USD","TOTAL","PRICE","VALUE","NASDAQ","NYSE"].includes(x));[...new Set(syms)].slice(0,12).forEach(s=>addOcrRow(s,"",""));document.getElementById("ocrStatus").textContent="הזיהוי הסתיים. בדוק את הנתונים לפני שמירה."}catch(err){document.getElementById("ocrStatus").textContent="הזיהוי נכשל; אפשר להזין ידנית."}}
+document.getElementById("imgInput").onchange=async e=>{const f=e.target.files[0];if(!f)return;document.getElementById("ocrStatus").textContent="קורא את התמונה...";try{let r=await Tesseract.recognize(f,"eng"),text=r.data.text||"";document.getElementById("ocrRaw").value=text;document.getElementById("ocrRows").innerHTML="";const syms=[...text.matchAll(/\b[A-Z]{2,5}\b/g)].map(m=>m[0]).filter(x=>!["USD","TOTAL","PRICE","VALUE","NASDAQ","NYSE"].includes(x));[...new Set(syms)].slice(0,12).forEach(s=>addOcrRow(s,"",""));document.getElementById("ocrStatus").textContent="הזיהוי הסתיים. בדוק את הנתונים לפני שמירה."}catch(err){document.getElementById("ocrStatus").textContent="הזיהוי נכשל; אפשר להזין ידנית."}}
 function saveOcrRows(){let n=0;document.querySelectorAll("#ocrRows tr").forEach(tr=>{let s=tr.querySelector(".os").value.trim().toUpperCase(),q=+tr.querySelector(".oq").value,b=+tr.querySelector(".ob").value;if(s&&q>0&&b>0){holdings.push({symbol:s,qty:q,buyPrice:b,date:new Date().toISOString().slice(0,10),currentPrice:null});n++}});if(!n){alert("אין שורות תקינות.");return}saveHoldings();closeModal("importModal");renderPortfolio()}
 
 if(location.protocol==='file:'){
   document.body.innerHTML='<div style="max-width:760px;margin:80px auto;font-family:Arial;direction:rtl;padding:24px"><h1>האפליקציה נפתחה בצורה לא נכונה</h1><p>אין לפתוח את index.html ישירות. יש להפעיל את השרת ואז להיכנס דרך http://127.0.0.1:8000 כדי שהגרפים, הנתונים והעדכונים החיים יעבדו.</p></div>';
 }else{
-  initializeVisibleClocks();renderHome();renderTables();renderBacktests();renderWeekly();updateApiStatus();setחיBadge();checkBackendStatus();updateScannerButton();startAutoScanner();loadLearningSummary();refreshHealth();loadLivePerformance(false);syncMarketClock();startDataWatchdog();
-  setInterval(updateClockUI,1000);setInterval(syncMarketClock,60000);setInterval(refreshHealth,300000);setInterval(()=>loadLivePerformance(true),300000);
+  renderHome();renderTables();renderBacktests();renderWeekly();updateApiStatus();setחיBadge();checkBackendStatus();updateScannerButton();startAutoScanner();loadLearningSummary();refreshHealth();syncMarketClock();startDataWatchdog();
+  setInterval(updateClockUI,1000);setInterval(syncMarketClock,60000);setInterval(refreshHealth,300000);
 }
 </script>
 </body></html>
