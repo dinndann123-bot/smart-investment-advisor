@@ -4,6 +4,8 @@ import asyncio
 import sqlite3
 import math
 import statistics
+import csv
+import io
 from datetime import datetime, timezone, timedelta, time as dtime
 from zoneinfo import ZoneInfo
 from pathlib import Path
@@ -12,11 +14,13 @@ from typing import Dict, Any
 import httpx
 import websockets
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect, Body
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 BASE_DIR = Path(__file__).resolve().parent
+MARKET_CACHE_DIR = BASE_DIR / "market_cache"
+MARKET_CACHE_DIR.mkdir(exist_ok=True)
 load_dotenv(BASE_DIR / ".env")
 
 ALPHA_KEY = os.getenv("ALPHA_VANTAGE_API_KEY", "").strip()
@@ -26,7 +30,9 @@ ALPACA_FEED = os.getenv("ALPACA_FEED", "iex").strip().lower()
 if ALPACA_FEED not in {"iex", "sip", "delayed_sip"}:
     ALPACA_FEED = "iex"
 
-app = FastAPI(title="Smart Investment Advisor")
+APP_VERSION = os.getenv("APP_VERSION", "2026.09.12-pwa1")
+
+app = FastAPI(title="Smart Investment Advisor", version=APP_VERSION)
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
 ALLOWED_ALPHA_FUNCTIONS = {
@@ -40,7 +46,37 @@ ALLOWED_ALPHA_FUNCTIONS = {
 
 @app.get("/")
 async def root():
-    return FileResponse(BASE_DIR / "static" / "index.html")
+    # index.html must be revalidated so deployed UI updates appear without a new download.
+    return FileResponse(
+        BASE_DIR / "static" / "index.html",
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+    )
+
+
+@app.get("/manifest.webmanifest")
+async def manifest():
+    return FileResponse(
+        BASE_DIR / "static" / "manifest.webmanifest",
+        media_type="application/manifest+json",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
+@app.get("/sw.js")
+async def service_worker():
+    return FileResponse(
+        BASE_DIR / "static" / "sw.js",
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Service-Worker-Allowed": "/"},
+    )
+
+
+@app.get("/api/version")
+async def api_version():
+    return JSONResponse(
+        {"version": APP_VERSION, "pwa": True},
+        headers={"Cache-Control": "no-store"},
+    )
 
 @app.get("/api/status")
 async def status():
@@ -50,7 +86,113 @@ async def status():
         "alpaca_configured": bool(ALPACA_KEY and ALPACA_SECRET),
         "alpaca_feed": ALPACA_FEED,
         "secrets_exposed_to_browser": False,
+        "app_version": APP_VERSION,
+        "pwa": True,
     }
+
+
+def _write_env_values(updates: Dict[str, str]):
+    env_path=BASE_DIR / ".env"
+    lines=[]
+    if env_path.exists():
+        lines=env_path.read_text(encoding="utf-8").splitlines()
+    found=set()
+    out=[]
+    for line in lines:
+        if "=" in line and not line.lstrip().startswith("#"):
+            key=line.split("=",1)[0].strip()
+            if key in updates:
+                out.append(f"{key}={updates[key]}")
+                found.add(key)
+                continue
+        out.append(line)
+    for key,val in updates.items():
+        if key not in found:
+            out.append(f"{key}={val}")
+    env_path.write_text("\n".join(out).rstrip()+"\n",encoding="utf-8")
+
+
+def _reload_runtime_config():
+    global ALPHA_KEY, ALPACA_KEY, ALPACA_SECRET, ALPACA_FEED
+    load_dotenv(BASE_DIR / ".env", override=True)
+    ALPHA_KEY=os.getenv("ALPHA_VANTAGE_API_KEY","").strip()
+    ALPACA_KEY=os.getenv("ALPACA_API_KEY","").strip()
+    ALPACA_SECRET=os.getenv("ALPACA_SECRET_KEY","").strip()
+    ALPACA_FEED=os.getenv("ALPACA_FEED","iex").strip().lower()
+    if ALPACA_FEED not in {"iex","sip","delayed_sip"}:
+        ALPACA_FEED="iex"
+
+
+async def _verify_alpaca_credentials(key: str, secret: str, feed: str):
+    headers={"APCA-API-KEY-ID":key,"APCA-API-SECRET-KEY":secret}
+    details={"clock":False,"market_data":False,"feed":feed}
+    async with httpx.AsyncClient(timeout=15) as client:
+        # Account/clock auth check.
+        r=await client.get("https://paper-api.alpaca.markets/v2/clock",headers=headers)
+        if r.status_code>=400:
+            # Some users may be using live rather than paper credentials.
+            r2=await client.get("https://api.alpaca.markets/v2/clock",headers=headers)
+            if r2.status_code>=400:
+                raise HTTPException(status_code=400,detail="Alpaca דחתה את המפתחות. בדוק API Key ו-Secret.")
+        details["clock"]=True
+        # Verify the selected market-data feed independently.
+        dr=await client.get(
+            "https://data.alpaca.markets/v2/stocks/AAPL/snapshot",
+            headers=headers,
+            params={"feed":feed},
+        )
+        if dr.status_code<400:
+            details["market_data"]=True
+        elif feed=="sip" and dr.status_code in {401,403,422}:
+            raise HTTPException(status_code=400,detail="המפתחות תקינים, אבל לחשבון אין הרשאת SIP. בחר IEX או שדרג את חבילת הנתונים ב-Alpaca.")
+        elif dr.status_code>=400:
+            raise HTTPException(status_code=400,detail="המפתחות אומתו, אך Alpaca לא מאפשרת את Feed הנתונים שנבחר.")
+    return details
+
+
+@app.post("/api/settings/alpaca/test")
+async def test_alpaca_settings(payload: Dict[str, Any] = Body(...)):
+    key=str(payload.get("api_key") or "").strip()
+    secret=str(payload.get("secret_key") or "").strip()
+    feed=str(payload.get("feed") or "iex").strip().lower()
+    if feed not in {"iex","sip","delayed_sip"}:
+        raise HTTPException(status_code=400,detail="Feed לא תקין")
+    if not key or not secret:
+        raise HTTPException(status_code=400,detail="יש להזין API Key ו-Secret")
+    details=await _verify_alpaca_credentials(key,secret,feed)
+    return {"ok":True,"message":"החיבור ל-Alpaca תקין.","details":details}
+
+
+@app.post("/api/settings/alpaca/save")
+async def save_alpaca_settings(payload: Dict[str, Any] = Body(...)):
+    key=str(payload.get("api_key") or "").strip()
+    secret=str(payload.get("secret_key") or "").strip()
+    feed=str(payload.get("feed") or "iex").strip().lower()
+    if feed not in {"iex","sip","delayed_sip"}:
+        raise HTTPException(status_code=400,detail="Feed לא תקין")
+    if not key or not secret:
+        raise HTTPException(status_code=400,detail="יש להזין API Key ו-Secret")
+    details=await _verify_alpaca_credentials(key,secret,feed)
+    _write_env_values({
+        "ALPACA_API_KEY":key,
+        "ALPACA_SECRET_KEY":secret,
+        "ALPACA_FEED":feed,
+    })
+    _reload_runtime_config()
+    return {
+        "ok":True,
+        "message":"Alpaca נשמרה והחיבור הופעל.",
+        "alpaca_configured":True,
+        "alpaca_feed":ALPACA_FEED,
+        "details":details,
+    }
+
+
+@app.delete("/api/settings/alpaca")
+async def clear_alpaca_settings():
+    _write_env_values({"ALPACA_API_KEY":"","ALPACA_SECRET_KEY":"","ALPACA_FEED":"iex"})
+    _reload_runtime_config()
+    return {"ok":True,"message":"מפתחות Alpaca נמחקו מהמחשב המקומי."}
 
 
 @app.get("/api/market/status")
@@ -174,6 +316,32 @@ async def alpha_proxy(request_function: str | None = Query(None, alias="function
     return data
 
 
+
+
+def _market_cache_path(symbol, range_key):
+    safe="".join(ch for ch in symbol.upper() if ch.isalnum() or ch in {"-","_"})
+    return MARKET_CACHE_DIR / f"{safe}_{range_key.upper()}.json"
+
+def _write_market_cache(symbol, range_key, payload):
+    try:
+        path=_market_cache_path(symbol,range_key)
+        tmp=path.with_suffix(".tmp")
+        obj={"saved_at":datetime.now(timezone.utc).isoformat(),"payload":payload}
+        tmp.write_text(json.dumps(obj,ensure_ascii=False),encoding="utf-8")
+        tmp.replace(path)
+    except Exception:
+        pass
+
+def _read_market_cache(symbol, range_key):
+    try:
+        path=_market_cache_path(symbol,range_key)
+        if not path.exists(): return None
+        obj=json.loads(path.read_text(encoding="utf-8"))
+        payload=obj.get("payload") or {}
+        payload["cache_saved_at"]=obj.get("saved_at")
+        return payload
+    except Exception:
+        return None
 
 def _normalize_alpha_bars(series):
     rows=[]
@@ -315,7 +483,7 @@ def _freshness_meta(quote, bars, provider, range_key):
 
 async def _yahoo_stock_bundle(client,symbol,range_key):
     """No-key public price-history fallback. Not treated as consolidated real-time market data."""
-    ranges={"1D":("5d","5m"),"1M":("1mo","1d"),"1Y":("1y","1d"),"5Y":("5y","1wk")}
+    ranges={"1D":("5d","5m"),"1M":("1mo","1d"),"1Y":("1y","1d"),"5Y":("5y","1d")}
     rr,interval=ranges.get(range_key,("1mo","1d"))
     try:
         r=await client.get(
@@ -354,6 +522,98 @@ async def _yahoo_stock_bundle(client,symbol,range_key):
     except Exception as exc:
         return {"quote":None,"bars":[],"news":[],"errors":[f"Public fallback: {exc}"]}
 
+
+async def _stooq_stock_bars(client, symbol, years=6):
+    """Second no-key historical fallback for US equities (daily CSV)."""
+    end=datetime.now(timezone.utc).date()
+    start=end-timedelta(days=int(365.25*years)+30)
+    stooq_symbol=symbol.lower().replace("-", ".")+".us"
+    try:
+        r=await client.get(
+            "https://stooq.com/q/d/l/",
+            params={"s":stooq_symbol,"d1":start.strftime("%Y%m%d"),"d2":end.strftime("%Y%m%d"),"i":"d"},
+            headers={"User-Agent":"Mozilla/5.0"},
+        )
+        if r.status_code>=400:
+            return {"bars":[],"errors":[f"Stooq HTTP {r.status_code}"]}
+        text=r.text.strip()
+        if not text or text.lower().startswith("no data"):
+            return {"bars":[],"errors":["Stooq empty"]}
+        rows=[]
+        reader=csv.DictReader(io.StringIO(text))
+        for row in reader:
+            try:
+                c=float(row.get("Close") or 0)
+                if c<=0: continue
+                rows.append({
+                    "d":row.get("Date"),
+                    "o":float(row.get("Open") or c),
+                    "h":float(row.get("High") or c),
+                    "l":float(row.get("Low") or c),
+                    "v":c,
+                    "volume":float(row.get("Volume") or 0),
+                })
+            except Exception:
+                continue
+        rows.sort(key=lambda x:x["d"])
+        return {"bars":rows,"errors":[]}
+    except Exception as exc:
+        return {"bars":[],"errors":[f"Stooq: {exc}"]}
+
+async def _public_day_scan(client, top=10, candidates=40):
+    """No-key fallback scanner. Not full-market; scans a broad liquid/volatile universe."""
+    universe=[
+        "AAPL","MSFT","NVDA","AMZN","META","GOOGL","TSLA","AMD","AVGO","PLTR",
+        "HOOD","COIN","MARA","RIOT","SMCI","SOFI","RIVN","IONQ","SOUN","RKLB",
+        "APP","MU","INTC","ARM","QCOM","MRVL","CRWD","NET","SNOW","SHOP",
+        "UBER","PYPL","NFLX","ORCL","TSM","NIO","LCID","AFRM","UPST","CVNA"
+    ]
+    universe=universe[:max(top,min(candidates,len(universe)))]
+    sem=asyncio.Semaphore(8)
+    async def one(sym):
+        async with sem:
+            data=await _yahoo_stock_bundle(client,sym,"1M")
+            bars=data.get("bars") or []
+            q=data.get("quote") or {}
+            if not bars and not q:
+                st=await _stooq_stock_bars(client,sym,years=1)
+                bars=(st.get("bars") or [])[-40:]
+                if bars:
+                    last=bars[-1]; prev=bars[-2] if len(bars)>1 else None
+                    q={"price":last.get("v"),"change":((last.get("v")/prev.get("v")-1)*100 if prev and prev.get("v") else None),"date":last.get("d")}
+            if not bars and not q:
+                return None
+            price=q.get("price") or (bars[-1]["v"] if bars else None)
+            change=q.get("change")
+            daily_volume=(bars[-1].get("volume") or 0) if bars else 0
+            prev_vols=[float(x.get("volume") or 0) for x in bars[-21:-1] if float(x.get("volume") or 0)>0]
+            avg_vol=sum(prev_vols)/len(prev_vols) if prev_vols else None
+            rvol=(float(daily_volume)/avg_vol) if avg_vol and daily_volume else None
+            h=(bars[-1].get("h") if bars else None); l=(bars[-1].get("l") if bars else None)
+            strength=None
+            try:
+                if price and h and l and float(h)>float(l):
+                    strength=(float(price)-float(l))/(float(h)-float(l))
+            except Exception:
+                pass
+            score=_score_day_candidate(change,rvol,float(daily_volume or 0),float(price) if price else None,0,None,strength)
+            risk=3
+            if price and float(price)<2: risk+=1
+            if change is not None and abs(float(change))>50: risk+=1
+            return {
+                "ticker":sym,"name":sym,"domain":None,"score":score,"risk":max(1,min(5,risk)),
+                "price":float(price) if price else None,
+                "change":round(float(change),2) if change is not None else None,
+                "media":35,"catalyst":"סריקת מחיר ומחזור — ללא קטליזטור חדשותי מאומת",
+                "volume":int(daily_volume or 0),"rvol":round(rvol,2) if rvol is not None else None,
+                "news_count":0,"news_minutes":None,"day_high":h,"day_low":l,
+                "intraday_strength":round(strength,3) if strength is not None else None,
+            }
+    rows=await asyncio.gather(*[one(x) for x in universe])
+    rows=[x for x in rows if x and x.get("price")]
+    rows.sort(key=lambda x:(x.get("score") or 0,x.get("change") or -999),reverse=True)
+    return rows[:top],len(universe)
+
 @app.get("/api/stock/{symbol}/bundle")
 async def stock_bundle(symbol: str, range: str = Query("1M")):
     symbol=symbol.upper().strip()
@@ -368,25 +628,43 @@ async def stock_bundle(symbol: str, range: str = Query("1M")):
         public={"quote":None,"bars":[],"news":[],"errors":[]}
         if not (alp.get("quote") or alpha.get("quote")) or not (alp.get("bars") or alpha.get("bars")):
             public=await _yahoo_stock_bundle(client,symbol,range_key)
+        stooq={"bars":[],"errors":[]}
+        if range_key!="1D" and not (alp.get("bars") or alpha.get("bars") or public.get("bars")):
+            stooq=await _stooq_stock_bars(client,symbol,years=6 if range_key=="5Y" else 2)
     quote=alp.get("quote") or alpha.get("quote") or public.get("quote")
-    bars=alp.get("bars") or alpha.get("bars") or public.get("bars") or []
+    bars=alp.get("bars") or alpha.get("bars") or public.get("bars") or stooq.get("bars") or []
     news=alp.get("news") or alpha.get("news") or []
     provider=[]
     if alp.get("quote") or alp.get("bars") or alp.get("news"): provider.append("Alpaca")
     if alpha.get("quote") or alpha.get("bars") or alpha.get("news"): provider.append("Alpha Vantage")
     if public.get("quote") or public.get("bars"): provider.append("Public price fallback")
+    if stooq.get("bars"): provider.append("Stooq historical fallback")
     if not quote and bars:
         last=bars[-1]; prev=bars[-2]["v"] if len(bars)>1 else None
         quote={"price":last["v"],"change":((last["v"]/prev-1)*100 if prev else None),"date":str(last["d"])[:10]}
-    return {
+    if not quote and not bars:
+        cached=_read_market_cache(symbol,range_key)
+        if cached:
+            cached["provider"]="מטמון מקומי · "+str(cached.get("provider") or "")
+            cached["from_cache"]=True
+            cached["freshness"]={"state":"stale","age_seconds":None,"last_bar_at":((cached.get("freshness") or {}).get("last_bar_at")),"generated_at":datetime.now(timezone.utc).isoformat()}
+            errs=list(cached.get("errors") or [])
+            errs.append("מקורות הרשת לא היו זמינים; מוצג המטמון האחרון שנשמר.")
+            cached["errors"]=errs
+            return cached
+    payload={
         "symbol":symbol,"range":range_key,"provider":" + ".join(provider) if provider else "none",
         "feed":ALPACA_FEED if (ALPACA_KEY and ALPACA_SECRET) else None,
         "quote":quote,"bars":bars,"news":news,
         "configured":{"alpaca":bool(ALPACA_KEY and ALPACA_SECRET),"alpha":bool(ALPHA_KEY)},
-        "errors":(alp.get("errors") or [])+(alpha.get("errors") or [])+(public.get("errors") or []),
+        "errors":(alp.get("errors") or [])+(alpha.get("errors") or [])+(public.get("errors") or [])+(stooq.get("errors") or []),
         "freshness":_freshness_meta(quote,bars," + ".join(provider) if provider else "none",range_key),
         "generated_at":datetime.now(timezone.utc).isoformat(),
     }
+    if quote or bars:
+        _write_market_cache(symbol,range_key,payload)
+    return payload
+
 
 @app.websocket("/ws/market/{symbol}")
 async def market_ws(client_ws: WebSocket, symbol: str):
@@ -480,7 +758,6 @@ def _annualized_volatility(closes):
             prev=c
     if len(rets)<2:
         return None
-    import statistics
     return statistics.pstdev(rets)*(252**0.5)*100
 
 def _sma(vals,n):
@@ -500,9 +777,19 @@ async def history_5y(symbol: str):
         public={"bars":[],"errors":[]}
         if not (alp.get("bars") or alpha.get("bars")):
             public=await _yahoo_stock_bundle(client,symbol,"5Y")
-    rows=(alp.get("bars") or alpha.get("bars") or public.get("bars") or [])
+        stooq={"bars":[],"errors":[]}
+        if not (alp.get("bars") or alpha.get("bars") or public.get("bars")):
+            stooq=await _stooq_stock_bars(client,symbol,years=6)
+    rows=(alp.get("bars") or alpha.get("bars") or public.get("bars") or stooq.get("bars") or [])
     if not rows:
-        raise HTTPException(503,"אין כרגע מקור נתונים היסטורי זמין")
+        cached=_read_market_cache(symbol,"5Y")
+        if cached and cached.get("bars"):
+            rows=cached.get("bars") or []
+            cache_provider=cached.get("provider") or "מטמון מקומי"
+        else:
+            raise HTTPException(503,"אין כרגע מקור נתונים היסטורי זמין. נסה שוב לאחר בדיקת חיבור הנתונים.")
+    else:
+        cache_provider=None
 
     # Normalize to daily date strings. Alpha weekly fallback is still useful when Alpaca is absent.
     norm=[]
@@ -543,8 +830,8 @@ async def history_5y(symbol: str):
     for y in sorted(year_close):
         op=year_open.get(y); cl=year_close.get(y)
         annual.append({"year":y,"return_pct":round((cl/op-1)*100,2) if op and cl else None})
-    provider="Alpaca" if alp.get("bars") else ("Alpha Vantage" if alpha.get("bars") else "Public price fallback")
-    return {
+    provider=(cache_provider if cache_provider else ("Alpaca" if alp.get("bars") else ("Alpha Vantage" if alpha.get("bars") else ("Public price fallback" if public.get("bars") else "Stooq historical fallback"))))
+    result={
         "symbol":symbol,"provider":provider,"from":norm[0]["d"],"to":norm[-1]["d"],"bars":norm,
         "stats":{
             "total_return_pct":round(total_return,2) if total_return is not None else None,
@@ -560,6 +847,9 @@ async def history_5y(symbol: str):
             "explosive_day_rate_pct":round(explosive_days/len(norm)*100,3),"trading_days":len(norm),
         },"annual_returns":annual,
     }
+    if not cache_provider:
+        _write_market_cache(symbol,"5Y",{"symbol":symbol,"range":"5Y","provider":provider,"quote":{"price":last,"change":None,"date":norm[-1]["d"]},"bars":norm,"news":[],"freshness":{"state":"historical","last_bar_at":norm[-1]["d"]},"generated_at":datetime.now(timezone.utc).isoformat()})
+    return result
 
 @app.get("/api/live/snapshot/{symbol}")
 async def alpaca_snapshot(symbol: str):
@@ -736,11 +1026,53 @@ async def day_scanner(top: int = 10, candidates: int = 40):
     Whole-market candidate generation when Alpaca SIP screener access is available.
     Falls back to Alpha Vantage top gainers when the SIP screener is unavailable.
     """
-    if not (ALPACA_KEY and ALPACA_SECRET):
-        raise HTTPException(503, "Alpaca is not configured")
-
     top = max(3, min(top, 20))
     candidates = max(top, min(candidates, 60))
+    if not (ALPACA_KEY and ALPACA_SECRET):
+        async with httpx.AsyncClient(timeout=25) as client:
+            # Prefer Alpha Vantage market-wide candidates if available, otherwise scan a broad public universe.
+            symbols, mover_map, source = await _alpha_fallback_candidates(client, candidates)
+            if symbols:
+                # Alpha supplies candidate discovery, public price history supplies enrichment when needed.
+                rows=[]
+                sem=asyncio.Semaphore(8)
+                async def one(sym):
+                    async with sem:
+                        data=await _yahoo_stock_bundle(client,sym,"1M")
+                        bars=data.get("bars") or []; q=data.get("quote") or {}
+                        if not bars and not q:
+                            st=await _stooq_stock_bars(client,sym,years=1)
+                            bars=(st.get("bars") or [])[-40:]
+                            if bars:
+                                last=bars[-1]; prev=bars[-2] if len(bars)>1 else None
+                                q={"price":last.get("v"),"change":((last.get("v")/prev.get("v")-1)*100 if prev and prev.get("v") else None),"date":last.get("d")}
+                        price=q.get("price") or (bars[-1]["v"] if bars else None)
+                        raw=(mover_map.get(sym) or {}).get("percent_change") or (mover_map.get(sym) or {}).get("change_percentage")
+                        try: change=float(str(raw).replace("%","")) if raw is not None else q.get("change")
+                        except Exception: change=q.get("change")
+                        vol=(bars[-1].get("volume") or 0) if bars else 0
+                        hist=[float(x.get("volume") or 0) for x in bars[-21:-1] if float(x.get("volume") or 0)>0]
+                        av=sum(hist)/len(hist) if hist else None; rvol=(float(vol)/av) if av and vol else None
+                        score=_score_day_candidate(change,rvol,float(vol or 0),float(price) if price else None,0,None,None)
+                        return {"ticker":sym,"name":sym,"domain":None,"score":score,"risk":3,"price":float(price) if price else None,
+                                "change":round(float(change),2) if change is not None else None,"media":35,
+                                "catalyst":"מועמד מסריקת מובילות שוק; חדשות דורשות אימות","volume":int(vol or 0),
+                                "rvol":round(rvol,2) if rvol is not None else None,"news_count":0,"news_minutes":None,
+                                "day_high":bars[-1].get("h") if bars else None,"day_low":bars[-1].get("l") if bars else None,"intraday_strength":None}
+                rows=await asyncio.gather(*[one(x) for x in symbols[:candidates]])
+                ranked=[x for x in rows if x and x.get("price")]
+                ranked.sort(key=lambda x:(x.get("score") or 0,x.get("change") or -999),reverse=True)
+                now=datetime.now(timezone.utc)
+                saved=_persist_scanner_signals(ranked[:top],now.isoformat(),source)
+                return {"generated_at":now.isoformat(),"source":source,"feed":"alpha/public","full_market":False,
+                        "screener_error":None,"candidate_count":len(symbols),"saved_signals":saved,"results":ranked[:top]}
+            ranked,count=await _public_day_scan(client,top,candidates)
+            now=datetime.now(timezone.utc)
+            saved=_persist_scanner_signals(ranked,now.isoformat(),"public_watchlist")
+            return {"generated_at":now.isoformat(),"source":"public_watchlist","feed":"public","full_market":False,
+                    "screener_error":"Alpaca לא מוגדר; מוצגת סריקת גיבוי שאינה כל השוק.","candidate_count":count,
+                    "saved_signals":saved,"results":ranked}
+
     source = "alpaca_sip_screener"
     screener_error = None
 
@@ -770,7 +1102,6 @@ async def day_scanner(top: int = 10, candidates: int = 40):
 
     # Map latest news to symbols.
     news_map = {s: [] for s in symbols}
-    from datetime import datetime, timezone
     now = datetime.now(timezone.utc)
     for article in news:
         for s in (article.get("symbols") or []):
@@ -875,6 +1206,7 @@ async def day_scanner(top: int = 10, candidates: int = 40):
     ranked = [x for x in results if x["price"] and x["price"] > 0]
     ranked.sort(key=lambda x: (x["score"], x["change"] or -999), reverse=True)
 
+    saved_signals=_persist_scanner_signals(ranked[:top],now.isoformat(),source)
     return {
         "generated_at": now.isoformat(),
         "source": source,
@@ -882,6 +1214,7 @@ async def day_scanner(top: int = 10, candidates: int = 40):
         "full_market": source == "alpaca_sip_screener",
         "screener_error": screener_error,
         "candidate_count": len(symbols),
+        "saved_signals": saved_signals,
         "results": ranked[:top],
     }
 
@@ -936,6 +1269,33 @@ def _db():
         mae_pct REAL,
         result_r REAL,
         reason TEXT
+    )""")
+    con.execute("""CREATE TABLE IF NOT EXISTS live_signals(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        created_at TEXT NOT NULL,
+        signal_date TEXT NOT NULL,
+        symbol TEXT NOT NULL,
+        signal_type TEXT NOT NULL,
+        score REAL,
+        entry REAL NOT NULL,
+        stop REAL,
+        target1 REAL,
+        target2 REAL,
+        source TEXT,
+        catalyst TEXT,
+        rvol REAL,
+        gap_pct REAL,
+        status TEXT NOT NULL DEFAULT 'open',
+        last_price REAL,
+        last_checked_at TEXT,
+        hit1 INTEGER NOT NULL DEFAULT 0,
+        hit2 INTEGER NOT NULL DEFAULT 0,
+        stopped INTEGER NOT NULL DEFAULT 0,
+        max_return_pct REAL,
+        min_return_pct REAL,
+        current_return_pct REAL,
+        result_r REAL,
+        UNIQUE(signal_date,symbol,signal_type)
     )""")
     # Backward-compatible schema upgrades for rolling 5Y learning features.
     existing={r["name"] for r in con.execute("PRAGMA table_info(backtest_events)")}
@@ -1311,6 +1671,194 @@ async def stock_learning(symbol: str):
         "rows":rows[:20],
     }
 
+
+
+def _derive_live_signal_plan(item):
+    price=float(item.get("price") or 0)
+    if price<=0:
+        return None
+    low=float(item.get("day_low") or 0) if item.get("day_low") else None
+    high=float(item.get("day_high") or 0) if item.get("day_high") else None
+    # Keep live-tracking plan deterministic and conservative. It is a tracking baseline,
+    # not a replacement for the frontend technical plan.
+    stop_candidates=[price*0.97]
+    if low and low < price:
+        stop_candidates.append(low*0.995)
+    stop=max(0.01,min(stop_candidates))
+    risk=max(price-stop,price*0.02)
+    t1=price+1.5*risk
+    t2=price+2.5*risk
+    return {"entry":price,"stop":stop,"target1":t1,"target2":t2,"risk":risk}
+
+def _persist_scanner_signals(items, generated_at, source):
+    """Persist only scanner candidates that clear a quality floor."""
+    con=_db()
+    created=generated_at or datetime.now(timezone.utc).isoformat()
+    d=datetime.fromisoformat(created.replace("Z","+00:00")).astimezone(NY).date().isoformat()
+    saved=0
+    for x in items:
+        score=float(x.get("score") or 0)
+        rvol=x.get("rvol")
+        news=int(x.get("news_count") or 0)
+        # A live signal must be stronger than a mere watchlist candidate.
+        qualifies=(score>=85 and ((rvol is not None and float(rvol)>=1.5) or news>0))
+        if not qualifies:
+            continue
+        plan=_derive_live_signal_plan(x)
+        if not plan:
+            continue
+        try:
+            con.execute("""INSERT OR IGNORE INTO live_signals(
+                created_at,signal_date,symbol,signal_type,score,entry,stop,target1,target2,
+                source,catalyst,rvol,gap_pct,status
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",(
+                created,d,x.get("ticker"),"scanner",score,plan["entry"],plan["stop"],plan["target1"],plan["target2"],
+                source,x.get("catalyst"),float(rvol) if rvol is not None else None,float(x.get("change")) if x.get("change") is not None else None,"open"
+            ))
+            saved += con.total_changes > 0
+        except Exception:
+            pass
+    con.commit();con.close()
+    return saved
+
+async def _latest_price_for_signal(client, symbol):
+    if ALPACA_KEY and ALPACA_SECRET:
+        try:
+            _,snap=await _fetch_snapshot(client,symbol)
+            p=(snap.get("latestTrade") or {}).get("p") or (snap.get("minuteBar") or {}).get("c") or (snap.get("dailyBar") or {}).get("c")
+            if p:return float(p)
+        except Exception:
+            pass
+    try:
+        y=await _yahoo_stock_bundle(client,symbol,"1D")
+        q=y.get("quote") or {}
+        if q.get("price"):return float(q["price"])
+    except Exception:
+        pass
+    return None
+
+async def _bars_since_signal(client, symbol, signal_date):
+    start=(datetime.fromisoformat(signal_date).date()-timedelta(days=1)).isoformat()
+    end=(datetime.now(NY).date()+timedelta(days=1)).isoformat()
+    if ALPACA_KEY and ALPACA_SECRET:
+        try:
+            j=await _alpaca_json(client,f"https://data.alpaca.markets/v2/stocks/{symbol}/bars",{
+                "timeframe":"1Day","start":start,"end":end,"limit":1000,"adjustment":"split","feed":ALPACA_FEED,"sort":"asc"
+            })
+            arr=j.get("bars") or []
+            if arr:return arr
+        except Exception:
+            pass
+    try:
+        y=await _yahoo_stock_bundle(client,symbol,"1M")
+        out=[]
+        for r in y.get("bars") or []:
+            if str(r.get("d",""))[:10]>=signal_date:
+                out.append({"o":r.get("o"),"h":r.get("h"),"l":r.get("l"),"c":r.get("v"),"v":r.get("volume"),"t":r.get("d")})
+        return out
+    except Exception:
+        return []
+
+async def _refresh_live_signal_rows(rows):
+    if not rows:
+        return []
+    updated=[]
+    async with httpx.AsyncClient(timeout=20) as client:
+        for row in rows:
+            r=dict(row)
+            price=await _latest_price_for_signal(client,r["symbol"])
+            bars=await _bars_since_signal(client,r["symbol"],r["signal_date"])
+            highs=[float(b.get("h") or 0) for b in bars if b.get("h")]
+            lows=[float(b.get("l") or 0) for b in bars if b.get("l")]
+            entry=float(r["entry"] or 0)
+            stop=float(r["stop"] or 0) if r["stop"] else None
+            t1=float(r["target1"] or 0) if r["target1"] else None
+            t2=float(r["target2"] or 0) if r["target2"] else None
+            hit1=bool(r["hit1"]);hit2=bool(r["hit2"]);stopped=bool(r["stopped"])
+            status=r["status"]
+            if highs:
+                maxp=max(highs)
+                if t1 and maxp>=t1:hit1=True
+                if t2 and maxp>=t2:hit2=True
+            if lows and stop and min(lows)<=stop and not hit1:
+                stopped=True
+            if hit2:status="target2"
+            elif hit1:status="target1"
+            elif stopped:status="stopped"
+            else:status="open"
+            maxret=((max(highs)/entry-1)*100) if highs and entry else None
+            minret=((min(lows)/entry-1)*100) if lows and entry else None
+            curret=((price/entry-1)*100) if price and entry else None
+            risk=(entry-stop) if stop and entry>stop else None
+            rr=((price-entry)/risk) if price and risk else None
+            r.update({"last_price":price,"hit1":int(hit1),"hit2":int(hit2),"stopped":int(stopped),"status":status,
+                      "max_return_pct":maxret,"min_return_pct":minret,"current_return_pct":curret,"result_r":rr,
+                      "last_checked_at":datetime.now(timezone.utc).isoformat()})
+            updated.append(r)
+    return updated
+
+async def _update_live_signals():
+    con=_db();rows=con.execute("SELECT * FROM live_signals ORDER BY created_at DESC").fetchall();con.close()
+    updated=await _refresh_live_signal_rows(rows)
+    if updated:
+        con=_db()
+        for r in updated:
+            con.execute("""UPDATE live_signals SET last_price=?,last_checked_at=?,hit1=?,hit2=?,stopped=?,status=?,
+                max_return_pct=?,min_return_pct=?,current_return_pct=?,result_r=? WHERE id=?""",(
+                r.get("last_price"),r.get("last_checked_at"),r.get("hit1"),r.get("hit2"),r.get("stopped"),r.get("status"),
+                r.get("max_return_pct"),r.get("min_return_pct"),r.get("current_return_pct"),r.get("result_r"),r["id"]
+            ))
+        con.commit();con.close()
+    return updated
+
+
+@app.post("/api/live-signals/confirm")
+async def confirm_live_signal(
+    symbol: str,
+    score: float,
+    entry: float,
+    stop: float,
+    target1: float,
+    target2: float,
+    source: str = "technical_confirmation",
+):
+    if entry<=0 or stop<=0 or target1<=0 or target2<=0:
+        raise HTTPException(400,"Invalid trade plan")
+    symbol=symbol.upper().strip()
+    now=datetime.now(timezone.utc)
+    d=now.astimezone(NY).date().isoformat()
+    con=_db()
+    con.execute("""INSERT OR IGNORE INTO live_signals(
+        created_at,signal_date,symbol,signal_type,score,entry,stop,target1,target2,source,status
+    ) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",(
+        now.isoformat(),d,symbol,"technical",float(score),float(entry),float(stop),float(target1),float(target2),source,"open"
+    ))
+    con.commit()
+    row=con.execute("SELECT * FROM live_signals WHERE signal_date=? AND symbol=? AND signal_type='technical'",(d,symbol)).fetchone()
+    con.close()
+    return {"ok":True,"signal":dict(row) if row else None}
+
+@app.post("/api/live-signals/refresh")
+async def refresh_live_signals():
+    rows=await _update_live_signals()
+    return {"ok":True,"updated":len(rows),"generated_at":datetime.now(timezone.utc).isoformat()}
+
+@app.get("/api/live-signals/summary")
+async def live_signals_summary(refresh: bool = Query(True)):
+    if refresh:
+        try: await _update_live_signals()
+        except Exception: pass
+    con=_db();rows=[dict(r) for r in con.execute("SELECT * FROM live_signals ORDER BY created_at DESC").fetchall()];con.close()
+    now=datetime.now(NY).date()
+    def metrics(days):
+        cutoff=now-timedelta(days=days-1)
+        arr=[r for r in rows if datetime.fromisoformat(r["signal_date"]).date()>=cutoff]
+        n=len(arr);wins=sum(1 for r in arr if r["hit1"]);t2=sum(1 for r in arr if r["hit2"]);stops=sum(1 for r in arr if r["stopped"])
+        closed=[r for r in arr if r.get("result_r") is not None]
+        avg_r=sum(float(r["result_r"] or 0) for r in closed)/len(closed) if closed else None
+        return {"signals":n,"wins":wins,"hit1_pct":round(wins/n*100,2) if n else None,"hit2_pct":round(t2/n*100,2) if n else None,
+                "stops":stops,"stop_pct":round(stops/n*100,2) if n else None,"avg_r":round(avg_r,3) if avg_r is not None else None}
+    return {"generated_at":datetime.now(timezone.utc).isoformat(),"day":metrics(1),"week":metrics(7),"month":metrics(30),"recent":rows[:50]}
 
 @app.get("/api/strategy/health")
 async def strategy_health():

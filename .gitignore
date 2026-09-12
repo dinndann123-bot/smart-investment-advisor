@@ -3,3 +3,5 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+backtest_results.sqlite3
+market_cache/

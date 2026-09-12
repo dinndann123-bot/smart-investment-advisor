@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: smart-investment-advisor
+    runtime: docker
+    plan: free
+    autoDeploy: true
+    healthCheckPath: /api/status
+    envVars:
+      - key: APP_VERSION
+        value: 2026.09.12-pwa1
+      - key: ALPACA_FEED
+        value: iex
+      - key: ALPACA_API_KEY
+        sync: false
+      - key: ALPACA_SECRET_KEY
+        sync: false
+      - key: ALPHA_VANTAGE_API_KEY
+        sync: false
