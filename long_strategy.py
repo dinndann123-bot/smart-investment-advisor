@@ -173,6 +173,39 @@ def get_cached_long_success(symbol, score=None):
     return out
 
 
+def _point_in_time_pick(symbol, rows, as_of):
+    hist=[r for r in rows if r["d"]<=as_of]
+    if len(hist)<252:return None
+    idx=len(hist)-1
+    m=_score(hist)
+    if not m:return None
+    entry=hist[-1]["c"]
+    future=rows[idx+1:]
+    def future_close(n):
+        return future[n-1]["c"] if len(future)>=n else None
+    p1=future_close(21);p3=future_close(63);p12=future_close(252)
+    max1=max((x["h"] for x in future[:21]),default=None)
+    max12=max((x["h"] for x in future[:252]),default=None)
+    ret1=_ret(entry,p1) if p1 else None
+    ret3=_ret(entry,p3) if p3 else None
+    ret12=_ret(entry,p12) if p12 else None
+    max1ret=_ret(entry,max1) if max1 else None
+    max12ret=_ret(entry,max12) if max12 else None
+    return {
+        "symbol":symbol,"as_of_trade_date":hist[-1]["d"],"entry":round(entry,4),"score":m["score"],
+        "metrics":{k:(round(v,2) if isinstance(v,(int,float)) and v is not None else v) for k,v in m.items()},
+        "return_1m_pct":round(ret1,2) if ret1 is not None else None,
+        "return_3m_pct":round(ret3,2) if ret3 is not None else None,
+        "return_12m_pct":round(ret12,2) if ret12 is not None else None,
+        "max_up_1m_pct":round(max1ret,2) if max1ret is not None else None,
+        "max_up_12m_pct":round(max12ret,2) if max12ret is not None else None,
+        "success_1m":bool(ret1 is not None and ret1>=4),
+        "success_12m":bool(ret12 is not None and ret12>=15),
+        "exploded_1m":bool(max1ret is not None and max1ret>=15),
+        "exploded_12m":bool(max12ret is not None and max12ret>=30),
+    }
+
+
 def install_long_strategy(app):
     import sys
     mod=sys.modules.get(app.__module__) or sys.modules.get("app")
@@ -215,3 +248,45 @@ def install_long_strategy(app):
         }
         _CACHE.update({"at":now,"value":out})
         return out
+
+    @app.get("/api/strategy/long/time-travel")
+    async def long_time_travel(as_of:str=Query("2021-11-30"),top:int=Query(10,ge=3,le=20)):
+        try:
+            datetime.fromisoformat(as_of)
+        except Exception:
+            raise HTTPException(400,"as_of must be YYYY-MM-DD")
+        if not (mod.ALPACA_KEY and mod.ALPACA_SECRET):raise HTTPException(503,"Alpaca לא מוגדר")
+        headers={"APCA-API-KEY-ID":mod.ALPACA_KEY,"APCA-API-SECRET-KEY":mod.ALPACA_SECRET}
+        feed=mod.ALPACA_FEED if mod.ALPACA_FEED in {"iex","sip","delayed_sip"} else "iex"
+        sem=asyncio.Semaphore(8)
+        async with httpx.AsyncClient(timeout=45) as client:
+            async def one(s):
+                async with sem:return s,await _fetch_symbol(client,s,headers,feed,8)
+            fetched=await asyncio.gather(*[one(s) for s in LONG_UNIVERSE])
+        rows=[]
+        for s,data in fetched:
+            p=_point_in_time_pick(s,data,as_of)
+            if p:rows.append(p)
+        if not rows:raise HTTPException(503,"No historical candidates available")
+        rows.sort(key=lambda x:x["score"],reverse=True)
+        picks=rows[:top]
+        spy=next((x for x in rows if x["symbol"]=="SPY"),None)
+        for x in rows:
+            x["excess_1m_vs_spy_pct"]=round(x["return_1m_pct"]-(spy["return_1m_pct"] or 0),2) if spy and x["return_1m_pct"] is not None and spy["return_1m_pct"] is not None else None
+            x["excess_12m_vs_spy_pct"]=round(x["return_12m_pct"]-(spy["return_12m_pct"] or 0),2) if spy and x["return_12m_pct"] is not None and spy["return_12m_pct"] is not None else None
+        actual_1m=sorted([x for x in rows if x["return_1m_pct"] is not None],key=lambda x:x["return_1m_pct"],reverse=True)
+        actual_12m=sorted([x for x in rows if x["return_12m_pct"] is not None],key=lambda x:x["return_12m_pct"],reverse=True)
+        pick_syms={x["symbol"] for x in picks}
+        missed_1m=[x for x in actual_1m[:top] if x["symbol"] not in pick_syms]
+        missed_12m=[x for x in actual_12m[:top] if x["symbol"] not in pick_syms]
+        def agg(field,success):
+            valid=[x for x in picks if x[field] is not None]
+            return {"samples":len(valid),"avg_return_pct":round(statistics.mean(x[field] for x in valid),2) if valid else None,"success_pct":round(100*sum(1 for x in valid if x[success])/len(valid),1) if valid else None}
+        return {
+            "ok":True,"as_of":as_of,"feed":feed,"universe_size":len(rows),"top":top,
+            "definitions":{"picked":"Top score using only data available on/before as_of","success_1m":"close return >=4% after 21 trading days","success_12m":"close return >=15% after 252 trading days","exploded_1m":"max high >=15% within 21 trading days","exploded_12m":"max high >=30% within 252 trading days"},
+            "picks":picks,"portfolio_1m":agg("return_1m_pct","success_1m"),"portfolio_12m":agg("return_12m_pct","success_12m"),
+            "benchmark":spy,"actual_top_1m":actual_1m[:top],"actual_top_12m":actual_12m[:top],"missed_top_1m":missed_1m,"missed_top_12m":missed_12m,
+            "limitations":["Current universe creates survivorship/selection bias because it is today's maintained universe, not the full historical US market as it existed in 2021.","Historical fundamentals and point-in-time news are not yet included.","This endpoint is an audit tool, not a claim of live tradability or guaranteed future performance."],
+            "generated_at":datetime.now(timezone.utc).isoformat(),
+        }
