@@ -1,11 +1,12 @@
-const CACHE_VERSION = 'smart-invest-pwa-v9-month-year-backtest';
+const CACHE_VERSION = 'smart-invest-pwa-v10-portfolio-image-import';
 const APP_SHELL = [
   '/',
   '/manifest.webmanifest',
   '/static/icons/icons/icon-192.png',
   '/static/icons/icons/icon-512.png',
   '/static/icons/icons/apple-touch-icon.png',
-  '/static/market_search_ui.js'
+  '/static/market_search_ui.js',
+  '/static/portfolio_import.js'
 ];
 
 self.addEventListener('install', event => {
@@ -36,7 +37,10 @@ async function navigationResponse(req) {
       let html = await res.text();
       html = html.replace('renderWeekly();updateApiStatus();setחיBadge();', 'renderWeekly();setחיBadge();');
       if (!html.includes('/static/market_search_ui.js')) {
-        html = html.replace('</body>', '<script src="/static/market_search_ui.js?v=9"></script></body>');
+        html = html.replace('</body>', '<script src="/static/market_search_ui.js?v=10"></script></body>');
+      }
+      if (!html.includes('/static/portfolio_import.js')) {
+        html = html.replace('</body>', '<script src="/static/portfolio_import.js?v=10"></script></body>');
       }
       const headers = new Headers(res.headers);
       headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
