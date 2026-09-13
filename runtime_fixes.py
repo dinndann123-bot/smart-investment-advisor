@@ -1,13 +1,11 @@
 import asyncio
-import json
-import os
 from datetime import datetime, timezone, timedelta
 
 import httpx
 from fastapi.responses import Response
 
 
-RUNTIME_FIX_VERSION = "2026.09.13-r5-research50"
+RUNTIME_FIX_VERSION = "2026.09.13-r6-production-safe"
 
 
 def _research_dates():
@@ -32,8 +30,8 @@ def install_runtime_fixes(app):
     if mod is None:
         return
 
-    # Research endpoint is installed here because runtime_fixes is guaranteed to
-    # be loaded by the app. Use 50 fully-covered monthly scenarios.
+    # Install the research route, but NEVER execute historical research at
+    # production startup. Research is run only when explicitly requested.
     try:
         import research_50
         research_50.SCENARIOS = _research_dates()
@@ -64,54 +62,9 @@ def install_runtime_fixes(app):
             "alpaca_configured": bool(mod.ALPACA_KEY and mod.ALPACA_SECRET),
             "alpha_vantage_configured": bool(mod.ALPHA_KEY),
             "feed": mod.ALPACA_FEED,
+            "startup_research": False,
             "generated_at": datetime.now(timezone.utc).isoformat(),
         }
-
-    async def _run_long_audit_probe():
-        await asyncio.sleep(4)
-        port = os.getenv("PORT", "10000")
-        base = f"http://127.0.0.1:{port}"
-        try:
-            async with httpx.AsyncClient(timeout=600) as client:
-                async def one(date):
-                    r = await client.get(f"{base}/api/strategy/long/time-travel", params={"as_of": date, "top": 10})
-                    r.raise_for_status()
-                    j = r.json()
-                    return {
-                        "as_of": j.get("as_of"),
-                        "universe_size": j.get("universe_size"),
-                        "portfolio_1m": j.get("portfolio_1m"),
-                        "portfolio_12m": j.get("portfolio_12m"),
-                        "benchmark_1m": (j.get("benchmark") or {}).get("return_1m_pct"),
-                        "benchmark_12m": (j.get("benchmark") or {}).get("return_12m_pct"),
-                        "picks": [[x.get("symbol"), x.get("score"), x.get("return_1m_pct"), x.get("return_12m_pct"), (x.get("metrics") or {}).get("overextension_penalty")] for x in (j.get("picks") or [])],
-                        "missed_1m": [x.get("symbol") for x in (j.get("missed_top_1m") or [])],
-                        "missed_12m": [x.get("symbol") for x in (j.get("missed_top_12m") or [])],
-                    }
-                nov = await one("2021-11-30")
-                print("LONG_AUDIT_NOV2021=" + json.dumps(nov, separators=(",", ":")), flush=True)
-                p1 = nov.get("portfolio_1m") or {}
-                p12 = nov.get("portfolio_12m") or {}
-                improved = ((p1.get("success_pct") or 0) > 50 or (p1.get("avg_return_pct") or -999) > 1.5 or (p12.get("success_pct") or 0) > 10 or (p12.get("avg_return_pct") or -999) > -10.3)
-                print("LONG_AUDIT_IMPROVED=" + str(bool(improved)).lower(), flush=True)
-                if improved:
-                    sep = await one("2022-09-30")
-                    print("LONG_AUDIT_SEP2022=" + json.dumps(sep, separators=(",", ":")), flush=True)
-
-                rr = await client.get(f"{base}/api/strategy/long/research-50")
-                rr.raise_for_status()
-                research = rr.json()
-                for b in research.get("batches", []):
-                    compact={"batch":b.get("batch"),"dates":b.get("dates"),"preset_used":b.get("preset_used"),"summary":b.get("summary"),"lessons":b.get("lessons"),"next_preset":b.get("next_preset")}
-                    print("RESEARCH50V3_BATCH=" + json.dumps(compact, ensure_ascii=False, separators=(",", ":")), flush=True)
-                final={"date_range":research.get("date_range"),"overall":research.get("overall"),"final_preset":research.get("final_preset"),"method":research.get("method"),"limitations":research.get("limitations")}
-                print("RESEARCH50V3_FINAL=" + json.dumps(final, ensure_ascii=False, separators=(",", ":")), flush=True)
-        except Exception as exc:
-            print("LONG_AUDIT_ERROR=" + repr(exc), flush=True)
-
-    @app.on_event("startup")
-    async def _start_long_audit_probe():
-        asyncio.create_task(_run_long_audit_probe())
 
     def _persist_scanner_signals_fixed(items, generated_at, source):
         con = mod._db()
@@ -210,3 +163,4 @@ def install_runtime_fixes(app):
 
     mod._persist_scanner_signals = _persist_scanner_signals_fixed
     mod._refresh_live_signal_rows = _refresh_live_signal_rows_fixed
+    print("PRODUCTION_RUNTIME_SAFE=true", flush=True)
