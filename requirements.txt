@@ -3,4 +3,3 @@ uvicorn[standard]>=0.32
 httpx>=0.28
 websockets>=14
 python-dotenv>=1.0
-./research_bootstrap_pkg
