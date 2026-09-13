@@ -1,11 +1,13 @@
 import asyncio
+import json
+import os
 from datetime import datetime, timezone
 
 import httpx
 from fastapi.responses import Response
 
 
-RUNTIME_FIX_VERSION = "2026.09.13-r2"
+RUNTIME_FIX_VERSION = "2026.09.13-r3-audit"
 
 
 def install_runtime_fixes(app):
@@ -22,8 +24,6 @@ def install_runtime_fixes(app):
 
     @app.head("/")
     async def root_head():
-        # Render and other uptime probes commonly use HEAD. Keep this path cheap
-        # and independent from frontend file I/O.
         return Response(status_code=200, headers={"Cache-Control": "no-store"})
 
     @app.get("/api/runtime-health")
@@ -47,6 +47,45 @@ def install_runtime_fixes(app):
             "feed": mod.ALPACA_FEED,
             "generated_at": datetime.now(timezone.utc).isoformat(),
         }
+
+    # Temporary audit probe: run after startup against the app's own point-in-time
+    # endpoint, print compact results, then this block will be removed.
+    async def _run_long_audit_probe():
+        await asyncio.sleep(4)
+        port = os.getenv("PORT", "10000")
+        base = f"http://127.0.0.1:{port}"
+        try:
+            async with httpx.AsyncClient(timeout=240) as client:
+                async def one(date):
+                    r = await client.get(f"{base}/api/strategy/long/time-travel", params={"as_of": date, "top": 10})
+                    r.raise_for_status()
+                    j = r.json()
+                    return {
+                        "as_of": j.get("as_of"),
+                        "universe_size": j.get("universe_size"),
+                        "portfolio_1m": j.get("portfolio_1m"),
+                        "portfolio_12m": j.get("portfolio_12m"),
+                        "benchmark_1m": (j.get("benchmark") or {}).get("return_1m_pct"),
+                        "benchmark_12m": (j.get("benchmark") or {}).get("return_12m_pct"),
+                        "picks": [[x.get("symbol"), x.get("score"), x.get("return_1m_pct"), x.get("return_12m_pct"), (x.get("metrics") or {}).get("overextension_penalty")] for x in (j.get("picks") or [])],
+                        "missed_1m": [x.get("symbol") for x in (j.get("missed_top_1m") or [])],
+                        "missed_12m": [x.get("symbol") for x in (j.get("missed_top_12m") or [])],
+                    }
+                nov = await one("2021-11-30")
+                print("LONG_AUDIT_NOV2021=" + json.dumps(nov, separators=(",", ":")), flush=True)
+                p1 = nov.get("portfolio_1m") or {}
+                p12 = nov.get("portfolio_12m") or {}
+                improved = ((p1.get("success_pct") or 0) > 50 or (p1.get("avg_return_pct") or -999) > 1.5 or (p12.get("success_pct") or 0) > 10 or (p12.get("avg_return_pct") or -999) > -10.3)
+                print("LONG_AUDIT_IMPROVED=" + str(bool(improved)).lower(), flush=True)
+                if improved:
+                    sep = await one("2022-09-30")
+                    print("LONG_AUDIT_SEP2022=" + json.dumps(sep, separators=(",", ":")), flush=True)
+        except Exception as exc:
+            print("LONG_AUDIT_ERROR=" + repr(exc), flush=True)
+
+    @app.on_event("startup")
+    async def _start_long_audit_probe():
+        asyncio.create_task(_run_long_audit_probe())
 
     def _persist_scanner_signals_fixed(items, generated_at, source):
         """Persist qualified scanner signals and count only rows actually inserted."""
@@ -88,13 +127,7 @@ def install_runtime_fixes(app):
         return saved
 
     async def _refresh_live_signal_rows_fixed(rows):
-        """
-        Refresh signals without using pre-entry prices from the signal day.
-
-        Signal-day ordering is evaluated with minute bars after the actual signal creation
-        time. Later daily bars use a conservative same-bar rule: stop before target when
-        the order is unknowable. Open/target1-only signals do not receive a realized R.
-        """
+        """Refresh signals without using pre-entry prices from the signal day."""
         if not rows:
             return []
 
@@ -115,9 +148,7 @@ def install_runtime_fixes(app):
                     stopped = bool(r["stopped"])
 
                     price_task = asyncio.create_task(mod._latest_price_for_signal(client, symbol))
-                    signal_day_task = asyncio.create_task(
-                        mod._fetch_minute_window(client, symbol, signal_date, mod.ALPACA_FEED)
-                    ) if (mod.ALPACA_KEY and mod.ALPACA_SECRET) else None
+                    signal_day_task = asyncio.create_task(mod._fetch_minute_window(client, symbol, signal_date, mod.ALPACA_FEED)) if (mod.ALPACA_KEY and mod.ALPACA_SECRET) else None
                     daily_task = asyncio.create_task(mod._bars_since_signal(client, symbol, signal_date))
 
                     price = await price_task
@@ -147,8 +178,6 @@ def install_runtime_fixes(app):
                     ordered.sort(key=lambda z: z[0])
                     highs = []
                     lows = []
-
-                    # Preserve already terminal outcomes from previous refreshes.
                     terminal = hit2 or stopped
                     for _, b, _granularity in ordered:
                         hi = float(b.get("h") or 0)
@@ -159,9 +188,6 @@ def install_runtime_fixes(app):
                             lows.append(lo)
                         if terminal:
                             continue
-
-                        # Conservative ordering when OHLC alone cannot establish sequence.
-                        # A stop only counts as a full loss before target1 has been achieved.
                         if stop and lo > 0 and lo <= stop and not hit1:
                             stopped = True
                             terminal = True
@@ -184,8 +210,6 @@ def install_runtime_fixes(app):
                     maxret = ((max(highs) / entry - 1) * 100) if highs and entry else None
                     minret = ((min(lows) / entry - 1) * 100) if lows and entry else None
                     curret = ((price / entry - 1) * 100) if price and entry else None
-
-                    # Only terminal outcomes are included in realized expectancy.
                     if hit2:
                         rr = 2.5
                     elif stopped:
