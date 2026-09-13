@@ -1,0 +1,53 @@
+/* Smart Investment Advisor — Hebrew-first UX v3 */
+:root{
+  --ux-bg:#f3f6fb;--ux-card:#fff;--ux-ink:#101828;--ux-muted:#667085;--ux-line:#e5eaf2;
+  --ux-brand:#2446d8;--ux-brand-soft:#eef2ff;--ux-good:#087a55;--ux-warn:#9a6710;--ux-bad:#b53636;
+  --ux-shadow:0 8px 28px rgba(16,24,40,.07);--ux-shadow-hover:0 14px 34px rgba(16,24,40,.11)
+}
+body{background:var(--ux-bg);color:var(--ux-ink)}
+.hero{background:linear-gradient(135deg,#111a38 0%,#1e347f 56%,#4d43b8 100%);padding-top:24px;padding-bottom:19px}
+.hero h1{font-size:clamp(27px,4vw,38px);letter-spacing:-.7px}
+.hero p{max-width:760px;line-height:1.6}
+.card,.clockitem,.table-wrap,.modal-card{box-shadow:var(--ux-shadow);border-color:var(--ux-line)}
+.card{transition:box-shadow .18s ease,border-color .18s ease,transform .18s ease}
+@media(hover:hover){.card:hover{box-shadow:var(--ux-shadow-hover);border-color:#d9e0ec}}
+.section-head h2{letter-spacing:-.25px}
+.metric b{letter-spacing:-.35px}
+.nav button{transition:.16s ease}.nav button.active{box-shadow:0 6px 18px rgba(49,91,234,.22)}
+
+/* Clear distinction between method score and real price movement */
+.score{background:#f7f9ff;border:1px solid #dfe5fb;padding:5px 8px;border-radius:999px;white-space:nowrap}
+.score::before{content:'ציון שיטה ';font-size:10px;font-weight:700;color:#77829a}
+.positive,.negative{font-variant-numeric:tabular-nums}
+
+/* Hebrew research dashboard */
+.ux-research-panel{margin-top:16px;background:linear-gradient(180deg,#fff,#fbfcff)}
+.ux-research-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:12px}
+.ux-research-card{border:1px solid var(--ux-line);border-radius:15px;background:#fff;padding:13px;min-height:96px}
+.ux-research-card b{display:block;font-size:20px;margin:5px 0}.ux-research-card span{font-size:11px;color:var(--ux-muted)}
+.ux-progress{height:9px;background:#edf0f5;border-radius:999px;overflow:hidden;margin-top:8px}.ux-progress>i{display:block;height:100%;background:linear-gradient(90deg,#2446d8,#6b5ce7);border-radius:inherit}
+.ux-pill{display:inline-flex;align-items:center;gap:5px;padding:5px 8px;border-radius:999px;background:#eef2ff;color:#3448a3;font-size:11px;font-weight:800}
+.ux-tip{margin-top:10px;padding:10px 12px;border-radius:12px;background:#f8faff;border:1px solid #e0e6f7;color:#526079;font-size:12px;line-height:1.6}
+.ux-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.ux-actions .btn{min-height:40px}
+
+/* Chart loading and error states */
+.detail-section[id*=Chart],#portfolioChartWrap,.chart-wrap{position:relative}
+.ux-chart-state{display:none;position:absolute;inset:52px 12px 12px;z-index:3;place-items:center;text-align:center;border-radius:14px;background:rgba(251,252,255,.93);backdrop-filter:blur(3px);color:var(--ux-muted);font-size:13px;padding:20px}
+.ux-chart-state.show{display:grid}.ux-chart-state b{display:block;color:var(--ux-ink);font-size:15px;margin-bottom:5px}
+
+/* Image import */
+.upload{min-height:112px;display:grid;place-items:center;border-color:#9fb0e9;background:linear-gradient(180deg,#fafbff,#f4f7ff);transition:.18s ease}
+.upload:hover{border-color:#657bd8;background:#f2f5ff}.upload::before{content:'📷';display:block;font-size:26px;margin-bottom:6px}
+.ux-image-preview{display:none;margin:10px auto 0;max-width:100%;max-height:230px;border-radius:14px;border:1px solid var(--ux-line);object-fit:contain;background:#fff}.ux-image-preview.show{display:block}
+.ux-ocr-steps{display:flex;gap:7px;flex-wrap:wrap;margin:10px 0}.ux-step{font-size:11px;padding:5px 8px;border-radius:999px;background:#f1f4f8;color:#637083}.ux-step.on{background:#eaf8f2;color:#087a55;font-weight:800}
+
+/* Explain technical terms without removing professional notation */
+.ux-term{display:inline-flex;align-items:center;gap:4px}.ux-help{width:17px;height:17px;border:0;border-radius:50%;background:#edf1f8;color:#56627a;font-size:11px;display:inline-grid;place-items:center;cursor:help;padding:0;min-height:auto}
+
+@media(max-width:900px){.ux-research-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:560px){
+  .hero-actions .btn{padding:9px 11px}.section-head{align-items:flex-start}.ux-research-grid{grid-template-columns:1fr 1fr}
+  .ux-research-card{min-height:88px;padding:11px}.ux-research-card b{font-size:18px}
+  .table-wrap{border-radius:14px}.modal-card{border-radius:18px;padding:14px}
+  .score::before{display:block;margin-inline-end:2px}.score{align-items:center}
+}
