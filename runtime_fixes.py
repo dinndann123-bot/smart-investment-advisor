@@ -2,15 +2,51 @@ import asyncio
 from datetime import datetime, timezone
 
 import httpx
+from fastapi.responses import Response
+
+
+RUNTIME_FIX_VERSION = "2026.09.13-r2"
 
 
 def install_runtime_fixes(app):
-    """Patch live-tracking bugs without duplicating the main application module."""
+    """Patch live-tracking bugs and add lightweight runtime health checks."""
     import sys
+
+    if getattr(app.state, "runtime_fixes_installed", False):
+        return
+    app.state.runtime_fixes_installed = True
 
     mod = sys.modules.get(app.__module__) or sys.modules.get("app")
     if mod is None:
         return
+
+    @app.head("/")
+    async def root_head():
+        # Render and other uptime probes commonly use HEAD. Keep this path cheap
+        # and independent from frontend file I/O.
+        return Response(status_code=200, headers={"Cache-Control": "no-store"})
+
+    @app.get("/api/runtime-health")
+    async def runtime_health():
+        db_ok = False
+        db_error = None
+        try:
+            con = mod._db()
+            con.execute("SELECT 1").fetchone()
+            con.close()
+            db_ok = True
+        except Exception as exc:
+            db_error = str(exc)
+        return {
+            "ok": db_ok,
+            "runtime_fix_version": RUNTIME_FIX_VERSION,
+            "db_writable": db_ok,
+            "db_error": db_error,
+            "alpaca_configured": bool(mod.ALPACA_KEY and mod.ALPACA_SECRET),
+            "alpha_vantage_configured": bool(mod.ALPHA_KEY),
+            "feed": mod.ALPACA_FEED,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+        }
 
     def _persist_scanner_signals_fixed(items, generated_at, source):
         """Persist qualified scanner signals and count only rows actually inserted."""
