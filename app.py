@@ -2354,3 +2354,7 @@ async def scanner_watchlist(symbols: str = "AAPL,NVDA,PLTR,RKLB,APP,TSSI,NVTS,CT
 # STRATEGY_VALIDATION_V1
 from strategy_validation import install_strategy_validation
 install_strategy_validation(app)
+
+# EXPLOSION_LEARNING_V1
+from explosion_learning import install_explosion_learning
+install_explosion_learning(app)
