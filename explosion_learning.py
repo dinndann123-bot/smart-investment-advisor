@@ -10,6 +10,7 @@ import httpx
 from fastapi import HTTPException, Query
 
 from runtime_fixes import install_runtime_fixes
+from market_search import install_market_search
 
 NY = ZoneInfo("America/New_York")
 
@@ -78,65 +79,46 @@ def _events(symbol, days):
         if not baseline or baseline<=0 or open_px<=0 or px<=0:
             prev_close=bars[-1]["c"]
             continue
-        rvol=early_vol/baseline
+        gap=((open_px/prev_close)-1)*100 if prev_close else 0
         move=(px/open_px-1)*100
-        gap=(open_px/prev_close-1)*100 if prev_close and prev_close>0 else 0
-        lo=min(b["l"] for b in early if b["l"]>0)
-        hi=max(b["h"] for b in early)
-        strength=(px-lo)/(hi-lo) if hi>lo else .5
-        first_vol=early[0]["v"]
-        last_vol=early[-1]["v"]
-        vol_accel=last_vol/max(first_vol,1)
-        early_range=(hi-lo)/open_px*100
+        rvol=early_vol/baseline
+        strength=(px-min(b["l"] for b in early))/max(0.01,max(b["h"] for b in early)-min(b["l"] for b in early))
+        volume_accel=early[-1]["v"]/max(1,statistics.mean([b["v"] for b in early[:-1]])) if len(early)>1 else 1
+        early_range=(max(b["h"] for b in early)/min(b["l"] for b in early)-1)*100
         max_up=(max(b["h"] for b in post)/px-1)*100
-        max_down=(min(b["l"] for b in post)/px-1)*100
-        close_ret=(post[-1]["c"]/px-1)*100
-        out.append({
-            "symbol":symbol,"date":date,"price":round(px,4),"gap_pct":round(gap,3),
-            "move_to_1000_pct":round(move,3),"rvol":round(rvol,3),"strength":round(strength,3),
-            "volume_accel":round(vol_accel,3),"early_range_pct":round(early_range,3),
-            "est_daily_volume":int(early_vol*13),"max_up_pct":round(max_up,3),
-            "max_down_pct":round(max_down,3),"close_ret_pct":round(close_ret,3),
-            "hit10":max_up>=10,"hit20":max_up>=20,"hit30":max_up>=30,
-        })
+        out.append({"symbol":symbol,"date":date,"price":px,"gap_pct":gap,"move_to_1000_pct":move,"rvol":rvol,"strength":strength,"volume_accel":volume_accel,"early_range_pct":early_range,"est_daily_volume":baseline*13,"max_up_pct":max_up,"hit10":int(max_up>=10),"hit20":int(max_up>=20),"hit30":int(max_up>=30)})
         prev_close=bars[-1]["c"]
     return out
 
 
-FEATURES=("gap_pct","move_to_1000_pct","rvol","strength","volume_accel","early_range_pct")
+def _robust(xs):
+    med=statistics.median(xs); dev=[abs(x-med) for x in xs]; mad=statistics.median(dev) or 1e-9
+    return med,mad
 
 
 def _fit(train):
+    feats=["gap_pct","move_to_1000_pct","rvol","strength","volume_accel","early_range_pct"]
     model={}
-    pos=[e for e in train if e["hit10"]]
-    neg=[e for e in train if not e["hit10"]]
-    for f in FEATURES:
-        vals=[e[f] for e in train]
-        med=statistics.median(vals)
-        mad=statistics.median([abs(x-med) for x in vals]) or 1.0
-        p=_safe_mean([e[f] for e in pos]) or med
-        n=_safe_mean([e[f] for e in neg]) or med
-        direction=1 if p>=n else -1
-        separation=min(3.0,abs(p-n)/(1.4826*mad))
-        model[f]={"median":med,"mad":mad,"direction":direction,"separation":separation,"positive_mean":p,"negative_mean":n}
-    total=sum(x["separation"] for x in model.values()) or 1
-    for f in model:
-        model[f]["weight"]=model[f]["separation"]/total
+    positives=[e for e in train if e["hit10"]]; negatives=[e for e in train if not e["hit10"]]
+    for f in feats:
+        vals=[e[f] for e in train]; med,mad=_robust(vals)
+        p=_safe_mean([e[f] for e in positives]) or med; n=_safe_mean([e[f] for e in negatives]) or med
+        separation=abs(p-n)/(mad or 1)
+        model[f]={"median":med,"mad":mad,"positive_mean":p,"negative_mean":n,"direction":1 if p>=n else -1,"raw_weight":max(.05,min(4,separation))}
+    total=sum(x["raw_weight"] for x in model.values()) or 1
+    for x in model.values(): x["weight"]=x["raw_weight"]/total
     return model
 
 
 def _score(e,model):
-    raw=0
-    reasons=[]
+    total=0; reasons=[]
     for f,m in model.items():
         z=(e[f]-m["median"])/(1.4826*m["mad"] or 1)
         aligned=max(-2.5,min(2.5,z*m["direction"]))
-        contribution=m["weight"]*aligned
-        raw+=contribution
-        if contribution>.08:
-            reasons.append(f)
-    score=round(100/(1+math.exp(-1.45*(raw-.05))))
-    return max(0,min(100,score)),reasons
+        component=(aligned+2.5)/5*100
+        total+=component*m["weight"]
+        if component>=70: reasons.append(f)
+    return round(max(0,min(100,total)),1),reasons
 
 
 def _color(score):
@@ -159,6 +141,7 @@ def _bucket(test):
 
 def install_explosion_learning(app):
     install_runtime_fixes(app)
+    install_market_search(app)
 
     @app.get("/api/strategy/explosions")
     async def explosion_learning(days:int=Query(180,ge=120,le=365),symbols:int=Query(90,ge=50,le=len(UNIVERSE))):
