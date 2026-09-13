@@ -1,7 +1,6 @@
 import asyncio
 import math
 import statistics
-from collections import defaultdict
 from datetime import datetime, timezone, timedelta
 
 import httpx
@@ -41,6 +40,7 @@ def _score(hist):
     vols=[x["v"] for x in hist]
     if len(closes)<252:return None
     c=closes[-1]
+    r1=_ret(closes[-21],c) if len(closes)>=21 else None
     r3=_ret(closes[-63],c) if len(closes)>=63 else None
     r6=_ret(closes[-126],c) if len(closes)>=126 else None
     r12=_ret(closes[-252],c)
@@ -64,9 +64,12 @@ def _score(hist):
         elif r6>=0:score+=7
         else:score-=5
     if r3 is not None:
-        if r3>=10:score+=12
-        elif r3>=0:score+=7
+        if r3>=10:score+=10
+        elif r3>=0:score+=6
         else:score-=4
+    if r1 is not None:
+        if r1>=5:score+=4
+        elif r1< -8:score-=4
     if c>ma50:score+=10
     if c>ma200:score+=15;reasons.append("above_ma200")
     elif c<ma200*0.9:score-=10
@@ -79,7 +82,7 @@ def _score(hist):
         elif vol>90:score-=6
     if avgvol and avgvol>=500_000:score+=2
     score=max(0,min(100,score))
-    return {"score":round(score,1),"r3":r3,"r6":r6,"r12":r12,"ma50":ma50,"ma200":ma200,"dd52":dd52,"volatility":vol,"reasons":reasons}
+    return {"score":round(score,1),"r1":r1,"r3":r3,"r6":r6,"r12":r12,"ma50":ma50,"ma200":ma200,"dd52":dd52,"volatility":vol,"reasons":reasons}
 
 
 async def _fetch_symbol(client, symbol, headers, feed, years):
@@ -115,14 +118,18 @@ def _evaluate_symbol(symbol, rows):
         metrics=_score(rows[:idx+1])
         if not metrics:continue
         entry=rows[idx]["c"]
+        fwd1=rows[idx+21]["c"] if idx+21<len(rows) else None
         fwd3=rows[idx+63]["c"] if idx+63<len(rows) else None
         fwd12=rows[idx+252]["c"] if idx+252<len(rows) else None
+        ret1=_ret(entry,fwd1) if fwd1 else None
         ret3=_ret(entry,fwd3) if fwd3 else None
         ret12=_ret(entry,fwd12) if fwd12 else None
         events.append({
             "symbol":symbol,"date":rows[idx]["d"],"score":metrics["score"],"entry":entry,
+            "return_1m_pct":round(ret1,2) if ret1 is not None else None,
             "return_3m_pct":round(ret3,2) if ret3 is not None else None,
             "return_12m_pct":round(ret12,2) if ret12 is not None else None,
+            "success_1m":(ret1 is not None and ret1>=4),
             "success_3m":(ret3 is not None and ret3>=8),
             "success_12m":(ret12 is not None and ret12>=15),
             "metrics":metrics,
@@ -131,11 +138,11 @@ def _evaluate_symbol(symbol, rows):
 
 
 def _stats(rows, field):
-    arr=[x for x in rows if x[field.replace("success","return").replace("_3m","_3m_pct").replace("_12m","_12m_pct")] is not None]
+    return_key={"success_1m":"return_1m_pct","success_3m":"return_3m_pct","success_12m":"return_12m_pct"}[field]
+    arr=[x for x in rows if x.get(return_key) is not None]
     if not arr:return {"samples":0,"success_pct":None,"avg_return_pct":None}
     wins=sum(1 for x in arr if x[field])
-    rk="return_3m_pct" if field=="success_3m" else "return_12m_pct"
-    return {"samples":len(arr),"success_pct":round(wins/len(arr)*100,1),"avg_return_pct":round(statistics.mean(x[rk] for x in arr),2)}
+    return {"samples":len(arr),"success_pct":round(wins/len(arr)*100,1),"avg_return_pct":round(statistics.mean(x[return_key] for x in arr),2)}
 
 
 def _bucket(events, field):
@@ -147,8 +154,8 @@ def get_cached_long_success(symbol, score=None):
     val=_CACHE.get("value") or {}
     events=val.get("test_events") or []
     own=[x for x in events if x["symbol"]==symbol]
-    out={"three_month":None,"one_year":None,"source":"long_backtest_holdout"}
-    for field,key in [("success_3m","three_month"),("success_12m","one_year")]:
+    out={"one_month":None,"three_month":None,"one_year":None,"source":"long_backtest_holdout"}
+    for field,key in [("success_1m","one_month"),("success_3m","three_month"),("success_12m","one_year")]:
         own_stat=_stats(own,field)
         if own_stat["samples"]>=4:
             out[key]={**own_stat,"basis":"היסטוריית Holdout של הנייר עצמו"}
@@ -190,7 +197,7 @@ def install_long_strategy(app):
             events.extend(_evaluate_symbol(s,rows))
             m=_score(rows)
             if m:current.append({"symbol":s,**m,"price":rows[-1]["c"],"date":rows[-1]["d"]})
-        dated=sorted({x["date"] for x in events if x["return_3m_pct"] is not None})
+        dated=sorted({x["date"] for x in events if x["return_1m_pct"] is not None})
         if len(dated)<24:raise HTTPException(503,"אין מספיק היסטוריה ל-Backtest ארוך")
         split=dated[max(1,int(len(dated)*0.70))]
         train=[x for x in events if x["date"]<split]
@@ -198,10 +205,10 @@ def install_long_strategy(app):
         current.sort(key=lambda x:x["score"],reverse=True)
         out={
             "ok":True,"method":"monthly checkpoints with chronological holdout","feed":feed,"split_date":split,
-            "definitions":{"success_3m":"תשואה של 8%+ בתוך 63 ימי מסחר מהאות","success_12m":"תשואה של 15%+ בתוך 252 ימי מסחר מהאות"},
+            "definitions":{"success_1m":"תשואה של 4%+ בתוך 21 ימי מסחר מהאות","success_3m":"תשואה של 8%+ בתוך 63 ימי מסחר מהאות","success_12m":"תשואה של 15%+ בתוך 252 ימי מסחר מהאות"},
             "samples":{"total":len(events),"train":len(train),"test":len(test)},
-            "test_3m":_stats(test,"success_3m"),"test_12m":_stats(test,"success_12m"),
-            "score_buckets_3m":_bucket(test,"success_3m"),"score_buckets_12m":_bucket(test,"success_12m"),
+            "test_1m":_stats(test,"success_1m"),"test_3m":_stats(test,"success_3m"),"test_12m":_stats(test,"success_12m"),
+            "score_buckets_1m":_bucket(test,"success_1m"),"score_buckets_3m":_bucket(test,"success_3m"),"score_buckets_12m":_bucket(test,"success_12m"),
             "current_candidates":current[:10],"test_events":test,
             "limitations":["הציון מחושב רק מנתוני מחיר ומחזור שהיו ידועים בתאריך האות.","אין שימוש במידע עתידי בחישוב הציון.","ה-30% האחרונים בזמן משמשים Holdout.","חדשות ופונדמנטלס היסטוריים עדיין אינם חלק מהציון הארוך ולכן הם מוצגים כשכבת מידע נפרדת."],
             "generated_at":now.isoformat(),"cached":False,
