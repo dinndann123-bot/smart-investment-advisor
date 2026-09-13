@@ -4,5 +4,6 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
+RUN python -c "from pathlib import Path; p=Path('index.html'); s=p.read_text(encoding='utf-8'); s=s.replace('</head>','<link rel=\"stylesheet\" href=\"/ui-v2.css?v=2\"></head>',1); s=s.replace('</body>','<script src=\"/ui-v2.js?v=2\"></script></body>',1); p.write_text(s,encoding='utf-8')"
 ENV PORT=8000
 CMD ["sh", "-c", "uvicorn app:app --host 0.0.0.0 --port ${PORT}"]
