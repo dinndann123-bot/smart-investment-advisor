@@ -1,12 +1,46 @@
-"""Temporary research bootstrap for the 50-scenario sequential audit."""
+"""Startup hooks for Smart Investment Advisor.
+
+1) Preserve the sequential 50-scenario research bootstrap.
+2) Inject the Hebrew-first UX layer into the existing index page even when Render
+   starts the service with `uvicorn app:app`.
+"""
 import json
 import os
 import sys
 import threading
 import time
 import urllib.request
+from pathlib import Path
 
 
+# ---------- Hebrew-first presentation hook ----------
+try:
+    import fastapi.responses as _responses
+    from fastapi.responses import HTMLResponse
+
+    _OriginalFileResponse = _responses.FileResponse
+
+    def _enhanced_file_response(path, *args, **kwargs):
+        p = Path(path)
+        if p.name == "index.html" and p.parent.name == "static" and p.exists():
+            html = p.read_text(encoding="utf-8")
+            css = '<link rel="stylesheet" href="/static/hebrew_ux_v3.css?v=3">'
+            js = '<script src="/static/hebrew_ux_v3.js?v=3" defer></script>'
+            if css not in html:
+                html = html.replace("</head>", css + "\n</head>", 1)
+            if js not in html:
+                html = html.replace("</body>", js + "\n</body>", 1)
+            headers = kwargs.pop("headers", None)
+            status_code = kwargs.pop("status_code", 200)
+            return HTMLResponse(content=html, status_code=status_code, headers=headers)
+        return _OriginalFileResponse(path, *args, **kwargs)
+
+    _responses.FileResponse = _enhanced_file_response
+except Exception as exc:
+    print("UX_V3_INSTALL_WARNING=" + repr(exc), flush=True)
+
+
+# ---------- Historical research bootstrap ----------
 def _bootstrap():
     # Wait until app.py has created the FastAPI instance.
     for _ in range(120):
