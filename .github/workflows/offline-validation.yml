@@ -1,0 +1,53 @@
+name: Offline Historical Validation
+
+on:
+  push:
+    branches: [research-offline-validation]
+    paths: ['.github/workflows/offline-validation.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch unseen long-term scenarios
+        shell: python
+        run: |
+          import json, urllib.parse, urllib.request, statistics
+          base='https://smart-investment-advisor-yjtz.onrender.com/api/strategy/long/time-travel'
+          dates=['2022-03-15','2022-08-15','2023-02-15','2023-08-15','2024-02-15']
+          scenarios=[]
+          all_picks=[]
+          for d in dates:
+              url=base+'?'+urllib.parse.urlencode({'as_of':d,'top':10})
+              with urllib.request.urlopen(url, timeout=180) as r:
+                  j=json.load(r)
+              picks=j.get('picks') or []
+              all_picks.extend(picks)
+              scenarios.append({
+                  'as_of':j.get('as_of'),
+                  'universe_size':j.get('universe_size'),
+                  'portfolio_1m':j.get('portfolio_1m'),
+                  'portfolio_12m':j.get('portfolio_12m'),
+                  'benchmark':j.get('benchmark'),
+                  'picks':[{
+                      'symbol':x.get('symbol'),'score':x.get('score'),
+                      'return_1m_pct':x.get('return_1m_pct'),'return_12m_pct':x.get('return_12m_pct'),
+                      'success_1m':x.get('success_1m'),'success_12m':x.get('success_12m')
+                  } for x in picks]
+              })
+          def agg(key_success,key_return):
+              xs=[x for x in all_picks if x.get(key_return) is not None]
+              wins=sum(bool(x.get(key_success)) for x in xs)
+              return {'samples':len(xs),'wins':wins,'losses':len(xs)-wins,'success_pct':round(100*wins/len(xs),2) if xs else None,'avg_return_pct':round(statistics.mean(float(x[key_return]) for x in xs),2) if xs else None}
+          buckets=[]
+          for lo,hi in [(90,100),(80,89.999),(70,79.999),(0,69.999)]:
+              xs=[x for x in all_picks if x.get('score') is not None and lo<=float(x['score'])<=hi]
+              if not xs: continue
+              m1=[x for x in xs if x.get('return_1m_pct') is not None]
+              y1=[x for x in xs if x.get('return_12m_pct') is not None]
+              buckets.append({'range':f'{int(lo)}-{int(hi) if hi<100 else 100}','samples':len(xs),'success_1m_pct':round(100*sum(bool(x.get('success_1m')) for x in m1)/len(m1),2) if m1 else None,'success_12m_pct':round(100*sum(bool(x.get('success_12m')) for x in y1)/len(y1),2) if y1 else None,'avg_1m_pct':round(statistics.mean(float(x['return_1m_pct']) for x in m1),2) if m1 else None,'avg_12m_pct':round(statistics.mean(float(x['return_12m_pct']) for x in y1),2) if y1 else None})
+          out={'dates':dates,'scenario_count':len(scenarios),'pick_count':len(all_picks),'new_batch_1m':agg('success_1m','return_1m_pct'),'new_batch_12m':agg('success_12m','return_12m_pct'),'score_buckets':buckets,'scenarios':scenarios}
+          print('OFFLINE_VALIDATION='+json.dumps(out,ensure_ascii=False,separators=(',',':')))
