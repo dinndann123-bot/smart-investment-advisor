@@ -1,4 +1,4 @@
-// Strategy validation dashboard v2
+// Strategy validation dashboard v3
 (function(){
   function pct(v){return v==null?'—':`${Number(v).toFixed(1)}%`}
   function errText(detail){
@@ -24,20 +24,144 @@
     const btn=document.getElementById('runStrategyValidationBtn');
     const status=document.getElementById('strategyValidationStatus');
     const out=document.getElementById('strategyValidationResults');
-    btn.disabled=true; status.textContent='מריץ אימות היסטורי מורחב על כ-180 ימי מסחר ויקום רחב. זה עשוי לקחת דקה או יותר...'; out.innerHTML='';
+    btn.disabled=true; status.textContent='מריץ אימות היסטורי מורחב...'; out.innerHTML='';
     try{
-      // Use backend defaults so stale client-side parameters cannot violate the current validation schema.
       const r=await fetch('/api/strategy/validate',{cache:'no-store'});
-      let j={};
-      try{j=await r.json()}catch(_e){}
+      let j={}; try{j=await r.json()}catch(_e){}
       if(!r.ok)throw new Error(errText(j.detail||j.error||j));
+      window.__strategyValidation=j;
       const s=j.selected||{}, t=s.test||{};
       const enough=(j.samples?.test||0)>=50;
       const good=enough && (t.signals||0)>=8 && ((s.lift3_vs_baseline||s.lift_vs_baseline||0)>=1.15) && ((t.expectancy_3pct_stop3_pct??0)>0);
       status.innerHTML=`<b>${good?'השיטה מציגה יתרון במדגם הבדיקה':'עדיין אין יתרון מספיק חזק במדגם הבדיקה'}</b> · ${j.samples?.test||0} דגימות holdout · ${j.daily_candidate_days||0} ימי מועמדים · Feed: ${(j.feed||'').toUpperCase()}`;
       const buckets=(j.score_buckets_test||[]).map(b=>`<tr><td>${b.bucket}</td><td>${b.samples}</td><td>${pct(b.hit_rate_3pct??b.hit_rate_pct)}</td><td>${pct(b.avg_max_up_pct)}</td><td>${pct(b.avg_drawdown_pct)}</td></tr>`).join('');
-      out.innerHTML=`<div class="cards" style="margin-top:12px"><div class="card metric"><b>${s.model||'—'}</b><span>מודל שנבחר על train בלבד</span></div><div class="card metric"><b>${s.threshold??'—'}</b><span>סף כניסה שנבחר</span></div><div class="card metric"><b>${pct(t.hit_rate_3pct)}</b><span>פגע ב־3%+ אחרי 10:00</span></div><div class="card metric"><b>${Number.isFinite(+t.expectancy_3pct_stop3_pct)?(+t.expectancy_3pct_stop3_pct).toFixed(2)+'%':'—'}</b><span>Expectancy יעד 3% / Stop 3%</span></div></div><div class="cards" style="margin-top:12px"><div class="card metric"><b>${j.raw_events??'—'}</b><span>אירועים גולמיים</span></div><div class="card metric"><b>${j.samples?.total??'—'}</b><span>מועמדים לאחר סינון יומי</span></div><div class="card metric"><b>${pct(t.hit_rate_2pct)}</b><span>פגע ב־2%+</span></div><div class="card metric"><b>${pct(t.hit_rate_pct)}</b><span>פגע ב־5%+</span></div></div><div class="table-wrap" style="margin-top:12px"><table class="compact-table"><thead><tr><th>טווח ציון</th><th>דגימות</th><th>פגיעה 3%+</th><th>עלייה מקס' ממוצעת</th><th>Drawdown ממוצע</th></tr></thead><tbody>${buckets}</tbody></table></div><div class="plan-note" style="margin-top:12px"><b>משקולות מומלצות כרגע:</b> מומנטום ${Math.round((s.weights?.momentum||0)*100)}% · RVOL ${Math.round((s.weights?.rvol||0)*100)}% · נזילות ${Math.round((s.weights?.liquidity||0)*100)}% · מבנה תוך־יומי ${Math.round((s.weights?.structure||0)*100)}% · מחיר/סחירות ${Math.round((s.weights?.price||0)*100)}%.<br><span class="small">המודל נבחר על תקופת train ונבדק בנפרד על holdout. חדשות היסטוריות עדיין נשארות שכבת אישור נפרדת.</span></div>`;
+      out.innerHTML=`<div class="cards" style="margin-top:12px"><div class="card metric"><b>${s.model||'—'}</b><span>מודל שנבחר על train בלבד</span></div><div class="card metric"><b>${s.threshold??'—'}</b><span>סף כניסה שנבחר</span></div><div class="card metric"><b>${pct(t.hit_rate_3pct)}</b><span>פגע ב־3%+ אחרי 10:00</span></div><div class="card metric"><b>${Number.isFinite(+t.expectancy_3pct_stop3_pct)?(+t.expectancy_3pct_stop3_pct).toFixed(2)+'%':'—'}</b><span>Expectancy יעד 3% / Stop 3%</span></div></div><div class="cards" style="margin-top:12px"><div class="card metric"><b>${j.raw_events??'—'}</b><span>אירועים גולמיים</span></div><div class="card metric"><b>${j.samples?.total??'—'}</b><span>מועמדים לאחר סינון יומי</span></div><div class="card metric"><b>${pct(t.hit_rate_2pct)}</b><span>פגע ב־2%+</span></div><div class="card metric"><b>${pct(t.hit_rate_pct)}</b><span>פגע ב־5%+</span></div></div><div class="table-wrap" style="margin-top:12px"><table class="compact-table"><thead><tr><th>טווח ציון</th><th>דגימות</th><th>פגיעה 3%+</th><th>עלייה מקס' ממוצעת</th><th>Drawdown ממוצע</th></tr></thead><tbody>${buckets}</tbody></table></div><div class="plan-note" style="margin-top:12px"><b>מה אומר ציון?</b> ציון 90/100 הוא התאמה לתבנית השיטה — הוא אינו 90% סיכוי לרווח. אחוז ההצלחה ההיסטורי מוצג בנפרד ברשימות המניות.<br><span class="small">המודל נבחר על train ונבדק על holdout נפרד.</span></div>`;
+      enhancePredictionUI();
     }catch(e){status.textContent='❌ '+(e?.message||String(e))}finally{btn.disabled=false}
   }
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(install,0));else setTimeout(install,0);
+
+  const style=document.createElement('style');
+  style.textContent=`
+    .metric-help{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:#eef2fb;color:#40516d;font-size:11px;font-weight:900;cursor:help;margin-inline-start:5px}
+    .prediction-legend{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0 14px}
+    .prediction-legend>div{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:12px;line-height:1.45}
+    .prediction-legend b{display:block;margin-bottom:3px}
+    .success-chip{display:inline-block;padding:5px 8px;border-radius:999px;font-weight:800;font-size:11px;background:#eef8f4;color:#08734f;white-space:nowrap}
+    .success-chip.wait{background:#f1f3f8;color:#6d778b}
+    .horizon-chip{display:inline-block;padding:4px 7px;border-radius:999px;background:#eef2ff;color:#3049af;font-size:10px;font-weight:800;margin-top:3px}
+    @media(max-width:760px){.prediction-legend{grid-template-columns:1fr}}
+  `;
+  document.head.appendChild(style);
+
+  function parseBucket(label){
+    const s=String(label||'').replace(/\s/g,'');
+    let m=s.match(/(\d+)[–-](\d+)/); if(m)return {min:+m[1],max:+m[2]};
+    m=s.match(/(\d+)\+/); if(m)return {min:+m[1],max:Infinity};
+    m=s.match(/<\s*(\d+)/); if(m)return {min:-Infinity,max:+m[1]-0.0001};
+    m=s.match(/(\d+)/); if(m)return {min:+m[1],max:+m[1]};
+    return null;
+  }
+  function daySuccessForScore(score){
+    const buckets=window.__strategyValidation?.score_buckets_test||[];
+    for(const b of buckets){
+      const r=parseBucket(b.bucket);
+      if(r && score>=r.min && score<=r.max){
+        const n=Number(b.samples||0), hit=Number(b.hit_rate_3pct??b.hit_rate_pct);
+        if(n>=8 && Number.isFinite(hit))return {text:`${hit.toFixed(0)}%`,title:`${n} מקרים היסטוריים בטווח הציון הזה; הצלחה = תנועה של 3%+ לאחר נקודת הסריקה.`};
+        return {text:'מדגם קטן',title:`רק ${n} מקרים היסטוריים — לא מציגים אחוז כדי לא להטעות.`};
+      }
+    }
+    return {text:'טרם נמדד',title:'יש להריץ אימות היסטורי כדי לחשב אחוז הצלחה.'};
+  }
+  function longSuccessForScore(_score){
+    return {text:'בבדיקת Long',title:'הציון לטווח חודשי/שנתי משתמש במודל שונה מהמסחר היומי. לא נעתיק אליו אחוזי הצלחה של Day Trading; יוצג אחוז רק לאחר Backtest ייעודי לטווח הארוך.'};
+  }
+  function ensureLegend(sectionId,kind){
+    const sec=document.getElementById(sectionId); if(!sec||sec.querySelector('.prediction-legend'))return;
+    const head=sec.querySelector('.section-head'); if(!head)return;
+    const div=document.createElement('div');div.className='prediction-legend';
+    div.innerHTML=`<div><b>ציון התאמה לשיטה — למשל 90/100</b>זהו דירוג של המודל לפי הנתונים והקריטריונים. <u>זה לא 90% סיכוי לרווח</u>.</div><div><b>אחוז הצלחה היסטורי</b>${kind==='day'?'כמה מקרים דומים ב־Holdout הגיעו ליעד 3%+ לאחר הסריקה.':'יוצג רק מתוך Backtest ייעודי לטווח חודשי/שנתי; לא נערבב אותו עם המסחר היומי.'}</div><div><b>שינוי מחיר בפועל — למשל +40%</b>כמה המניה כבר עלתה/ירדה בטווח הנתונים הנוכחי. זה נתון עבר/נוכחי, לא תחזית.</div>`;
+    head.insertAdjacentElement('afterend',div);
+  }
+  function enhanceTable(tableId,data,kind){
+    const body=document.getElementById(tableId); if(!body)return;
+    const table=body.closest('table'); const head=table?.querySelector('thead tr');
+    if(head){
+      const hs=head.children;
+      if(hs[3])hs[3].innerHTML='שינוי מחיר בפועל <span class="metric-help" title="כמה המחיר כבר השתנה. זה אינו יעד ואינו תחזית.">?</span>';
+      if(hs[4])hs[4].innerHTML='ציון התאמה <span class="metric-help" title="דירוג 0–100 של התאמת המניה לתבנית השיטה. אינו אחוז הסתברות.">?</span>';
+      if(!head.querySelector('[data-success-head]')){
+        const th=document.createElement('th');th.dataset.successHead='1';th.innerHTML='הצלחה היסטורית <span class="metric-help" title="שיעור ההצלחה שנמדד במקרים דומים בבדיקה היסטורית, כאשר יש מדגם מספיק.">?</span>';
+        hs[4]?.insertAdjacentElement('afterend',th);
+      }
+    }
+    [...body.querySelectorAll('tr')].forEach((tr,i)=>{
+      const s=data?.[i]; if(!s)return;
+      if(tr.querySelector('[data-success-cell]'))return;
+      const info=kind==='day'?daySuccessForScore(Number(s.score||0)):longSuccessForScore(Number(s.score||0));
+      const td=document.createElement('td');td.dataset.successCell='1';
+      td.innerHTML=`<span class="success-chip ${info.text.includes('מדגם')||info.text.includes('בדיקת')||info.text.includes('טרם')?'wait':''}" title="${info.title.replace(/"/g,'&quot;')}">${info.text}</span>`;
+      tr.children[4]?.insertAdjacentElement('afterend',td);
+      const company=tr.children[1]?.querySelector('.small');
+      if(company && !tr.querySelector('.horizon-chip'))company.insertAdjacentHTML('afterend',`<div class="horizon-chip">${kind==='day'?'תחזית: מסחר יומי':'תחזית: חודש–שנה'}</div>`);
+    });
+  }
+  function enhancePredictionUI(){
+    const longSec=document.getElementById('page-long'),daySec=document.getElementById('page-day');
+    if(longSec){
+      const h=longSec.querySelector('.section-head h2'); if(h)h.textContent='10 תחזיות השיטה לטווח חודשי–שנתי';
+      const p=longSec.querySelector('.section-head p'); if(p)p.textContent='רק מניות שהמודל מדרג כמועמדות לטווח חודשי–שנתי. הציון, אחוז ההצלחה ההיסטורי ושינוי המחיר בפועל מוצגים בנפרד.';
+    }
+    if(daySec){
+      const h=daySec.querySelector('.section-head h2'); if(h)h.textContent='10 תחזיות השיטה למסחר יומי';
+      const p=daySec.querySelector('.section-head p'); if(p)p.textContent='רק המועמדות המובילות שעברו את סינון השיטה למסחר יומי. אם פחות מ־10 עוברות את הסף, לא נמלא את הרשימה במניות חלשות.';
+    }
+    ensureLegend('page-long','long');ensureLegend('page-day','day');
+    try{enhanceTable('longTable',longData,'long')}catch(_e){}
+    try{enhanceTable('dayTable',dayData,'day')}catch(_e){}
+    const dscore=document.getElementById('dScore');
+    if(dscore){const label=dscore.nextElementSibling;if(label)label.textContent='ציון התאמה לשיטה (לא אחוז הצלחה)';}
+  }
+
+  async function loadValidationSilently(){
+    try{
+      const r=await fetch('/api/strategy/validate',{cache:'no-store'}); if(!r.ok)return;
+      window.__strategyValidation=await r.json();
+      enhancePredictionUI();
+    }catch(_e){}
+  }
+
+  // Keep only genuine day-trading candidates; never pad the list with weak names just to reach 10.
+  const previousRefresh=window.refreshDayScanner;
+  if(typeof previousRefresh==='function'){
+    window.refreshDayScanner=async function(manual=false){
+      if(typeof scannerBusy!=='undefined' && scannerBusy)return;
+      if(typeof scannerBusy!=='undefined')scannerBusy=true;
+      const st=document.getElementById('scannerStatus');
+      if(st){st.textContent='סורק מועמדות שעוברות את השיטה...';st.className='live-badge live-delayed'}
+      try{
+        const r=await fetch('/api/scanner/day?top=40&candidates=100',{cache:'no-store'});const j=await r.json();
+        if(!r.ok)throw new Error(j.detail||'Scanner error');
+        const all=Array.isArray(j.results)?j.results:[];
+        const qualified=all.filter(x=>Number(x.score||0)>=80 && ((Number.isFinite(+x.rvol)&&+x.rvol>=1.2)||(x.news_count||0)>0)).slice(0,10);
+        dayData=qualified.map(x=>({...x,name:x.name||x.ticker,summary:`RVOL ${Number.isFinite(+x.rvol)?(+x.rvol).toFixed(2)+'×':'—'} · ${x.news_count||0} חדשות`}));
+        renderTables();renderHome();enhancePredictionUI();
+        if(typeof loadLivePerformance==='function')loadLivePerformance(false);
+        if(st){
+          const short=qualified.length<10?` · רק ${qualified.length} עברו את הסף (לא מילאנו במניות חלשות)`:'';
+          st.textContent=`${j.full_market?'סריקת שוק מלאה':'סריקת גיבוי'} · ${j.feed||'—'}${short}`;
+          st.className='live-badge '+(j.full_market?'live-on':'live-delayed');
+        }
+      }catch(e){if(st){st.textContent='שגיאת סריקה';st.className='live-badge live-error';st.title=e.message}}
+      finally{if(typeof scannerBusy!=='undefined')scannerBusy=false}
+    };
+  }
+
+  const previousRender=window.renderTables;
+  if(typeof previousRender==='function'){
+    window.renderTables=function(){previousRender();enhancePredictionUI();};
+  }
+
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{setTimeout(install,0);setTimeout(enhancePredictionUI,50);setTimeout(loadValidationSilently,300)});
+  else {setTimeout(install,0);setTimeout(enhancePredictionUI,50);setTimeout(loadValidationSilently,300)}
 })();
