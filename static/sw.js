@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'smart-invest-pwa-v14-success-rates';
+const CACHE_VERSION = 'smart-invest-pwa-v15-hebrew-ux';
 const APP_SHELL = [
   '/',
   '/manifest.webmanifest',
@@ -9,7 +9,11 @@ const APP_SHELL = [
   '/static/portfolio_import.js',
   '/static/portfolio_ui_v2.js',
   '/static/chart_ui_v2.js',
-  '/static/success_rate_ui.js'
+  '/static/success_rate_ui.js',
+  '/static/hebrew_ux_v3.css',
+  '/static/hebrew_ux_v3.js',
+  '/static/ui-v2.css',
+  '/static/ui-v2.js'
 ];
 
 self.addEventListener('install', event => {
@@ -42,6 +46,14 @@ self.addEventListener('activate', event => {
 
 self.addEventListener('message', event => { if(event.data?.type === 'SKIP_WAITING') self.skipWaiting(); });
 
+function injectUx(html){
+  if(!html.includes('/static/hebrew_ux_v3.css')) html=html.replace('</head>','<link rel="stylesheet" href="/static/hebrew_ux_v3.css?v=15">\n</head>');
+  if(!html.includes('/static/ui-v2.css')) html=html.replace('</head>','<link rel="stylesheet" href="/static/ui-v2.css?v=15">\n</head>');
+  if(!html.includes('/static/hebrew_ux_v3.js')) html=html.replace('</body>','<script src="/static/hebrew_ux_v3.js?v=15" defer></script>\n</body>');
+  if(!html.includes('/static/ui-v2.js')) html=html.replace('</body>','<script src="/static/ui-v2.js?v=15" defer></script>\n</body>');
+  return html;
+}
+
 async function navigationResponse(req) {
   try {
     const res = await fetch(req, {cache:'no-store'});
@@ -50,11 +62,12 @@ async function navigationResponse(req) {
     if (type.includes('text/html')) {
       let html = await res.text();
       html = html.replace('renderWeekly();updateApiStatus();setחיBadge();', 'renderWeekly();setחיBadge();');
-      if (!html.includes('/static/market_search_ui.js')) html = html.replace('</body>', '<script src="/static/market_search_ui.js?v=14"></script></body>');
-      if (!html.includes('/static/portfolio_import.js')) html = html.replace('</body>', '<script src="/static/portfolio_import.js?v=14"></script></body>');
-      if (!html.includes('/static/portfolio_ui_v2.js')) html = html.replace('</body>', '<script src="/static/portfolio_ui_v2.js?v=14"></script></body>');
-      if (!html.includes('/static/chart_ui_v2.js')) html = html.replace('</body>', '<script src="/static/chart_ui_v2.js?v=14"></script></body>');
-      if (!html.includes('/static/success_rate_ui.js')) html = html.replace('</body>', '<script src="/static/success_rate_ui.js?v=14"></script></body>');
+      if (!html.includes('/static/market_search_ui.js')) html = html.replace('</body>', '<script src="/static/market_search_ui.js?v=15"></script></body>');
+      if (!html.includes('/static/portfolio_import.js')) html = html.replace('</body>', '<script src="/static/portfolio_import.js?v=15"></script></body>');
+      if (!html.includes('/static/portfolio_ui_v2.js')) html = html.replace('</body>', '<script src="/static/portfolio_ui_v2.js?v=15"></script></body>');
+      if (!html.includes('/static/chart_ui_v2.js')) html = html.replace('</body>', '<script src="/static/chart_ui_v2.js?v=15"></script></body>');
+      if (!html.includes('/static/success_rate_ui.js')) html = html.replace('</body>', '<script src="/static/success_rate_ui.js?v=15"></script></body>');
+      html = injectUx(html);
       const headers = new Headers(res.headers);
       headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
       headers.delete('content-length');
@@ -62,7 +75,12 @@ async function navigationResponse(req) {
     }
     return res;
   } catch (e) {
-    return (await caches.match('/')) || new Response('Offline', {status:503});
+    const cached = await caches.match('/');
+    if(cached){
+      const html = injectUx(await cached.text());
+      return new Response(html,{status:200,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-cache, no-store, must-revalidate'}});
+    }
+    return new Response('Offline', {status:503});
   }
 }
 
