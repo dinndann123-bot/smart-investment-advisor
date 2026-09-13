@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 import httpx
 from fastapi import HTTPException, Query
 
+from long_strategy import _score as long_score, get_cached_long_success
+
 _ASSET_CACHE = {"at": 0.0, "rows": []}
 _ASSET_TTL = 3600
 
@@ -22,6 +24,23 @@ def _safe_float(v):
         return x if math.isfinite(x) else None
     except Exception:
         return None
+
+
+def _chart_rows(bars, limit=None):
+    rows=[]
+    src=(bars[-limit:] if limit else bars) if bars else []
+    for b in src:
+        c=_safe_float(b.get("v") if b.get("v") is not None else b.get("c"))
+        if c is None:continue
+        rows.append({
+            "d":str(b.get("d") or b.get("t") or ""),
+            "v":c,
+            "o":_safe_float(b.get("o")),
+            "h":_safe_float(b.get("h")),
+            "l":_safe_float(b.get("l")),
+            "volume":_safe_float(b.get("volume") if b.get("volume") is not None else b.get("v")),
+        })
+    return rows
 
 
 def install_market_search(app):
@@ -131,18 +150,22 @@ def install_market_search(app):
             raise HTTPException(404, "נייר הערך לא נמצא ברשימת הנכסים הפעילים")
         asset = asset or {"symbol": symbol, "name": symbol, "exchange": None, "type_he": "נייר ערך"}
 
-        async with httpx.AsyncClient(timeout=35) as client:
+        async with httpx.AsyncClient(timeout=40) as client:
             one_y_task = asyncio.create_task(mod._alpaca_stock_bundle(client, symbol, "1Y"))
             one_d_task = asyncio.create_task(mod._alpaca_stock_bundle(client, symbol, "1D"))
-            one_y, one_d = await asyncio.gather(one_y_task, one_d_task)
+            five_y_task = asyncio.create_task(mod._alpaca_stock_bundle(client, symbol, "5Y"))
+            one_y, one_d, five_y = await asyncio.gather(one_y_task, one_d_task, five_y_task)
             if not one_y.get("bars"):
                 one_y = await mod._yahoo_stock_bundle(client, symbol, "1Y")
             if not one_d.get("bars"):
                 one_d = await mod._yahoo_stock_bundle(client, symbol, "1D")
+            if not five_y.get("bars"):
+                five_y = await mod._yahoo_stock_bundle(client, symbol, "5Y")
 
         bars = one_y.get("bars") or []
+        five_bars = five_y.get("bars") or bars
         quote = one_d.get("quote") or one_y.get("quote") or {}
-        news = one_d.get("news") or one_y.get("news") or []
+        news = one_d.get("news") or one_y.get("news") or five_y.get("news") or []
         closes = [_safe_float(b.get("v") if b.get("v") is not None else b.get("c")) for b in bars]
         closes = [x for x in closes if x and x > 0]
         vols = [_safe_float(b.get("volume") if b.get("volume") is not None else b.get("v")) for b in bars]
@@ -171,7 +194,7 @@ def install_market_search(app):
         if hi is not None and lo is not None and close is not None and hi > lo:
             intraday_strength=(close-lo)/(hi-lo)
 
-        score = mod._score_day_candidate(
+        day_score = mod._score_day_candidate(
             change_pct=change,
             rvol=rvol,
             daily_volume=current_vol or avg_daily_volume or 0,
@@ -180,7 +203,14 @@ def install_market_search(app):
             news_minutes=None,
             intraday_strength=intraday_strength,
         ) if price else None
-        hist = success_stats(symbol, score)
+        day_hist = success_stats(symbol, day_score)
+
+        long_rows=[]
+        for b in five_bars:
+            c=_safe_float(b.get("v") if b.get("v") is not None else b.get("c")); h=_safe_float(b.get("h")); v=_safe_float(b.get("volume"))
+            if c and h:long_rows.append({"d":str(b.get("d") or b.get("t") or "")[:10],"c":c,"h":h,"v":v or 0})
+        long_metrics=long_score(long_rows) if len(long_rows)>=252 else None
+        long_hist=get_cached_long_success(symbol,long_metrics.get("score") if long_metrics else None)
 
         news_out=[]
         for x in news[:8]:
@@ -195,8 +225,10 @@ def install_market_search(app):
             "asset": asset,
             "price": price,
             "change_pct": round(change,2) if change is not None else None,
-            "method_score": score,
-            "historical_success": hist,
+            "day_model":{"score":day_score,"historical_success":day_hist},
+            "long_model":{"score":long_metrics.get("score") if long_metrics else None,"metrics":long_metrics,"historical_success":long_hist},
+            "method_score": day_score,
+            "historical_success": day_hist,
             "year": {
                 "return_pct": round(one_year_return,2) if one_year_return is not None else None,
                 "high": max(highs) if highs else None,
@@ -206,6 +238,11 @@ def install_market_search(app):
                 "annual_dollar_turnover": round(annual_dollar_turnover,2) if annual_dollar_turnover is not None else None,
                 "trading_days": len(bars),
             },
+            "charts":{
+                "day":_chart_rows(one_d.get("bars") or [],180),
+                "year":_chart_rows(bars,260),
+                "five_year":_chart_rows(five_bars,1300),
+            },
             "rvol": round(rvol,2) if rvol is not None else None,
             "news_count": len(news_out),
             "catalyst": news_out[0]["title"] if news_out else None,
@@ -213,8 +250,9 @@ def install_market_search(app):
             "provider": "Alpaca" if one_y.get("bars") else "Public fallback",
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "definitions": {
-                "method_score": "ציון התאמה 0–100 לשיטת המסחר היומי; אינו אחוז סיכוי לרווח.",
-                "historical_success": "אחוז ההצלחה שנמדד ב-Backtest על הנייר עצמו או על מקרים היסטוריים בעלי ציון דומה.",
+                "day_score": "ציון התאמה 0–100 לשיטת המסחר היומי; אינו אחוז סיכוי לרווח.",
+                "long_score": "ציון נפרד לטווח חודשי–שנתי המבוסס על מגמה, מומנטום, תנודתיות ומיקום מול ממוצעים נעים.",
+                "historical_success": "אחוזי ההצלחה מוצגים רק מתוך Backtest מתאים לאותו אופק, ובמדגם מספיק.",
                 "annual_dollar_turnover": "סכום משוער של מחיר×מחזור בכל ימי המסחר שנאספו בשנה האחרונה; זהו מחזור מסחר, לא הכנסות החברה.",
             },
         }
