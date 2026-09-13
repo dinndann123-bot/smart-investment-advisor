@@ -1,0 +1,42 @@
+{
+  "round_local": "2026-09-13T21:00:00+03:00",
+  "production_main_modified": false,
+  "method": "Long-term point-in-time validation on previously unused mid-month dates; no weight changes were made before or during this round.",
+  "new_dates": ["2022-03-15", "2022-08-15", "2023-02-15", "2023-08-15", "2024-02-15"],
+  "new_batch": {
+    "requested_scenarios": 5,
+    "pick_samples": 36,
+    "one_month": {"wins": 13, "losses": 23, "success_pct": 36.11, "avg_return_pct": 0.13},
+    "twelve_month": {"wins": 16, "losses": 20, "success_pct": 44.44, "avg_return_pct": 27.76}
+  },
+  "cumulative_with_prior_verified_500_picks": {
+    "one_month": {"wins": 204, "losses": 332, "total": 536, "success_pct": 38.06, "avg_return_pct_weighted": 2.53, "additional_consecutive_wins_needed_for_gt_90_pct": 2785},
+    "twelve_month": {"wins": 293, "losses": 243, "total": 536, "success_pct": 54.66, "avg_return_pct_weighted": 47.60, "additional_consecutive_wins_needed_for_gt_90_pct": 1895}
+  },
+  "score_buckets_new_batch": [
+    {"score_range": "80-89", "samples": 4, "success_1m_pct": 75.0, "success_12m_pct": 0.0, "avg_1m_pct": 8.02, "avg_12m_pct": 0.33},
+    {"score_range": "70-79", "samples": 8, "success_1m_pct": 75.0, "success_12m_pct": 50.0, "avg_1m_pct": 5.77, "avg_12m_pct": 11.75},
+    {"score_range": "0-69", "samples": 24, "success_1m_pct": 16.67, "success_12m_pct": 50.0, "avg_1m_pct": -3.07, "avg_12m_pct": 37.66}
+  ],
+  "scenario_summary": [
+    {"date":"2022-03-15","universe_size":62,"picks":10,"success_1m_pct":80.0,"avg_1m_pct":7.63,"success_12m_pct":30.0,"avg_12m_pct":6.76,"spy_1m_pct":4.03,"spy_12m_pct":-7.07},
+    {"date":"2022-08-15","universe_size":48,"picks":10,"success_1m_pct":20.0,"avg_1m_pct":-2.63,"success_12m_pct":40.0,"avg_12m_pct":13.27,"spy_1m_pct":-8.01,"spy_12m_pct":2.50},
+    {"date":"2023-02-15","universe_size":8,"picks":8,"success_1m_pct":0.0,"avg_1m_pct":-8.79,"success_12m_pct":50.0,"avg_12m_pct":30.20,"spy_1m_pct":-5.76,"spy_12m_pct":20.68},
+    {"date":"2023-08-15","universe_size":5,"picks":5,"success_1m_pct":20.0,"avg_1m_pct":0.70,"success_12m_pct":60.0,"avg_12m_pct":88.13,"spy_1m_pct":null,"spy_12m_pct":null},
+    {"date":"2024-02-15","universe_size":3,"picks":3,"success_1m_pct":66.7,"avg_1m_pct":7.12,"success_12m_pct":66.7,"avg_12m_pct":38.90,"spy_1m_pct":2.18,"spy_12m_pct":22.11}
+  ],
+  "day_trade_tracker": {
+    "new_valid_scenarios": 0,
+    "t1": null,
+    "t2": null,
+    "stop": null,
+    "expectancy_r": null,
+    "reason": "Existing historical day engines use a 10:00 ET cutoff/15-minute bars or a separate explosion definition; they do not satisfy the required 09:45 ET -> score -> entry/Stop/T1/T2 -> close protocol, so they were not counted."
+  },
+  "methodological_warnings": [
+    "Historical universe coverage collapsed on later dates (62, 48, 8, 5, 3). Therefore only 36 picks were produced instead of 50 and the new scenarios are not fully comparable to the prior 10-pick-per-scenario audit.",
+    "Do not merge the provisional scenario-vs-SPY rate into the official cumulative benchmark tracker until historical universe coverage is repaired.",
+    "The 90% research target has not been achieved at pick level."
+  ],
+  "next_test_proposal_not_adopted": "Do not change weights yet. First stabilize point-in-time universe coverage. Then test, on a fresh unseen batch, whether a stronger risk-off eligibility gate and separate 1-month vs 12-month scoring improve holdout results."
+}
