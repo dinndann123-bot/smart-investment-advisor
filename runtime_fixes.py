@@ -7,7 +7,7 @@ import httpx
 from fastapi.responses import Response
 
 
-RUNTIME_FIX_VERSION = "2026.09.13-r3-audit"
+RUNTIME_FIX_VERSION = "2026.09.13-r4-app-module"
 
 
 def install_runtime_fixes(app):
@@ -18,7 +18,10 @@ def install_runtime_fixes(app):
         return
     app.state.runtime_fixes_installed = True
 
-    mod = sys.modules.get(app.__module__) or sys.modules.get("app")
+    # FastAPI instances report fastapi.applications as their class module. Strategy
+    # plug-ins need the actual application module for API keys/helpers.
+    app.__module__ = "app"
+    mod = sys.modules.get("app") or sys.modules.get(app.__module__)
     if mod is None:
         return
 
@@ -48,8 +51,6 @@ def install_runtime_fixes(app):
             "generated_at": datetime.now(timezone.utc).isoformat(),
         }
 
-    # Temporary audit probe: run after startup against the app's own point-in-time
-    # endpoint, print compact results, then this block will be removed.
     async def _run_long_audit_probe():
         await asyncio.sleep(4)
         port = os.getenv("PORT", "10000")
@@ -88,7 +89,6 @@ def install_runtime_fixes(app):
         asyncio.create_task(_run_long_audit_probe())
 
     def _persist_scanner_signals_fixed(items, generated_at, source):
-        """Persist qualified scanner signals and count only rows actually inserted."""
         con = mod._db()
         created = generated_at or datetime.now(timezone.utc).isoformat()
         d = datetime.fromisoformat(created.replace("Z", "+00:00")).astimezone(mod.NY).date().isoformat()
@@ -127,12 +127,9 @@ def install_runtime_fixes(app):
         return saved
 
     async def _refresh_live_signal_rows_fixed(rows):
-        """Refresh signals without using pre-entry prices from the signal day."""
         if not rows:
             return []
-
         sem = asyncio.Semaphore(6)
-
         async with httpx.AsyncClient(timeout=25) as client:
             async def one(row):
                 async with sem:
@@ -146,91 +143,44 @@ def install_runtime_fixes(app):
                     hit1 = bool(r["hit1"])
                     hit2 = bool(r["hit2"])
                     stopped = bool(r["stopped"])
-
                     price_task = asyncio.create_task(mod._latest_price_for_signal(client, symbol))
                     signal_day_task = asyncio.create_task(mod._fetch_minute_window(client, symbol, signal_date, mod.ALPACA_FEED)) if (mod.ALPACA_KEY and mod.ALPACA_SECRET) else None
                     daily_task = asyncio.create_task(mod._bars_since_signal(client, symbol, signal_date))
-
                     price = await price_task
                     minute_bars = await signal_day_task if signal_day_task else []
                     daily_bars = await daily_task
-
                     try:
                         created_local = datetime.fromisoformat(str(r["created_at"]).replace("Z", "+00:00")).astimezone(mod.NY)
                     except Exception:
                         created_local = None
-
                     ordered = []
                     for b in minute_bars:
                         dt = mod._bar_dt(b)
-                        if not dt or dt.date().isoformat() != signal_date:
-                            continue
-                        if created_local and dt < created_local:
-                            continue
+                        if not dt or dt.date().isoformat() != signal_date: continue
+                        if created_local and dt < created_local: continue
                         ordered.append((dt, b, "minute"))
-
                     for b in daily_bars:
                         dt = mod._bar_dt(b)
-                        if not dt or dt.date().isoformat() <= signal_date:
-                            continue
+                        if not dt or dt.date().isoformat() <= signal_date: continue
                         ordered.append((dt, b, "daily"))
-
                     ordered.sort(key=lambda z: z[0])
-                    highs = []
-                    lows = []
-                    terminal = hit2 or stopped
-                    for _, b, _granularity in ordered:
-                        hi = float(b.get("h") or 0)
-                        lo = float(b.get("l") or 0)
-                        if hi > 0:
-                            highs.append(hi)
-                        if lo > 0:
-                            lows.append(lo)
-                        if terminal:
-                            continue
-                        if stop and lo > 0 and lo <= stop and not hit1:
-                            stopped = True
-                            terminal = True
-                            continue
-                        if t1 and hi >= t1:
-                            hit1 = True
-                        if t2 and hi >= t2:
-                            hit2 = True
-                            terminal = True
-
-                    if hit2:
-                        status = "target2"
-                    elif stopped:
-                        status = "stopped"
-                    elif hit1:
-                        status = "target1"
-                    else:
-                        status = "open"
-
-                    maxret = ((max(highs) / entry - 1) * 100) if highs and entry else None
-                    minret = ((min(lows) / entry - 1) * 100) if lows and entry else None
-                    curret = ((price / entry - 1) * 100) if price and entry else None
-                    if hit2:
-                        rr = 2.5
-                    elif stopped:
-                        rr = -1.0
-                    else:
-                        rr = None
-
-                    r.update({
-                        "last_price": price,
-                        "hit1": int(hit1),
-                        "hit2": int(hit2),
-                        "stopped": int(stopped),
-                        "status": status,
-                        "max_return_pct": maxret,
-                        "min_return_pct": minret,
-                        "current_return_pct": curret,
-                        "result_r": rr,
-                        "last_checked_at": datetime.now(timezone.utc).isoformat(),
-                    })
+                    highs=[];lows=[];terminal=hit2 or stopped
+                    for _,b,_granularity in ordered:
+                        hi=float(b.get("h") or 0);lo=float(b.get("l") or 0)
+                        if hi>0:highs.append(hi)
+                        if lo>0:lows.append(lo)
+                        if terminal:continue
+                        if stop and lo>0 and lo<=stop and not hit1:
+                            stopped=True;terminal=True;continue
+                        if t1 and hi>=t1:hit1=True
+                        if t2 and hi>=t2:hit2=True;terminal=True
+                    status="target2" if hit2 else "stopped" if stopped else "target1" if hit1 else "open"
+                    maxret=((max(highs)/entry-1)*100) if highs and entry else None
+                    minret=((min(lows)/entry-1)*100) if lows and entry else None
+                    curret=((price/entry-1)*100) if price and entry else None
+                    rr=2.5 if hit2 else -1.0 if stopped else None
+                    r.update({"last_price":price,"hit1":int(hit1),"hit2":int(hit2),"stopped":int(stopped),"status":status,"max_return_pct":maxret,"min_return_pct":minret,"current_return_pct":curret,"result_r":rr,"last_checked_at":datetime.now(timezone.utc).isoformat()})
                     return r
-
             return await asyncio.gather(*[one(row) for row in rows])
 
     mod._persist_scanner_signals = _persist_scanner_signals_fixed
