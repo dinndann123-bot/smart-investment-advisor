@@ -11,6 +11,7 @@ from fastapi import HTTPException, Query
 
 from runtime_fixes import install_runtime_fixes
 from market_search import install_market_search
+from long_strategy import install_long_strategy
 
 NY = ZoneInfo("America/New_York")
 
@@ -141,6 +142,7 @@ def _bucket(test):
 
 def install_explosion_learning(app):
     install_runtime_fixes(app)
+    install_long_strategy(app)
     install_market_search(app)
 
     @app.get("/api/strategy/explosions")
