@@ -1782,7 +1782,7 @@ function saveOcrRows(){let n=0;document.querySelectorAll("#ocrRows tr").forEach(
 if(location.protocol==='file:'){
   document.body.innerHTML='<div style="max-width:760px;margin:80px auto;font-family:Arial;direction:rtl;padding:24px"><h1>האפליקציה נפתחה בצורה לא נכונה</h1><p>אין לפתוח את index.html ישירות. יש להפעיל את השרת ואז להיכנס דרך http://127.0.0.1:8000 כדי שהגרפים, הנתונים והעדכונים החיים יעבדו.</p></div>';
 }else{
-  initializeVisibleClocks();renderHome();renderTables();renderBacktests();renderWeekly();updateApiStatus();setחיBadge();checkBackendStatus();updateScannerButton();startAutoScanner();loadLearningSummary();refreshHealth();loadLivePerformance(false);syncMarketClock();startDataWatchdog();
+  initializeVisibleClocks();renderHome();renderTables();renderBacktests();renderWeekly();setחיBadge();checkBackendStatus();updateScannerButton();startAutoScanner();loadLearningSummary();refreshHealth();loadLivePerformance(false);syncMarketClock();startDataWatchdog();
   setInterval(updateClockUI,1000);setInterval(syncMarketClock,60000);setInterval(refreshHealth,300000);setInterval(()=>loadLivePerformance(true),300000);
 }
 
