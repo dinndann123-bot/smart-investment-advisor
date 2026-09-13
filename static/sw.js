@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'smart-invest-pwa-v15-hebrew-ux';
+const CACHE_VERSION = 'smart-invest-pwa-v16-learning-curve';
 const APP_SHELL = [
   '/',
   '/manifest.webmanifest',
@@ -47,10 +47,10 @@ self.addEventListener('activate', event => {
 self.addEventListener('message', event => { if(event.data?.type === 'SKIP_WAITING') self.skipWaiting(); });
 
 function injectUx(html){
-  if(!html.includes('/static/hebrew_ux_v3.css')) html=html.replace('</head>','<link rel="stylesheet" href="/static/hebrew_ux_v3.css?v=15">\n</head>');
-  if(!html.includes('/static/ui-v2.css')) html=html.replace('</head>','<link rel="stylesheet" href="/static/ui-v2.css?v=15">\n</head>');
-  if(!html.includes('/static/hebrew_ux_v3.js')) html=html.replace('</body>','<script src="/static/hebrew_ux_v3.js?v=15" defer></script>\n</body>');
-  if(!html.includes('/static/ui-v2.js')) html=html.replace('</body>','<script src="/static/ui-v2.js?v=15" defer></script>\n</body>');
+  if(!html.includes('/static/hebrew_ux_v3.css')) html=html.replace('</head>','<link rel="stylesheet" href="/static/hebrew_ux_v3.css?v=16">\n</head>');
+  if(!html.includes('/static/ui-v2.css')) html=html.replace('</head>','<link rel="stylesheet" href="/static/ui-v2.css?v=16">\n</head>');
+  if(!html.includes('/static/hebrew_ux_v3.js')) html=html.replace('</body>','<script src="/static/hebrew_ux_v3.js?v=16" defer></script>\n</body>');
+  if(!html.includes('/static/ui-v2.js')) html=html.replace('</body>','<script src="/static/ui-v2.js?v=16" defer></script>\n</body>');
   return html;
 }
 
@@ -62,11 +62,11 @@ async function navigationResponse(req) {
     if (type.includes('text/html')) {
       let html = await res.text();
       html = html.replace('renderWeekly();updateApiStatus();setחיBadge();', 'renderWeekly();setחיBadge();');
-      if (!html.includes('/static/market_search_ui.js')) html = html.replace('</body>', '<script src="/static/market_search_ui.js?v=15"></script></body>');
-      if (!html.includes('/static/portfolio_import.js')) html = html.replace('</body>', '<script src="/static/portfolio_import.js?v=15"></script></body>');
-      if (!html.includes('/static/portfolio_ui_v2.js')) html = html.replace('</body>', '<script src="/static/portfolio_ui_v2.js?v=15"></script></body>');
-      if (!html.includes('/static/chart_ui_v2.js')) html = html.replace('</body>', '<script src="/static/chart_ui_v2.js?v=15"></script></body>');
-      if (!html.includes('/static/success_rate_ui.js')) html = html.replace('</body>', '<script src="/static/success_rate_ui.js?v=15"></script></body>');
+      if (!html.includes('/static/market_search_ui.js')) html = html.replace('</body>', '<script src="/static/market_search_ui.js?v=16"></script></body>');
+      if (!html.includes('/static/portfolio_import.js')) html = html.replace('</body>', '<script src="/static/portfolio_import.js?v=16"></script></body>');
+      if (!html.includes('/static/portfolio_ui_v2.js')) html = html.replace('</body>', '<script src="/static/portfolio_ui_v2.js?v=16"></script></body>');
+      if (!html.includes('/static/chart_ui_v2.js')) html = html.replace('</body>', '<script src="/static/chart_ui_v2.js?v=16"></script></body>');
+      if (!html.includes('/static/success_rate_ui.js')) html = html.replace('</body>', '<script src="/static/success_rate_ui.js?v=16"></script></body>');
       html = injectUx(html);
       const headers = new Headers(res.headers);
       headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
