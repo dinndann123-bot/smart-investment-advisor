@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'smart-invest-pwa-v7-universal-market-search';
+const CACHE_VERSION = 'smart-invest-pwa-v8-asset-detail-long-backtest';
 const APP_SHELL = [
   '/',
   '/manifest.webmanifest',
@@ -36,7 +36,7 @@ async function navigationResponse(req) {
       let html = await res.text();
       html = html.replace('renderWeekly();updateApiStatus();setחיBadge();', 'renderWeekly();setחיBadge();');
       if (!html.includes('/static/market_search_ui.js')) {
-        html = html.replace('</body>', '<script src="/static/market_search_ui.js?v=7"></script></body>');
+        html = html.replace('</body>', '<script src="/static/market_search_ui.js?v=8"></script></body>');
       }
       const headers = new Headers(res.headers);
       headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
