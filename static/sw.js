@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'smart-invest-pwa-v5-strategy-validation-ui-fix';
+const CACHE_VERSION = 'smart-invest-pwa-v6-clear-prediction-metrics';
 const APP_SHELL = [
   '/',
   '/manifest.webmanifest',
@@ -55,7 +55,7 @@ self.addEventListener('fetch', event => {
     return;
   }
   event.respondWith(
-    caches.match(req).then(hit => hit || fetch(req).then(res => {
+    caches.match(req).then(hit => hit || fetch(req,{cache:'no-store'}).then(res => {
       const copy = res.clone();
       caches.open(CACHE_VERSION).then(cache => cache.put(req, copy)).catch(()=>{});
       return res;
