@@ -1,3 +1,4 @@
+# offline validation run 2
 name: Offline Historical Validation
 
 on:
@@ -26,18 +27,7 @@ jobs:
                   j=json.load(r)
               picks=j.get('picks') or []
               all_picks.extend(picks)
-              scenarios.append({
-                  'as_of':j.get('as_of'),
-                  'universe_size':j.get('universe_size'),
-                  'portfolio_1m':j.get('portfolio_1m'),
-                  'portfolio_12m':j.get('portfolio_12m'),
-                  'benchmark':j.get('benchmark'),
-                  'picks':[{
-                      'symbol':x.get('symbol'),'score':x.get('score'),
-                      'return_1m_pct':x.get('return_1m_pct'),'return_12m_pct':x.get('return_12m_pct'),
-                      'success_1m':x.get('success_1m'),'success_12m':x.get('success_12m')
-                  } for x in picks]
-              })
+              scenarios.append({'as_of':j.get('as_of'),'universe_size':j.get('universe_size'),'portfolio_1m':j.get('portfolio_1m'),'portfolio_12m':j.get('portfolio_12m'),'benchmark':j.get('benchmark'),'picks':[{'symbol':x.get('symbol'),'score':x.get('score'),'return_1m_pct':x.get('return_1m_pct'),'return_12m_pct':x.get('return_12m_pct'),'success_1m':x.get('success_1m'),'success_12m':x.get('success_12m')} for x in picks]})
           def agg(key_success,key_return):
               xs=[x for x in all_picks if x.get(key_return) is not None]
               wins=sum(bool(x.get(key_success)) for x in xs)
