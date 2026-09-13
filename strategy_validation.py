@@ -1,5 +1,4 @@
 import os
-import asyncio
 import statistics
 from collections import defaultdict
 from datetime import datetime, timezone, timedelta, time as dtime
@@ -9,10 +8,23 @@ import httpx
 from fastapi import HTTPException, Query
 
 NY = ZoneInfo("America/New_York")
-DEFAULT_UNIVERSE = [
-    "AAPL","MSFT","NVDA","AMZN","META","TSLA","AMD","AVGO","PLTR","HOOD",
-    "COIN","MARA","RIOT","SMCI","SOFI","RIVN","IONQ","SOUN","RKLB","APP",
-    "MU","ARM","MRVL","CRWD","SNOW","UBER","AFRM","UPST","CVNA","NFLX",
+
+# A broad liquid/volatile US-equity universe. We deliberately include large caps,
+# mid caps, recent momentum names and high-beta names. The validation selects
+# candidates independently for EACH historical day using only data available by
+# 10:00 New York time, which is much closer to how the live scanner behaves.
+BROAD_UNIVERSE = [
+    "AAPL","MSFT","NVDA","AMZN","META","GOOGL","GOOG","TSLA","AMD","AVGO",
+    "PLTR","HOOD","COIN","MARA","RIOT","SMCI","SOFI","RIVN","IONQ","SOUN",
+    "RKLB","APP","MU","INTC","ARM","QCOM","MRVL","CRWD","NET","SNOW",
+    "SHOP","UBER","PYPL","NFLX","ORCL","TSM","NIO","LCID","AFRM","UPST",
+    "CVNA","DKNG","RBLX","PATH","AI","BBAI","QBTS","RGTI","QUBT","ACHR",
+    "JOBY","LUNR","ASTS","RDW","SPCE","OPEN","CHPT","QS","LAZR","HIMS",
+    "TEM","RXRX","VRT","DELL","ANET","PANW","DDOG","MDB","ZS","OKTA",
+    "CELH","CAVA","RDDT","DUOL","TOST","NU","GRAB","PINS","SNAP","ROKU",
+    "FUBO","GME","AMC","KOSS","BB","WULF","CLSK","IREN","CIFR","HUT",
+    "BITF","BTDR","CORZ","MSTR","XYZ","SQ","RKT","LMND","ROOT","CVS",
+    "WBD","PARA","T","F","GM","BAC","C","JPM","XOM","OXY"
 ]
 
 MODELS = {
@@ -28,8 +40,8 @@ def _clamp(v, lo=0.0, hi=1.0):
 
 
 def _component_scores(change_pct, rvol, est_daily_volume, price, strength):
-    momentum = 100 * _clamp((change_pct - 1.0) / 11.0) if change_pct is not None else 0
-    rvol_s = 100 * _clamp((rvol - 0.8) / 3.2) if rvol is not None else 0
+    momentum = 100 * _clamp((change_pct - 0.5) / 12.0) if change_pct is not None else 0
+    rvol_s = 100 * _clamp((rvol - 0.75) / 3.25) if rvol is not None else 0
     if est_daily_volume >= 5_000_000:
         liquidity = 100
     elif est_daily_volume >= 2_000_000:
@@ -40,7 +52,7 @@ def _component_scores(change_pct, rvol, est_daily_volume, price, strength):
         liquidity = 40
     else:
         liquidity = 10
-    structure = 100 * _clamp((strength - 0.35) / 0.60) if strength is not None else 0
+    structure = 100 * _clamp((strength - 0.30) / 0.65) if strength is not None else 0
     if 2 <= price <= 100:
         price_s = 100
     elif 1 <= price < 2 or 100 < price <= 250:
@@ -59,7 +71,7 @@ def _component_scores(change_pct, rvol, est_daily_volume, price, strength):
 def _model_score(components, weights, change_pct, rvol, est_daily_volume, price):
     score = sum(components[k] * weights[k] for k in weights)
     if change_pct > 25:
-        score -= 10
+        score -= 8
     if change_pct > 45:
         score -= 10
     if price < 1:
@@ -67,7 +79,7 @@ def _model_score(components, weights, change_pct, rvol, est_daily_volume, price)
     if est_daily_volume < 150_000:
         score -= 12
     if rvol is not None and rvol < 1:
-        score -= 8
+        score -= 6
     return int(round(max(0, min(100, score))))
 
 
@@ -83,9 +95,9 @@ def _parse_bar(b):
     }
 
 
-async def _fetch_symbol_days(client, symbol, headers, feed, days):
+async def _fetch_symbol_days(client, symbol, headers, feed, calendar_days):
     end = datetime.now(timezone.utc)
-    start = end - timedelta(days=int(days * 1.55) + 30)
+    start = end - timedelta(days=calendar_days + 20)
     r = await client.get(
         f"https://data.alpaca.markets/v2/stocks/{symbol}/bars",
         headers=headers,
@@ -111,30 +123,15 @@ async def _fetch_symbol_days(client, symbol, headers, feed, days):
                 grouped[x["ts"].date().isoformat()].append(x)
         except Exception:
             continue
-    days_out = []
+    out = []
     for d in sorted(grouped):
         arr = sorted(grouped[d], key=lambda x: x["ts"])
         if len(arr) >= 8:
-            days_out.append((d, arr))
-    return days_out[-days:], None
+            out.append((d, arr))
+    return out, None
 
 
-def _trade_return(post, entry, target_pct, stop_pct):
-    target = entry * (1 + target_pct / 100)
-    stop = entry * (1 - stop_pct / 100)
-    for b in post:
-        hit_stop = b["l"] <= stop
-        hit_target = b["h"] >= target
-        if hit_stop and hit_target:
-            return -stop_pct
-        if hit_stop:
-            return -stop_pct
-        if hit_target:
-            return target_pct
-    return (post[-1]["c"] / entry - 1) * 100
-
-
-def _build_events(symbol, symbol_days):
+def _build_symbol_events(symbol, symbol_days):
     events = []
     prior_early_volumes = []
     for day, bars in symbol_days:
@@ -143,11 +140,11 @@ def _build_events(symbol, symbol_days):
         if len(early) < 2 or len(post) < 4:
             continue
         early_vol = sum(b["v"] for b in early)
-        baseline = statistics.median(prior_early_volumes[-20:]) if len(prior_early_volumes) >= 10 else None
-        rvol = early_vol / baseline if baseline and baseline > 0 else None
+        baseline = statistics.median(prior_early_volumes[-20:]) if len(prior_early_volumes) >= 8 else None
         prior_early_volumes.append(early_vol)
-        if rvol is None:
+        if not baseline or baseline <= 0:
             continue
+        rvol = early_vol / baseline
         open_px = early[0]["o"] or early[0]["c"]
         cutoff_px = early[-1]["c"]
         if open_px <= 0 or cutoff_px <= 0:
@@ -165,9 +162,6 @@ def _build_events(symbol, symbol_days):
         max_up = (max(b["h"] for b in post) / cutoff_px - 1) * 100
         max_down = (min(b["l"] for b in post) / cutoff_px - 1) * 100
         close_ret = (post[-1]["c"] / cutoff_px - 1) * 100
-        trade_2_3 = _trade_return(post, cutoff_px, 2.0, 3.0)
-        trade_3_3 = _trade_return(post, cutoff_px, 3.0, 3.0)
-        trade_5_3 = _trade_return(post, cutoff_px, 5.0, 3.0)
         events.append({
             "symbol": symbol,
             "date": day,
@@ -183,53 +177,106 @@ def _build_events(symbol, symbol_days):
             "hit_2pct": max_up >= 2.0,
             "hit_3pct": max_up >= 3.0,
             "hit_5pct": max_up >= 5.0,
+            "exploded_5pct": max_up >= 5.0,
             "quality_win": max_up >= 3.0 and max_down > -3.0,
-            "trade_return_tp2_sl3": round(trade_2_3, 3),
-            "trade_return_tp3_sl3": round(trade_3_3, 3),
-            "trade_return_tp5_sl3": round(trade_5_3, 3),
         })
     return events
+
+
+def _candidate_rank(e):
+    # Uses ONLY information known by 10:00. This is intentionally separate from
+    # the model score so the backtest can test whether the score adds value.
+    momentum = max(0.0, min(30.0, e["change_1000_pct"]))
+    rvol = max(0.0, min(6.0, e["rvol_1000"]))
+    liq = min(5.0, e["est_daily_volume"] / 1_000_000)
+    return momentum * 2.0 + rvol * 7.0 + liq * 2.0 + e["structure"] * 10.0
+
+
+def _select_daily_universe(events, top_per_day=12, controls_per_day=8):
+    by_day = defaultdict(list)
+    for e in events:
+        by_day[e["date"]].append(e)
+    selected = []
+    stats = []
+    for day in sorted(by_day):
+        arr = by_day[day]
+        # Basic pre-10 eligibility only; no future return is used.
+        eligible = [e for e in arr if e["price_1000"] >= 1 and e["est_daily_volume"] >= 100_000]
+        if len(eligible) < 5:
+            continue
+        ranked = sorted(eligible, key=_candidate_rank, reverse=True)
+        leaders = ranked[:top_per_day]
+        # Add lower-ranked controls so the model is tested against plausible
+        # non-winners, not only against preselected leaders.
+        remainder = ranked[top_per_day:]
+        if controls_per_day and remainder:
+            step = max(1, len(remainder) // controls_per_day)
+            controls = remainder[::step][:controls_per_day]
+        else:
+            controls = []
+        chosen = leaders + controls
+        for e in chosen:
+            e = dict(e)
+            e["candidate_rank_1000"] = round(_candidate_rank(e), 3)
+            e["daily_candidate_type"] = "leader" if e in leaders else "control"
+            selected.append(e)
+        stats.append({"date": day, "eligible": len(eligible), "selected": len(chosen)})
+    return selected, stats
+
+
+def _sim_trade(e, target_pct, stop_pct=3.0):
+    # With 15m aggregate bars we do not know intrabar ordering if both target and
+    # stop were touched. Count ambiguous bars conservatively as a stop.
+    up = e["max_up_after_1000_pct"]
+    down = e["max_down_after_1000_pct"]
+    if down <= -stop_pct and up >= target_pct:
+        return -stop_pct
+    if down <= -stop_pct:
+        return -stop_pct
+    if up >= target_pct:
+        return target_pct
+    return e["close_after_1000_pct"]
 
 
 def _metrics(events, model, threshold):
     picks = [e for e in events if e["scores"][model] >= threshold]
     if not picks:
         return {
-            "signals": 0, "hit_2pct": None, "hit_3pct": None, "hit_rate_pct": None,
-            "quality_rate_pct": None, "avg_max_up_pct": None, "avg_drawdown_pct": None,
-            "avg_close_pct": None, "expectancy_tp2_sl3_pct": None,
-            "expectancy_tp3_sl3_pct": None, "expectancy_tp5_sl3_pct": None,
+            "signals": 0, "hit_rate_2pct": None, "hit_rate_3pct": None,
+            "hit_rate_pct": None, "quality_rate_pct": None, "avg_max_up_pct": None,
+            "avg_drawdown_pct": None, "avg_close_pct": None,
+            "expectancy_t2_s3_pct": None, "expectancy_t3_s3_pct": None,
+            "expectancy_t5_s3_pct": None,
         }
     n = len(picks)
     return {
         "signals": n,
-        "hit_2pct": round(100 * sum(e["hit_2pct"] for e in picks) / n, 2),
-        "hit_3pct": round(100 * sum(e["hit_3pct"] for e in picks) / n, 2),
+        "hit_rate_2pct": round(100 * sum(e["hit_2pct"] for e in picks) / n, 2),
+        "hit_rate_3pct": round(100 * sum(e["hit_3pct"] for e in picks) / n, 2),
         "hit_rate_pct": round(100 * sum(e["hit_5pct"] for e in picks) / n, 2),
         "quality_rate_pct": round(100 * sum(e["quality_win"] for e in picks) / n, 2),
         "avg_max_up_pct": round(statistics.mean(e["max_up_after_1000_pct"] for e in picks), 2),
         "avg_drawdown_pct": round(statistics.mean(e["max_down_after_1000_pct"] for e in picks), 2),
         "avg_close_pct": round(statistics.mean(e["close_after_1000_pct"] for e in picks), 2),
-        "expectancy_tp2_sl3_pct": round(statistics.mean(e["trade_return_tp2_sl3"] for e in picks), 3),
-        "expectancy_tp3_sl3_pct": round(statistics.mean(e["trade_return_tp3_sl3"] for e in picks), 3),
-        "expectancy_tp5_sl3_pct": round(statistics.mean(e["trade_return_tp5_sl3"] for e in picks), 3),
+        "expectancy_t2_s3_pct": round(statistics.mean(_sim_trade(e, 2, 3) for e in picks), 3),
+        "expectancy_t3_s3_pct": round(statistics.mean(_sim_trade(e, 3, 3) for e in picks), 3),
+        "expectancy_t5_s3_pct": round(statistics.mean(_sim_trade(e, 5, 3) for e in picks), 3),
     }
 
 
 def _choose_model(train):
     best = None
-    min_signals = max(18, int(len(train) * 0.03))
+    min_signals = max(20, int(len(train) * 0.03))
     for model in MODELS:
         for threshold in (50, 55, 60, 65, 70, 75, 80):
             m = _metrics(train, model, threshold)
-            if m["signals"] < min_signals or m["hit_3pct"] is None:
+            if m["signals"] < min_signals or m["hit_rate_3pct"] is None:
                 continue
             utility = (
-                0.45 * m["hit_3pct"] +
-                0.20 * m["hit_rate_pct"] +
-                8.0 * m["expectancy_tp3_sl3_pct"] +
-                1.0 * m["avg_max_up_pct"] +
-                0.5 * m["avg_drawdown_pct"]
+                m["hit_rate_3pct"]
+                + 8.0 * (m["expectancy_t3_s3_pct"] or 0)
+                + 0.8 * (m["avg_max_up_pct"] or 0)
+                + 0.4 * (m["avg_drawdown_pct"] or 0)
             )
             row = {"model": model, "threshold": threshold, "utility": round(utility, 3), "train": m}
             if best is None or row["utility"] > best["utility"]:
@@ -245,14 +292,15 @@ def _buckets(events, model):
     for lo, hi in specs:
         arr = [e for e in events if lo <= e["scores"][model] <= hi]
         if not arr:
-            out.append({"bucket": f"{lo}-{hi}", "samples": 0, "hit_rate_pct": None, "hit_3pct": None, "avg_max_up_pct": None})
+            out.append({"bucket": f"{lo}-{hi}", "samples": 0, "hit_rate_pct": None, "avg_max_up_pct": None})
             continue
         out.append({
             "bucket": f"{lo}-{hi}",
             "samples": len(arr),
             "hit_rate_pct": round(100 * sum(e["hit_5pct"] for e in arr) / len(arr), 2),
-            "hit_3pct": round(100 * sum(e["hit_3pct"] for e in arr) / len(arr), 2),
+            "hit_rate_3pct": round(100 * sum(e["hit_3pct"] for e in arr) / len(arr), 2),
             "avg_max_up_pct": round(statistics.mean(e["max_up_after_1000_pct"] for e in arr), 2),
+            "avg_drawdown_pct": round(statistics.mean(e["max_down_after_1000_pct"] for e in arr), 2),
         })
     return out
 
@@ -260,8 +308,8 @@ def _buckets(events, model):
 def install_strategy_validation(app):
     @app.get("/api/strategy/validate")
     async def validate_strategy(
-        days: int = Query(60, ge=20, le=360),
-        symbols: int = Query(20, ge=8, le=30),
+        days: int = Query(180, ge=60, le=365),
+        symbols: int = Query(90, ge=30, le=len(BROAD_UNIVERSE)),
     ):
         key = os.getenv("ALPACA_API_KEY", "").strip()
         secret = os.getenv("ALPACA_SECRET_KEY", "").strip()
@@ -271,34 +319,31 @@ def install_strategy_validation(app):
         if feed not in {"iex", "sip", "delayed_sip"}:
             feed = "iex"
 
-        # The installed UI still calls 60 days/20 symbols. For statistical validation we enforce
-        # a materially larger sample on the server without requiring another manual UI update.
-        effective_days = max(days, 240)
-        effective_symbols = max(symbols, 30)
+        # Ignore stale UI defaults from older builds. We want a meaningful sample.
+        calendar_days = max(days, 180)
+        universe_size = max(symbols, 90)
+        universe = BROAD_UNIVERSE[:universe_size]
         headers = {"APCA-API-KEY-ID": key, "APCA-API-SECRET-KEY": secret}
-        universe = DEFAULT_UNIVERSE[:effective_symbols]
+
+        all_raw_events = []
         errors = []
-        semaphore = asyncio.Semaphore(6)
+        async with httpx.AsyncClient(timeout=40) as client:
+            for symbol in universe:
+                try:
+                    sdays, err = await _fetch_symbol_days(client, symbol, headers, feed, calendar_days)
+                    if err:
+                        errors.append(err)
+                        continue
+                    all_raw_events.extend(_build_symbol_events(symbol, sdays))
+                except Exception as exc:
+                    errors.append(f"{symbol}: {exc}")
 
-        async with httpx.AsyncClient(timeout=45) as client:
-            async def one(symbol):
-                async with semaphore:
-                    try:
-                        sdays, err = await _fetch_symbol_days(client, symbol, headers, feed, effective_days)
-                        return symbol, sdays, err
-                    except Exception as exc:
-                        return symbol, [], f"{symbol}: {exc}"
-            results = await asyncio.gather(*(one(s) for s in universe))
+        if len(all_raw_events) < 200:
+            raise HTTPException(503, f"אין מספיק נתונים גולמיים לאימות אמין כרגע ({len(all_raw_events)}). שגיאות מקור: {len(errors)}")
 
-        all_events = []
-        for symbol, sdays, err in results:
-            if err:
-                errors.append(err)
-                continue
-            all_events.extend(_build_events(symbol, sdays))
-
-        if len(all_events) < 120:
-            raise HTTPException(503, f"אין מספיק דגימות לאימות אמין כרגע ({len(all_events)}).")
+        all_events, daily_stats = _select_daily_universe(all_raw_events, top_per_day=12, controls_per_day=8)
+        if len(all_events) < 150:
+            raise HTTPException(503, f"נבנה מדגם מועמדים קטן מדי ({len(all_events)}). נסה שוב לאחר בדיקת מקור הנתונים.")
 
         all_events.sort(key=lambda e: (e["date"], e["symbol"]))
         unique_dates = sorted({e["date"] for e in all_events})
@@ -308,32 +353,26 @@ def install_strategy_validation(app):
         test = [e for e in all_events if e["date"] >= split_date]
         chosen = _choose_model(train)
         test_metrics = _metrics(test, chosen["model"], chosen["threshold"])
-        baseline_5 = round(100 * sum(e["hit_5pct"] for e in test) / len(test), 2) if test else None
-        baseline_3 = round(100 * sum(e["hit_3pct"] for e in test) / len(test), 2) if test else None
-        lift = round(test_metrics["hit_rate_pct"] / baseline_5, 2) if baseline_5 and test_metrics["hit_rate_pct"] is not None else None
-        top_test = sorted(test, key=lambda e: e["scores"][chosen["model"]], reverse=True)[:30]
 
-        verdict = "insufficient_edge"
-        if test_metrics["signals"] >= 20 and test_metrics["expectancy_tp3_sl3_pct"] is not None:
-            if test_metrics["expectancy_tp3_sl3_pct"] > 0.20 and (lift or 0) >= 1.15:
-                verdict = "promising"
-            if test_metrics["expectancy_tp3_sl3_pct"] > 0.45 and (lift or 0) >= 1.30 and test_metrics["signals"] >= 35:
-                verdict = "validated_edge"
+        baseline_hit_5 = round(100 * sum(e["hit_5pct"] for e in test) / len(test), 2) if test else None
+        baseline_hit_3 = round(100 * sum(e["hit_3pct"] for e in test) / len(test), 2) if test else None
+        lift = round(test_metrics["hit_rate_pct"] / baseline_hit_5, 2) if baseline_hit_5 and test_metrics["hit_rate_pct"] is not None else None
+        lift3 = round(test_metrics["hit_rate_3pct"] / baseline_hit_3, 2) if baseline_hit_3 and test_metrics["hit_rate_3pct"] is not None else None
+        top_test = sorted(test, key=lambda e: e["scores"][chosen["model"]], reverse=True)[:30]
 
         return {
             "ok": True,
-            "method": "walk-forward holdout",
+            "method": "historical daily-candidate walk-forward holdout",
             "cutoff_ny": "10:00",
             "feed": feed,
-            "days_requested": days,
-            "days_effective": effective_days,
-            "symbols_requested": symbols,
-            "symbols_effective": len(universe),
+            "days_requested": calendar_days,
             "symbols_tested": universe,
+            "universe_size": len(universe),
+            "raw_events": len(all_raw_events),
+            "daily_candidate_days": len(daily_stats),
             "samples": {"total": len(all_events), "train": len(train), "test": len(test), "split_date": split_date},
-            "baseline_test_hit_rate_pct": baseline_5,
-            "baseline_test_hit_3pct": baseline_3,
-            "verdict": verdict,
+            "baseline_test_hit_rate_pct": baseline_hit_5,
+            "baseline_test_hit_rate_3pct": baseline_hit_3,
             "selected": {
                 "model": chosen["model"],
                 "threshold": chosen["threshold"],
@@ -341,15 +380,17 @@ def install_strategy_validation(app):
                 "train": chosen["train"],
                 "test": test_metrics,
                 "lift_vs_baseline": lift,
+                "lift3_vs_baseline": lift3,
             },
             "score_buckets_test": _buckets(test, chosen["model"]),
             "top_test_signals": top_test,
-            "errors": errors[:20],
+            "errors": errors[:30],
+            "error_count": len(errors),
             "limitations": [
-                "האימות משתמש רק במידע שוק שהיה זמין עד 10:00 ניו יורק; אין look-ahead בתכונות.",
-                "חדשות היסטוריות אינן נכנסות לכיול הזה ולכן שכבת הקטליזטור נשארת גורם אישור נפרד.",
-                "IEX הוא feed חלקי לעומת SIP; RVOL יחסי שימושי יותר מנפח מוחלט.",
-                "Expectancy מחושב על סימולציה פשוטה של יעד 2%/3%/5% מול Stop של 3%, ללא עמלות ו-slippage.",
-                "כאשר יעד ו-Stop נוגעים באותו נר 15 דקות, החישוב מניח Stop קודם באופן שמרני.",
+                "המועמדים לכל יום נבחרים רק מנתוני טרום/פתיחת המסחר עד 10:00 ניו יורק; אין שימוש בתשואת העתיד בבחירת המועמד.",
+                "היקום ההיסטורי רחב יותר מבעבר אך עדיין אינו כל שוק המניות האמריקאי, ולכן זו הפחתה של selection bias ולא ביטול מלא שלו.",
+                "חדשות היסטוריות אינן נכנסות לכיול ולכן קטליזטור חדשותי נשאר שכבת אישור נפרדת.",
+                "IEX הוא feed חלקי לעומת SIP; RVOL מחושב יחסית לאותה מניה ולכן שימושי יותר מנפח מוחלט.",
+                "סימולציית target/stop על נרות 15 דקות שמרנית: אם target ו-stop נגעו באותו נר, היא סופרת stop.",
             ],
         }
