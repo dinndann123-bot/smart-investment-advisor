@@ -3,6 +3,7 @@
 1) Preserve the sequential 50-scenario research bootstrap.
 2) Inject the Hebrew-first UX layer into the existing index page even when Render
    starts the service with `uvicorn app:app`.
+3) Never let the external OCR library block the first paint of the PWA.
 """
 import json
 import os
@@ -13,7 +14,7 @@ import urllib.request
 from pathlib import Path
 
 
-# ---------- Hebrew-first presentation hook ----------
+# ---------- Presentation + startup safety hook ----------
 try:
     import fastapi.responses as _responses
     from fastapi.responses import HTMLResponse
@@ -24,25 +25,41 @@ try:
         p = Path(path)
         if p.name == "index.html" and p.parent.name == "static" and p.exists():
             html = p.read_text(encoding="utf-8")
-            css = '<link rel="stylesheet" href="/static/hebrew_ux_v3.css?v=3">'
-            js = '<script src="/static/hebrew_ux_v3.js?v=3" defer></script>'
-            if css not in html:
-                html = html.replace("</head>", css + "\n</head>", 1)
-            if js not in html:
-                html = html.replace("</body>", js + "\n</body>", 1)
-            headers = kwargs.pop("headers", None)
+
+            # The OCR bundle used to be parser-blocking in <head>. On Android PWA
+            # this can leave the native splash screen visible indefinitely when
+            # the CDN is slow or unavailable. Load it asynchronously instead.
+            html = html.replace(
+                '<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>',
+                '<script async src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>',
+                1,
+            )
+
+            css = '<link rel="stylesheet" href="/static/hebrew_ux_v3.css?v=18">'
+            ui_css = '<link rel="stylesheet" href="/static/ui-v2.css?v=18">'
+            js = '<script src="/static/hebrew_ux_v3.js?v=18" defer></script>'
+            ui_js = '<script src="/static/ui-v2.js?v=18" defer></script>'
+            for tag in (css, ui_css):
+                if tag not in html:
+                    html = html.replace("</head>", tag + "\n</head>", 1)
+            for tag in (js, ui_js):
+                if tag not in html:
+                    html = html.replace("</body>", tag + "\n</body>", 1)
+
+            headers = kwargs.pop("headers", None) or {}
+            headers = dict(headers)
+            headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
             status_code = kwargs.pop("status_code", 200)
             return HTMLResponse(content=html, status_code=status_code, headers=headers)
         return _OriginalFileResponse(path, *args, **kwargs)
 
     _responses.FileResponse = _enhanced_file_response
 except Exception as exc:
-    print("UX_V3_INSTALL_WARNING=" + repr(exc), flush=True)
+    print("UX_V18_INSTALL_WARNING=" + repr(exc), flush=True)
 
 
 # ---------- Historical research bootstrap ----------
 def _bootstrap():
-    # Wait until app.py has created the FastAPI instance.
     for _ in range(120):
         mod = sys.modules.get("app")
         app_obj = getattr(mod, "app", None) if mod else None
@@ -59,7 +76,8 @@ def _bootstrap():
         print("RESEARCH50_INSTALL_ERROR=app_not_found", flush=True)
         return
 
-    time.sleep(5)
+    # Research runs in a daemon thread after startup and must never block web startup.
+    time.sleep(8)
     port = os.getenv("PORT", "10000")
     url = f"http://127.0.0.1:{port}/api/strategy/long/research-50"
     try:
