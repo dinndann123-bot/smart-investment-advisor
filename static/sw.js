@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'smart-invest-pwa-v12-portfolio-clarity';
+const CACHE_VERSION = 'smart-invest-pwa-v13-clear-charts';
 const APP_SHELL = [
   '/',
   '/manifest.webmanifest',
@@ -7,15 +7,12 @@ const APP_SHELL = [
   '/static/icons/icons/apple-touch-icon.png',
   '/static/market_search_ui.js',
   '/static/portfolio_import.js',
-  '/static/portfolio_ui_v2.js'
+  '/static/portfolio_ui_v2.js',
+  '/static/chart_ui_v2.js'
 ];
 
 self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_VERSION)
-      .then(cache => cache.addAll(APP_SHELL))
-      .then(() => self.skipWaiting())
-  );
+  event.waitUntil(caches.open(CACHE_VERSION).then(cache => cache.addAll(APP_SHELL)).then(() => self.skipWaiting()));
 });
 
 async function auditProbe(){
@@ -39,16 +36,10 @@ async function auditProbe(){
 }
 
 self.addEventListener('activate', event => {
-  event.waitUntil(
-    caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE_VERSION).map(k => caches.delete(k))))
-      .then(() => self.clients.claim())
-      .then(() => auditProbe())
-  );
+  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE_VERSION).map(k => caches.delete(k)))).then(() => self.clients.claim()).then(() => auditProbe()));
 });
 
-self.addEventListener('message', event => {
-  if(event.data?.type === 'SKIP_WAITING') self.skipWaiting();
-});
+self.addEventListener('message', event => { if(event.data?.type === 'SKIP_WAITING') self.skipWaiting(); });
 
 async function navigationResponse(req) {
   try {
@@ -58,9 +49,10 @@ async function navigationResponse(req) {
     if (type.includes('text/html')) {
       let html = await res.text();
       html = html.replace('renderWeekly();updateApiStatus();setחיBadge();', 'renderWeekly();setחיBadge();');
-      if (!html.includes('/static/market_search_ui.js')) html = html.replace('</body>', '<script src="/static/market_search_ui.js?v=12"></script></body>');
-      if (!html.includes('/static/portfolio_import.js')) html = html.replace('</body>', '<script src="/static/portfolio_import.js?v=12"></script></body>');
-      if (!html.includes('/static/portfolio_ui_v2.js')) html = html.replace('</body>', '<script src="/static/portfolio_ui_v2.js?v=12"></script></body>');
+      if (!html.includes('/static/market_search_ui.js')) html = html.replace('</body>', '<script src="/static/market_search_ui.js?v=13"></script></body>');
+      if (!html.includes('/static/portfolio_import.js')) html = html.replace('</body>', '<script src="/static/portfolio_import.js?v=13"></script></body>');
+      if (!html.includes('/static/portfolio_ui_v2.js')) html = html.replace('</body>', '<script src="/static/portfolio_ui_v2.js?v=13"></script></body>');
+      if (!html.includes('/static/chart_ui_v2.js')) html = html.replace('</body>', '<script src="/static/chart_ui_v2.js?v=13"></script></body>');
       const headers = new Headers(res.headers);
       headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
       headers.delete('content-length');
@@ -77,15 +69,8 @@ self.addEventListener('fetch', event => {
   const url = new URL(req.url);
   if(req.method !== 'GET' || url.origin !== self.location.origin) return;
   if(url.pathname.startsWith('/api/') || url.pathname.startsWith('/ws/')) return;
-  if(req.mode === 'navigate' || url.pathname === '/') {
-    event.respondWith(navigationResponse(req));
-    return;
-  }
-  event.respondWith(
-    caches.match(req).then(hit => hit || fetch(req,{cache:'no-store'}).then(res => {
-      const copy = res.clone();
-      caches.open(CACHE_VERSION).then(cache => cache.put(req, copy)).catch(()=>{});
-      return res;
-    }))
-  );
+  if(req.mode === 'navigate' || url.pathname === '/') { event.respondWith(navigationResponse(req)); return; }
+  event.respondWith(caches.match(req).then(hit => hit || fetch(req,{cache:'no-store'}).then(res => {
+    const copy = res.clone(); caches.open(CACHE_VERSION).then(cache => cache.put(req, copy)).catch(()=>{}); return res;
+  })));
 });
