@@ -1,8 +1,23 @@
-const CACHE_VERSION = 'smart-invest-pwa-v17-hebrew-news';
-const APP_SHELL = ['/', '/manifest.webmanifest','/static/icons/icons/icon-192.png','/static/icons/icons/icon-512.png','/static/icons/icons/apple-touch-icon.png','/static/market_search_ui.js','/static/portfolio_import.js','/static/portfolio_ui_v2.js','/static/chart_ui_v2.js','/static/success_rate_ui.js','/static/hebrew_ux_v3.css','/static/hebrew_ux_v3.js','/static/ui-v2.css','/static/ui-v2.js'];
-self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE_VERSION).then(c=>c.addAll(APP_SHELL)).then(()=>self.skipWaiting())));
-self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE_VERSION).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
-self.addEventListener('message',e=>{if(e.data?.type==='SKIP_WAITING')self.skipWaiting()});
-function injectUx(html){if(!html.includes('/static/hebrew_ux_v3.css'))html=html.replace('</head>','<link rel="stylesheet" href="/static/hebrew_ux_v3.css?v=17">\n</head>');if(!html.includes('/static/ui-v2.css'))html=html.replace('</head>','<link rel="stylesheet" href="/static/ui-v2.css?v=17">\n</head>');if(!html.includes('/static/hebrew_ux_v3.js'))html=html.replace('</body>','<script src="/static/hebrew_ux_v3.js?v=17" defer></script>\n</body>');if(!html.includes('/static/ui-v2.js'))html=html.replace('</body>','<script src="/static/ui-v2.js?v=17" defer></script>\n</body>');return html;}
-async function navigationResponse(req){try{const res=await fetch(req,{cache:'no-store'});if(!res.ok)return res;const type=res.headers.get('content-type')||'';if(type.includes('text/html')){let html=injectUx(await res.text());const h=new Headers(res.headers);h.set('Cache-Control','no-cache, no-store, must-revalidate');h.delete('content-length');return new Response(html,{status:res.status,statusText:res.statusText,headers:h})}return res}catch(e){const cached=await caches.match('/');if(cached)return new Response(injectUx(await cached.text()),{status:200,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-cache, no-store, must-revalidate'}});return new Response('Offline',{status:503})}}
-self.addEventListener('fetch',e=>{const req=e.request,url=new URL(req.url);if(req.method!=='GET'||url.origin!==self.location.origin)return;if(url.pathname.startsWith('/api/')||url.pathname.startsWith('/ws/'))return;if(req.mode==='navigate'||url.pathname==='/'){e.respondWith(navigationResponse(req));return}e.respondWith(caches.match(req).then(hit=>hit||fetch(req,{cache:'no-store'}).then(res=>{const copy=res.clone();caches.open(CACHE_VERSION).then(c=>c.put(req,copy)).catch(()=>{});return res}))) });
+// V22 stability kill-switch Service Worker.
+// The previous worker modified navigation HTML and injected multiple UX scripts.
+// For production stabilization we deliberately remove all caches and unregister.
+self.addEventListener('install', event => {
+  event.waitUntil(self.skipWaiting());
+});
+
+self.addEventListener('activate', event => {
+  event.waitUntil((async () => {
+    try {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(key => caches.delete(key)));
+      await self.registration.unregister();
+      const clients = await self.clients.matchAll({type: 'window', includeUncontrolled: true});
+      for (const client of clients) {
+        try { client.postMessage({type: 'V22_SW_REMOVED'}); } catch (_) {}
+      }
+    } catch (_) {}
+  })());
+});
+
+// Intentionally no fetch handler. Network requests and navigation go directly
+// to FastAPI/browser networking and cannot be rewritten by this worker.
