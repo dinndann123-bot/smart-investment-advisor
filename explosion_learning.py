@@ -1,3 +1,4 @@
+import asyncio
 import math
 import os
 import statistics
@@ -7,6 +8,8 @@ from zoneinfo import ZoneInfo
 
 import httpx
 from fastapi import HTTPException, Query
+
+from runtime_fixes import install_runtime_fixes
 
 NY = ZoneInfo("America/New_York")
 
@@ -22,6 +25,9 @@ UNIVERSE = [
     "GME","AMC","KOSS","BB","WULF","CLSK","IREN","CIFR","HUT","BITF",
     "BTDR","CORZ","MSTR","XYZ","RKT","LMND","ROOT","WBD","PARA","OXY"
 ]
+
+_CACHE = {}
+_CACHE_TTL_SECONDS = 600
 
 
 def _safe_mean(xs):
@@ -101,8 +107,6 @@ FEATURES=("gap_pct","move_to_1000_pct","rvol","strength","volume_accel","early_r
 
 
 def _fit(train):
-    # Learn robust feature centers/scales and how strongly each feature separates
-    # +10% explosions from non-explosions. Holdout is never used here.
     model={}
     pos=[e for e in train if e["hit10"]]
     neg=[e for e in train if not e["hit10"]]
@@ -154,22 +158,49 @@ def _bucket(test):
 
 
 def install_explosion_learning(app):
+    install_runtime_fixes(app)
+
     @app.get("/api/strategy/explosions")
     async def explosion_learning(days:int=Query(180,ge=120,le=365),symbols:int=Query(90,ge=50,le=len(UNIVERSE))):
         key=os.getenv("ALPACA_API_KEY","").strip(); secret=os.getenv("ALPACA_SECRET_KEY","").strip()
         feed=os.getenv("ALPACA_FEED","iex").strip().lower() or "iex"
         if not key or not secret: raise HTTPException(503,"Alpaca לא מוגדר")
         if feed not in {"iex","sip","delayed_sip"}: feed="iex"
+
+        symbol_count=max(50,min(symbols,len(UNIVERSE)))
+        cache_key=(max(180,days),symbol_count,feed)
+        cached=_CACHE.get(cache_key)
+        if cached:
+            age=(datetime.now(timezone.utc)-cached["at"]).total_seconds()
+            if age <= _CACHE_TTL_SECONDS:
+                out=dict(cached["value"])
+                out["cached"]=True
+                out["cache_age_seconds"]=round(age,1)
+                return out
+
         headers={"APCA-API-KEY-ID":key,"APCA-API-SECRET-KEY":secret}
-        universe=UNIVERSE[:max(90,symbols)]
+        universe=UNIVERSE[:symbol_count]
         raw=[]; errors=[]
-        async with httpx.AsyncClient(timeout=40) as client:
-            for symbol in universe:
-                try:
-                    ds,err=await _fetch(client,symbol,headers,feed,max(180,days))
-                    if err: errors.append(err); continue
-                    raw.extend(_events(symbol,ds))
-                except Exception as exc: errors.append(f"{symbol}: {exc}")
+        sem=asyncio.Semaphore(8)
+
+        async with httpx.AsyncClient(timeout=45) as client:
+            async def one(symbol):
+                async with sem:
+                    try:
+                        ds,err=await _fetch(client,symbol,headers,feed,max(180,days))
+                        if err:
+                            return [], err
+                        return _events(symbol,ds), None
+                    except Exception as exc:
+                        return [], f"{symbol}: {exc}"
+
+            results=await asyncio.gather(*[one(symbol) for symbol in universe])
+
+        for events,err in results:
+            if err:
+                errors.append(err)
+            raw.extend(events)
+
         eligible=[e for e in raw if e["price"]>=1 and e["est_daily_volume"]>=100000]
         dates=sorted({e["date"] for e in eligible})
         if len(eligible)<300 or len(dates)<30: raise HTTPException(503,f"אין מספיק היסטוריה ללימוד ({len(eligible)} אירועים)")
@@ -182,4 +213,6 @@ def install_explosion_learning(app):
         feature_importance=sorted([{"feature":f,"weight_pct":round(m["weight"]*100,1),"exploders_mean":m["positive_mean"],"others_mean":m["negative_mean"],"direction":"higher" if m["direction"]>0 else "lower"} for f,m in model.items()],key=lambda x:x["weight_pct"],reverse=True)
         biggest=sorted(test,key=lambda e:e["max_up_pct"],reverse=True)[:25]
         strongest=sorted(test,key=lambda e:e["explosion_score"],reverse=True)[:25]
-        return {"ok":True,"method":"explosion-pattern chronological holdout","cutoff_ny":"10:00","feed":feed,"split_date":split,"samples":{"total":len(eligible),"train":len(train),"test":len(test)},"baseline_test":_summary(test),"color_buckets_test":_bucket(test),"feature_importance_train_only":feature_importance,"largest_holdout_explosions":biggest,"strongest_holdout_signals":strongest,"error_count":len(errors),"errors":errors[:20],"limitations":["המודל לומד רק מידע שהיה זמין עד 10:00 ניו יורק.","המשקולות נלמדות מתקופת train בלבד; holdout משמש לבדיקה בלבד.","היקום עדיין קבוע ואינו כל השוק האמריקאי.","חדשות, float ו-short interest עדיין אינם כלולים ולכן יתווספו כשכבות נפרדות.","צבע הוא דמיון היסטורי לדפוסי התפוצצות ולא הבטחה לרווח."]}
+        out={"ok":True,"method":"explosion-pattern chronological holdout","cutoff_ny":"10:00","feed":feed,"split_date":split,"samples":{"total":len(eligible),"train":len(train),"test":len(test)},"baseline_test":_summary(test),"color_buckets_test":_bucket(test),"feature_importance_train_only":feature_importance,"largest_holdout_explosions":biggest,"strongest_holdout_signals":strongest,"error_count":len(errors),"errors":errors[:20],"cached":False,"limitations":["המודל לומד רק מידע שהיה זמין עד 10:00 ניו יורק.","המשקולות נלמדות מתקופת train בלבד; holdout משמש לבדיקה בלבד.","היקום עדיין קבוע ואינו כל השוק האמריקאי.","חדשות, float ו-short interest עדיין אינם כלולים ולכן יתווספו כשכבות נפרדות.","ב-Feed מסוג IEX הנתונים אינם מייצגים את כל עסקאות השוק המאוחד; SIP מדויק יותר כאשר זמין.","צבע הוא דמיון היסטורי לדפוסי התפוצצות ולא הבטחה לרווח."]}
+        _CACHE[cache_key]={"at":datetime.now(timezone.utc),"value":out}
+        return out
