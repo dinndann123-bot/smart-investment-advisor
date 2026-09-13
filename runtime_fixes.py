@@ -1,29 +1,45 @@
 import asyncio
 import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 import httpx
 from fastapi.responses import Response
 
 
-RUNTIME_FIX_VERSION = "2026.09.13-r4-app-module"
+RUNTIME_FIX_VERSION = "2026.09.13-r5-research50"
+
+
+def _research_dates():
+    out=[]; y=2021; m=7
+    for _ in range(50):
+        nxt=datetime(y+1,1,1) if m==12 else datetime(y,m+1,1)
+        out.append((nxt-timedelta(days=1)).date().isoformat())
+        m+=1
+        if m==13: y+=1; m=1
+    return out
 
 
 def install_runtime_fixes(app):
-    """Patch live-tracking bugs and add lightweight runtime health checks."""
     import sys
 
     if getattr(app.state, "runtime_fixes_installed", False):
         return
     app.state.runtime_fixes_installed = True
 
-    # FastAPI instances report fastapi.applications as their class module. Strategy
-    # plug-ins need the actual application module for API keys/helpers.
     app.__module__ = "app"
     mod = sys.modules.get("app") or sys.modules.get(app.__module__)
     if mod is None:
         return
+
+    # Research endpoint is installed here because runtime_fixes is guaranteed to
+    # be loaded by the app. Use 50 fully-covered monthly scenarios.
+    try:
+        import research_50
+        research_50.SCENARIOS = _research_dates()
+        research_50.install_research_50(app)
+    except Exception as exc:
+        print("RESEARCH50_INSTALL_ERROR=" + repr(exc), flush=True)
 
     @app.head("/")
     async def root_head():
@@ -56,7 +72,7 @@ def install_runtime_fixes(app):
         port = os.getenv("PORT", "10000")
         base = f"http://127.0.0.1:{port}"
         try:
-            async with httpx.AsyncClient(timeout=240) as client:
+            async with httpx.AsyncClient(timeout=600) as client:
                 async def one(date):
                     r = await client.get(f"{base}/api/strategy/long/time-travel", params={"as_of": date, "top": 10})
                     r.raise_for_status()
@@ -81,6 +97,15 @@ def install_runtime_fixes(app):
                 if improved:
                     sep = await one("2022-09-30")
                     print("LONG_AUDIT_SEP2022=" + json.dumps(sep, separators=(",", ":")), flush=True)
+
+                rr = await client.get(f"{base}/api/strategy/long/research-50")
+                rr.raise_for_status()
+                research = rr.json()
+                for b in research.get("batches", []):
+                    compact={"batch":b.get("batch"),"dates":b.get("dates"),"preset_used":b.get("preset_used"),"summary":b.get("summary"),"lessons":b.get("lessons"),"next_preset":b.get("next_preset")}
+                    print("RESEARCH50V3_BATCH=" + json.dumps(compact, ensure_ascii=False, separators=(",", ":")), flush=True)
+                final={"date_range":research.get("date_range"),"overall":research.get("overall"),"final_preset":research.get("final_preset"),"method":research.get("method"),"limitations":research.get("limitations")}
+                print("RESEARCH50V3_FINAL=" + json.dumps(final, ensure_ascii=False, separators=(",", ":")), flush=True)
         except Exception as exc:
             print("LONG_AUDIT_ERROR=" + repr(exc), flush=True)
 
