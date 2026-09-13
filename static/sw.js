@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'smart-invest-pwa-v13-clear-charts';
+const CACHE_VERSION = 'smart-invest-pwa-v14-success-rates';
 const APP_SHELL = [
   '/',
   '/manifest.webmanifest',
@@ -8,7 +8,8 @@ const APP_SHELL = [
   '/static/market_search_ui.js',
   '/static/portfolio_import.js',
   '/static/portfolio_ui_v2.js',
-  '/static/chart_ui_v2.js'
+  '/static/chart_ui_v2.js',
+  '/static/success_rate_ui.js'
 ];
 
 self.addEventListener('install', event => {
@@ -49,10 +50,11 @@ async function navigationResponse(req) {
     if (type.includes('text/html')) {
       let html = await res.text();
       html = html.replace('renderWeekly();updateApiStatus();setחיBadge();', 'renderWeekly();setחיBadge();');
-      if (!html.includes('/static/market_search_ui.js')) html = html.replace('</body>', '<script src="/static/market_search_ui.js?v=13"></script></body>');
-      if (!html.includes('/static/portfolio_import.js')) html = html.replace('</body>', '<script src="/static/portfolio_import.js?v=13"></script></body>');
-      if (!html.includes('/static/portfolio_ui_v2.js')) html = html.replace('</body>', '<script src="/static/portfolio_ui_v2.js?v=13"></script></body>');
-      if (!html.includes('/static/chart_ui_v2.js')) html = html.replace('</body>', '<script src="/static/chart_ui_v2.js?v=13"></script></body>');
+      if (!html.includes('/static/market_search_ui.js')) html = html.replace('</body>', '<script src="/static/market_search_ui.js?v=14"></script></body>');
+      if (!html.includes('/static/portfolio_import.js')) html = html.replace('</body>', '<script src="/static/portfolio_import.js?v=14"></script></body>');
+      if (!html.includes('/static/portfolio_ui_v2.js')) html = html.replace('</body>', '<script src="/static/portfolio_ui_v2.js?v=14"></script></body>');
+      if (!html.includes('/static/chart_ui_v2.js')) html = html.replace('</body>', '<script src="/static/chart_ui_v2.js?v=14"></script></body>');
+      if (!html.includes('/static/success_rate_ui.js')) html = html.replace('</body>', '<script src="/static/success_rate_ui.js?v=14"></script></body>');
       const headers = new Headers(res.headers);
       headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
       headers.delete('content-length');
