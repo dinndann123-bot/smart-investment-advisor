@@ -1,53 +1,32 @@
 /* Smart Investment Advisor — Hebrew-first UX v3 */
 :root{
-  --ux-bg:#f3f6fb;--ux-card:#fff;--ux-ink:#101828;--ux-muted:#667085;--ux-line:#e5eaf2;
-  --ux-brand:#2446d8;--ux-brand-soft:#eef2ff;--ux-good:#087a55;--ux-warn:#9a6710;--ux-bad:#b53636;
-  --ux-shadow:0 8px 28px rgba(16,24,40,.07);--ux-shadow-hover:0 14px 34px rgba(16,24,40,.11)
+  --ux-bg:#eef3f9;--ux-card:#fff;--ux-ink:#0f172a;--ux-muted:#667085;--ux-line:#e1e7f0;
+  --ux-brand:#2145d8;--ux-brand2:#6d5ce7;--ux-brand-soft:#eef2ff;--ux-good:#087a55;--ux-warn:#9a6710;--ux-bad:#b53636;
+  --ux-shadow:0 10px 30px rgba(15,23,42,.08);--ux-shadow-hover:0 18px 42px rgba(15,23,42,.13)
 }
-body{background:var(--ux-bg);color:var(--ux-ink)}
-.hero{background:linear-gradient(135deg,#111a38 0%,#1e347f 56%,#4d43b8 100%);padding-top:24px;padding-bottom:19px}
-.hero h1{font-size:clamp(27px,4vw,38px);letter-spacing:-.7px}
-.hero p{max-width:760px;line-height:1.6}
+body{background:radial-gradient(circle at 85% -10%,#e6eaff 0,transparent 30%),var(--ux-bg);color:var(--ux-ink)}
+.hero{background:linear-gradient(132deg,#0b1430 0%,#1d347c 55%,#5948c7 100%);padding-top:28px;padding-bottom:22px;box-shadow:0 14px 36px rgba(12,24,63,.18)}
+.hero h1{font-size:clamp(29px,4.2vw,40px);letter-spacing:-.9px}.hero p{max-width:760px;line-height:1.65}
 .card,.clockitem,.table-wrap,.modal-card{box-shadow:var(--ux-shadow);border-color:var(--ux-line)}
-.card{transition:box-shadow .18s ease,border-color .18s ease,transform .18s ease}
-@media(hover:hover){.card:hover{box-shadow:var(--ux-shadow-hover);border-color:#d9e0ec}}
-.section-head h2{letter-spacing:-.25px}
-.metric b{letter-spacing:-.35px}
-.nav button{transition:.16s ease}.nav button.active{box-shadow:0 6px 18px rgba(49,91,234,.22)}
+.card{transition:box-shadow .18s ease,border-color .18s ease,transform .18s ease;border-radius:20px}
+@media(hover:hover){.card:hover{box-shadow:var(--ux-shadow-hover);border-color:#d4dceb;transform:translateY(-1px)}}
+.section-head h2{letter-spacing:-.35px}.metric b{letter-spacing:-.45px}.nav button{transition:.16s ease}.nav button.active{box-shadow:0 7px 20px rgba(49,91,234,.23)}
+.score{background:#f7f9ff;border:1px solid #dfe5fb;padding:5px 8px;border-radius:999px;white-space:nowrap}.score::before{content:'ציון שיטה ';font-size:10px;font-weight:700;color:#77829a}.positive,.negative{font-variant-numeric:tabular-nums}
 
-/* Clear distinction between method score and real price movement */
-.score{background:#f7f9ff;border:1px solid #dfe5fb;padding:5px 8px;border-radius:999px;white-space:nowrap}
-.score::before{content:'ציון שיטה ';font-size:10px;font-weight:700;color:#77829a}
-.positive,.negative{font-variant-numeric:tabular-nums}
+/* Major research dashboard */
+.ux-research-panel{margin-top:18px;padding:20px;background:linear-gradient(180deg,#fff 0,#f9fbff 100%);border:1px solid #dbe3f5;overflow:hidden;position:relative}
+.ux-research-panel::after{content:'';position:absolute;inset-inline-end:-90px;top:-120px;width:260px;height:260px;border-radius:50%;background:radial-gradient(circle,rgba(92,79,213,.12),transparent 68%);pointer-events:none}
+.ux-research-hero{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.ux-research-hero h2{margin:3px 0 5px;font-size:26px}.ux-research-hero p{margin:0;color:var(--ux-muted);font-size:13px;line-height:1.65;max-width:760px}.ux-eyebrow{display:block;font-size:10px;font-weight:900;letter-spacing:.5px;color:#4d5fb8;text-transform:uppercase}
+.ux-research-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:16px}.ux-research-card{border:1px solid var(--ux-line);border-radius:16px;background:#fff;padding:15px;min-height:104px;position:relative;overflow:hidden}.ux-research-card::before{content:'';position:absolute;inset-inline-start:0;top:0;bottom:0;width:4px;background:linear-gradient(180deg,var(--ux-brand),var(--ux-brand2))}.ux-research-card b{display:block;font-size:23px;margin:6px 0}.ux-research-card span{font-size:11px;color:var(--ux-muted);font-weight:700}
+.ux-progress{height:9px;background:#edf0f5;border-radius:999px;overflow:hidden;margin-top:8px}.ux-progress>i{display:block;height:100%;background:linear-gradient(90deg,#2446d8,#6b5ce7);border-radius:inherit}.ux-pill{display:inline-flex;align-items:center;gap:5px;padding:7px 11px;border-radius:999px;background:#eef2ff;color:#3448a3;font-size:11px;font-weight:900;border:1px solid #dbe3ff}.ux-tip{margin-top:12px;padding:11px 13px;border-radius:13px;background:#f8faff;border:1px solid #e0e6f7;color:#526079;font-size:12px;line-height:1.65}.ux-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.ux-actions .btn{min-height:40px}
 
-/* Hebrew research dashboard */
-.ux-research-panel{margin-top:16px;background:linear-gradient(180deg,#fff,#fbfcff)}
-.ux-research-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:12px}
-.ux-research-card{border:1px solid var(--ux-line);border-radius:15px;background:#fff;padding:13px;min-height:96px}
-.ux-research-card b{display:block;font-size:20px;margin:5px 0}.ux-research-card span{font-size:11px;color:var(--ux-muted)}
-.ux-progress{height:9px;background:#edf0f5;border-radius:999px;overflow:hidden;margin-top:8px}.ux-progress>i{display:block;height:100%;background:linear-gradient(90deg,#2446d8,#6b5ce7);border-radius:inherit}
-.ux-pill{display:inline-flex;align-items:center;gap:5px;padding:5px 8px;border-radius:999px;background:#eef2ff;color:#3448a3;font-size:11px;font-weight:800}
-.ux-tip{margin-top:10px;padding:10px 12px;border-radius:12px;background:#f8faff;border:1px solid #e0e6f7;color:#526079;font-size:12px;line-height:1.6}
-.ux-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.ux-actions .btn{min-height:40px}
+/* Learning curve */
+.ux-learning-chart-card{margin-top:14px;padding:16px;border-radius:18px;border:1px solid #dfe5ef;background:#fff;box-shadow:0 8px 22px rgba(15,23,42,.04)}
+.ux-chart-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:8px}.ux-chart-head h3{margin:3px 0 4px;font-size:21px}.ux-chart-head p{margin:0;color:var(--ux-muted);font-size:11px;line-height:1.55;max-width:690px}.ux-legend{display:flex;gap:10px;flex-wrap:wrap;font-size:10px;color:#606b80;white-space:nowrap}.ux-legend span{display:flex;align-items:center;gap:5px}.ux-legend i{width:18px;height:3px;border-radius:99px;display:inline-block}.ux-legend .m1{background:#315bea}.ux-legend .y1{background:#0b8b63}.ux-legend .goal{height:0;border-top:2px dashed #c58a18;background:none}
+.ux-learning-chart{width:100%;min-height:300px;border-radius:14px;background:linear-gradient(180deg,#fbfcff,#f7f9fd);border:1px solid #edf0f6;overflow:hidden}.ux-learning-chart svg{display:block;width:100%;height:auto;min-height:300px}.ux-grid-lines line{stroke:#e6ebf2;stroke-width:1}.ux-grid-lines text,.ux-x-labels text{fill:#7a8598;font-size:11px}.ux-x-labels .axis-title{font-size:9px;fill:#96a0b1}.ux-line{fill:none;stroke-width:3.5;stroke-linecap:round;stroke-linejoin:round}.ux-line-m1{stroke:#315bea}.ux-line-y1{stroke:#0b8b63}.ux-dot{stroke:#fff;stroke-width:2}.ux-dot-m1{fill:#315bea}.ux-dot-y1{fill:#0b8b63}.ux-goal-line{stroke:#c58a18;stroke-width:2;stroke-dasharray:7 7}.ux-chart-loading,.ux-chart-error{min-height:300px;display:grid;place-items:center;text-align:center;color:var(--ux-muted);padding:28px}.ux-chart-error{color:#8f5c0a;background:#fffaf0}.ux-learning-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}.ux-learning-summary>div{background:#f8faff;border:1px solid #e5eaf4;border-radius:13px;padding:10px 12px}.ux-learning-summary span,.ux-learning-summary small{display:block;color:var(--ux-muted);font-size:10px}.ux-learning-summary b{display:block;font-size:18px;margin:3px 0}
 
 /* Chart loading and error states */
-.detail-section[id*=Chart],#portfolioChartWrap,.chart-wrap{position:relative}
-.ux-chart-state{display:none;position:absolute;inset:52px 12px 12px;z-index:3;place-items:center;text-align:center;border-radius:14px;background:rgba(251,252,255,.93);backdrop-filter:blur(3px);color:var(--ux-muted);font-size:13px;padding:20px}
-.ux-chart-state.show{display:grid}.ux-chart-state b{display:block;color:var(--ux-ink);font-size:15px;margin-bottom:5px}
-
-/* Image import */
-.upload{min-height:112px;display:grid;place-items:center;border-color:#9fb0e9;background:linear-gradient(180deg,#fafbff,#f4f7ff);transition:.18s ease}
-.upload:hover{border-color:#657bd8;background:#f2f5ff}.upload::before{content:'📷';display:block;font-size:26px;margin-bottom:6px}
-.ux-image-preview{display:none;margin:10px auto 0;max-width:100%;max-height:230px;border-radius:14px;border:1px solid var(--ux-line);object-fit:contain;background:#fff}.ux-image-preview.show{display:block}
-.ux-ocr-steps{display:flex;gap:7px;flex-wrap:wrap;margin:10px 0}.ux-step{font-size:11px;padding:5px 8px;border-radius:999px;background:#f1f4f8;color:#637083}.ux-step.on{background:#eaf8f2;color:#087a55;font-weight:800}
-
-/* Explain technical terms without removing professional notation */
-.ux-term{display:inline-flex;align-items:center;gap:4px}.ux-help{width:17px;height:17px;border:0;border-radius:50%;background:#edf1f8;color:#56627a;font-size:11px;display:inline-grid;place-items:center;cursor:help;padding:0;min-height:auto}
-
-@media(max-width:900px){.ux-research-grid{grid-template-columns:1fr 1fr}}
-@media(max-width:560px){
-  .hero-actions .btn{padding:9px 11px}.section-head{align-items:flex-start}.ux-research-grid{grid-template-columns:1fr 1fr}
-  .ux-research-card{min-height:88px;padding:11px}.ux-research-card b{font-size:18px}
-  .table-wrap{border-radius:14px}.modal-card{border-radius:18px;padding:14px}
-  .score::before{display:block;margin-inline-end:2px}.score{align-items:center}
-}
+.detail-section[id*=Chart],#portfolioChartWrap,.chart-wrap{position:relative}.ux-chart-state{display:none;position:absolute;inset:52px 12px 12px;z-index:3;place-items:center;text-align:center;border-radius:14px;background:rgba(251,252,255,.93);backdrop-filter:blur(3px);color:var(--ux-muted);font-size:13px;padding:20px}.ux-chart-state.show{display:grid}.ux-chart-state b{display:block;color:var(--ux-ink);font-size:15px;margin-bottom:5px}
+.upload{min-height:112px;display:grid;place-items:center;border-color:#9fb0e9;background:linear-gradient(180deg,#fafbff,#f4f7ff);transition:.18s ease}.upload:hover{border-color:#657bd8;background:#f2f5ff}.upload::before{content:'📷';display:block;font-size:26px;margin-bottom:6px}.ux-image-preview{display:none;margin:10px auto 0;max-width:100%;max-height:230px;border-radius:14px;border:1px solid var(--ux-line);object-fit:contain;background:#fff}.ux-image-preview.show{display:block}.ux-ocr-steps{display:flex;gap:7px;flex-wrap:wrap;margin:10px 0}.ux-step{font-size:11px;padding:5px 8px;border-radius:999px;background:#f1f4f8;color:#637083}.ux-step.on{background:#eaf8f2;color:#087a55;font-weight:800}.ux-term{display:inline-flex;align-items:center;gap:4px}.ux-help{width:17px;height:17px;border:0;border-radius:50%;background:#edf1f8;color:#56627a;font-size:11px;display:inline-grid;place-items:center;cursor:help;padding:0;min-height:auto}
+@media(max-width:900px){.ux-research-grid{grid-template-columns:1fr 1fr}.ux-chart-head{display:grid}.ux-learning-summary{grid-template-columns:1fr 1fr 1fr}}
+@media(max-width:560px){.hero-actions .btn{padding:9px 11px}.section-head{align-items:flex-start}.ux-research-panel{padding:14px}.ux-research-hero{display:grid}.ux-research-hero h2{font-size:23px}.ux-research-grid{grid-template-columns:1fr 1fr;gap:8px}.ux-research-card{min-height:92px;padding:11px}.ux-research-card b{font-size:19px}.ux-learning-chart-card{padding:11px}.ux-learning-chart{min-height:250px}.ux-learning-chart svg{min-height:250px}.ux-learning-summary{grid-template-columns:1fr}.table-wrap{border-radius:14px}.modal-card{border-radius:18px;padding:14px}.score::before{display:block;margin-inline-end:2px}.score{align-items:center}}
