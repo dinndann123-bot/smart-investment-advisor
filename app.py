@@ -2349,3 +2349,8 @@ async def scanner_watchlist(symbols: str = "AAPL,NVDA,PLTR,RKLB,APP,TSSI,NVTS,CT
                 continue
     results.sort(key=lambda x: abs(x["change_pct"] or 0), reverse=True)
     return {"feed": ALPACA_FEED, "results": results}
+
+
+# STRATEGY_VALIDATION_V1
+from strategy_validation import install_strategy_validation
+install_strategy_validation(app)
