@@ -1,10 +1,11 @@
-const CACHE_VERSION = 'smart-invest-pwa-v6-clear-prediction-metrics';
+const CACHE_VERSION = 'smart-invest-pwa-v7-universal-market-search';
 const APP_SHELL = [
   '/',
   '/manifest.webmanifest',
   '/static/icons/icons/icon-192.png',
   '/static/icons/icons/icon-512.png',
-  '/static/icons/icons/apple-touch-icon.png'
+  '/static/icons/icons/apple-touch-icon.png',
+  '/static/market_search_ui.js'
 ];
 
 self.addEventListener('install', event => {
@@ -34,6 +35,9 @@ async function navigationResponse(req) {
     if (type.includes('text/html')) {
       let html = await res.text();
       html = html.replace('renderWeekly();updateApiStatus();setחיBadge();', 'renderWeekly();setחיBadge();');
+      if (!html.includes('/static/market_search_ui.js')) {
+        html = html.replace('</body>', '<script src="/static/market_search_ui.js?v=7"></script></body>');
+      }
       const headers = new Headers(res.headers);
       headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
       headers.delete('content-length');
