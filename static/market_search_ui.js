@@ -1,4 +1,4 @@
-// Universal market search UI v2
+// Universal market search UI v3
 (function(){
   let timer=null;
   let currentAsset=null;
@@ -63,7 +63,7 @@
     try{
       const r=await fetch('/api/strategy/long/validate?years=6',{cache:'no-store'});const j=await r.json();
       if(!r.ok)throw new Error(j.detail||'Backtest failed');
-      if(n)n.textContent=`הושלם: ${j.samples?.test||0} אירועי Holdout · הצלחת 3 חודשים ${j.test_3m?.success_pct??'—'}% · הצלחת 12 חודשים ${j.test_12m?.success_pct??'—'}%. פתח מחדש את המניה כדי לרענן את האחוזים שלה.`;
+      if(n)n.textContent=`הושלם: ${j.samples?.test||0} אירועי Holdout · הצלחת חודש ${j.test_1m?.success_pct??'—'}% · הצלחת שנה ${j.test_12m?.success_pct??'—'}%. פתח מחדש את המניה כדי לרענן את האחוזים שלה.`;
     }catch(e){if(n)n.textContent='ה-Backtest נכשל: '+e.message}finally{if(b)b.disabled=false}
   }
   async function loadAsset(symbol){
@@ -77,7 +77,7 @@
       const a=j.asset||{}, y=j.year||{}, dh=j.day_model?.historical_success||{}, lh=j.long_model?.historical_success||{};
       const dayScore=j.day_model?.score==null?'—':Math.round(j.day_model.score)+'/100';
       const longScore=j.long_model?.score==null?'—':Math.round(j.long_model.score)+'/100';
-      const m3=lh.three_month||{}, y1=lh.one_year||{};
+      const m1=lh.one_month||{}, y1=lh.one_year||{};
       const news=(j.news||[]).map(n=>`<div class="news"><b>${esc(n.title||'')}</b><span>${esc(n.source||'')} ${n.published_at?'· '+new Date(n.published_at).toLocaleString('he-IL'):''}</span></div>`).join('')||'<div class="empty">אין כרגע חדשות זמינות.</div>';
       panel.innerHTML=`
         <div class="detail-hero"><div><h2 style="margin:0">${esc(a.symbol)} · ${esc(a.name)}</h2><div class="small">${esc(a.type_he||'נייר ערך')} · ${esc(a.exchange||'')} · מקור נתונים ${esc(j.provider||'')}</div></div></div>
@@ -89,8 +89,8 @@
         </div>
         <div class="cards" style="margin-top:12px">
           <div class="card metric"><b>${longScore}</b><span>ציון מודל חודשי–שנתי</span></div>
-          <div class="card metric"><b>${successText(m3)}</b><span>הצלחת 3 חודשים · יעד Backtest: 8%+</span></div>
-          <div class="card metric"><b>${successText(y1)}</b><span>הצלחת 12 חודשים · יעד Backtest: 15%+</span></div>
+          <div class="card metric"><b>${successText(m1)}</b><span>הצלחת חודש · יעד Backtest: 4%+</span></div>
+          <div class="card metric"><b>${successText(y1)}</b><span>הצלחת שנה · יעד Backtest: 15%+</span></div>
           <div class="card metric"><b class="${Number(y.return_pct)>=0?'positive':'negative'}">${pct(y.return_pct)}</b><span>תשואת מחיר בפועל ב־12 חודשים</span></div>
         </div>
         <div class="card" style="margin-top:14px">
@@ -111,7 +111,7 @@
           <div class="card metric"><b>${j.long_model?.metrics?.volatility==null?'—':Number(j.long_model.metrics.volatility).toFixed(1)+'%'}</b><span>תנודתיות שנתית היסטורית</span></div>
         </div>
         <div class="home-grid" style="margin-top:14px">
-          <div class="card"><h3 style="margin-top:0">ניתוח השיטה</h3><p class="note"><b>יומי:</b> ${dayScore}; ${dh.pct==null?'אין מדגם מספיק לאחוז אמין.':`${Number(dh.pct).toFixed(1)}% הצלחה על ${dh.samples} מקרים.`}<br><b>חודשי–שנתי:</b> ${longScore}; 3 חודשים ${successText(m3)}, שנה ${successText(y1)}.</p><div class="plan-note"><b>קטליזטור/מידע תקשורתי אחרון:</b><br>${esc(j.catalyst||'לא נמצא קטליזטור חדשותי עדכני.')}</div><button id="runLongBacktestBtn" class="btn btn-secondary" onclick="window.__runLongBacktest()">הרץ/רענן Backtest חודשי–שנתי</button><div id="longBacktestNote" class="small" style="margin-top:7px">${m3.success_pct==null&&y1.success_pct==null?'עדיין אין מדגם Long שמור; אפשר להריץ את ה-Backtest מכאן.':'אחוזי Long מבוססים על Holdout כרונולוגי נפרד.'}</div></div>
+          <div class="card"><h3 style="margin-top:0">ניתוח השיטה</h3><p class="note"><b>יומי:</b> ${dayScore}; ${dh.pct==null?'אין מדגם מספיק לאחוז אמין.':`${Number(dh.pct).toFixed(1)}% הצלחה על ${dh.samples} מקרים.`}<br><b>חודשי–שנתי:</b> ${longScore}; חודש ${successText(m1)}, שנה ${successText(y1)}.</p><div class="plan-note"><b>קטליזטור/מידע תקשורתי אחרון:</b><br>${esc(j.catalyst||'לא נמצא קטליזטור חדשותי עדכני.')}</div><button id="runLongBacktestBtn" class="btn btn-secondary" onclick="window.__runLongBacktest()">הרץ/רענן Backtest חודשי–שנתי</button><div id="longBacktestNote" class="small" style="margin-top:7px">${m1.success_pct==null&&y1.success_pct==null?'עדיין אין מדגם Long שמור; אפשר להריץ את ה-Backtest מכאן.':'אחוזי Long מבוססים על Holdout כרונולוגי נפרד.'}</div></div>
           <div class="card"><h3 style="margin-top:0">חדשות אחרונות</h3><div class="news-list">${news}</div></div>
         </div>
         <div class="note" style="margin-top:10px">מחזור המסחר השנתי הוא אומדן של פעילות המסחר בנייר ואינו הכנסות החברה. ציון ואחוז הצלחה הם שני נתונים שונים. אחוזי ההצלחה הם היסטוריים בלבד ואינם הבטחה לתשואה עתידית.</div>`;
