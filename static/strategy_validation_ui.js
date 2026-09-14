@@ -1,4 +1,4 @@
-// Strategy validation dashboard v5 — production-safe
+// Strategy validation dashboard v6 — production-safe
 (function(){
   function pct(v){return v==null?'—':`${Number(v).toFixed(1)}%`}
   function errText(detail){
@@ -84,8 +84,6 @@
     const dscore=document.getElementById('dScore');if(dscore){const label=dscore.nextElementSibling;if(label)label.textContent='ציון התאמה לשיטה (לא אחוז הצלחה)';}
   }
 
-  // Scanner v13: rank the backend candidates instead of deleting the entire list
-  // when the opening-session RVOL/news gate is too strict.
   const previousRefresh=window.refreshDayScanner;
   if(typeof previousRefresh==='function'){
     window.refreshDayScanner=async function(manual=false){
@@ -119,63 +117,63 @@
   const previousRender=window.renderTables;
   if(typeof previousRender==='function')window.renderTables=function(){previousRender();enhancePredictionUI();};
 
-  // OCR v13: reject ordinary English/Hebrew text that happens to be a valid ticker.
-  // Only accept a candidate when it has portfolio-like numeric context, or when it
-  // already exists in the user's holdings and the screenshot is updating it.
-  const OCR_SKIP=new Set(['WWW','WEB','USD','TOTAL','PRICE','VALUE','NASDAQ','NYSE','ETF','BUY','SELL','AVG','COST','MARKET','LIMIT','DAY','GTC','PNL','GAIN','LOSS','PORTFOLIO','OPEN','CLOSE','HIGH','LOW','CHANGE','TODAY']);
-  function ocrNums(s){return [...String(s||'').matchAll(/-?\d+(?:[.,]\d+)?/g)].map(m=>Number(m[0].replace(',','.'))).filter(Number.isFinite)}
-  function portfolioContext(lines,idx,sym){
-    const existing=Array.isArray(window.holdings)&&window.holdings.some(h=>String(h.symbol||'').toUpperCase()===sym);
-    const chunk=lines.slice(Math.max(0,idx-1),Math.min(lines.length,idx+3)).join(' ');
-    const nums=ocrNums(chunk);
-    const financial=/[$₪%]|מחיר|כמות|יחידות|שווי|רווח|הפסד|ממוצע|קניה|קנייה|shares?|qty|price|value|cost/i.test(chunk);
-    return existing || (financial&&nums.length>=2);
+  // OCR v14 — tuned for Blink position detail screenshots.
+  const OCR_SKIP=new Set(['WWW','WEB','USD','TOTAL','PRICE','VALUE','NASDAQ','NYSE','ETF','BUY','SELL','AVG','COST','MARKET','LIMIT','DAY','GTC','PNL','GAIN','LOSS','PORTFOLIO','OPEN','CLOSE','HIGH','LOW','CHANGE','TODAY','QQ']);
+  const nval=s=>{const m=String(s||'').replace(/,/g,'.').match(/-?\d+(?:\.\d+)?/);return m?Number(m[0]):null};
+  function linesOf(text){return String(text||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean)}
+  function findLabeledNumber(lines,patterns){
+    for(let i=0;i<lines.length;i++){
+      if(!patterns.some(p=>p.test(lines[i])))continue;
+      const here=nval(lines[i]); if(Number.isFinite(here))return here;
+      for(let j=1;j<=2;j++){const x=nval(lines[i+j]);if(Number.isFinite(x))return x}
+    }
+    return null;
   }
-  async function ocrValidSymbol(sym){
-    if(!sym||sym.length>5||OCR_SKIP.has(sym))return false;
-    if(sym.length===1 && !(Array.isArray(window.holdings)&&window.holdings.some(h=>String(h.symbol||'').toUpperCase()===sym)))return false;
-    try{
-      const r=await fetch('/api/stock/'+encodeURIComponent(sym)+'/bundle?range=1M',{cache:'no-store'});if(!r.ok)return false;
-      const j=await r.json();return !!(j?.quote?.price||(j?.bars||[]).length);
-    }catch(_){return false}
+  function extractBlink(text){
+    const lines=linesOf(text), upper=String(text||'').toUpperCase();
+    let symbol=null;
+    const top=lines.slice(0,8).join(' ').toUpperCase();
+    const sm=top.match(/(?:^|\s|<)([A-Z]{2,5})(?=\s|\(|<|$)/);
+    if(sm&&!OCR_SKIP.has(sm[1]))symbol=sm[1];
+    if(!symbol){
+      for(const m of upper.matchAll(/\b[A-Z]{2,5}\b/g)){if(!OCR_SKIP.has(m[0])){symbol=m[0];break}}
+    }
+    const qty=findLabeledNumber(lines,[/מספר\s*מניות/i,/כמות/i,/יחידות/i,/shares?/i,/qty/i]);
+    let buy=findLabeledNumber(lines,[/מחיר\s*קנייה\s*ממוצע/i,/מחיר\s*קניה\s*ממוצע/i,/מחיר\s*ממוצע/i,/avg(?:erage)?\s*(?:buy\s*)?price/i,/cost\s*basis/i]);
+    if(buy!=null&&buy<1){buy=null}
+    return {symbol,qty,buy,lines};
   }
-  function inferPortfolioFields(lines,idx){
-    const chunk=lines.slice(Math.max(0,idx-1),Math.min(lines.length,idx+4)).join(' ');
-    let qty=null,buy=null;
-    const qm=chunk.match(/(?:qty|quantity|shares?|כמות|יחידות)\s*[:\-]?\s*(\d+(?:[.,]\d+)?)/i);
-    if(qm)qty=Number(qm[1].replace(',','.'));
-    const bm=chunk.match(/(?:avg(?:erage)?\s*(?:price)?|cost\s*basis|buy\s*price|מחיר\s*(?:קניה|קנייה|ממוצע)|עלות\s*ממוצעת)\s*[:\-]?\s*[$₪]?\s*(\d+(?:[.,]\d+)?)/i);
-    if(bm)buy=Number(bm[1].replace(',','.'));
-    const ns=ocrNums(chunk).filter(n=>n>0);
-    if(qty==null){const q=ns.find(n=>n>0&&n<100000&&Math.abs(n-Math.round(n))<0.0001);if(q!=null)qty=q}
-    if(buy==null){const p=ns.find(n=>n>0&&n!==qty&&n<100000);if(p!=null)buy=p}
-    return {qty,buy};
+  async function valid(sym){
+    if(!sym||OCR_SKIP.has(sym)||sym.length<2||sym.length>5)return false;
+    try{const r=await fetch('/api/stock/'+encodeURIComponent(sym)+'/bundle?range=1M',{cache:'no-store'});if(!r.ok)return false;const j=await r.json();return !!(j?.quote?.price||(j?.bars||[]).length)}catch(_){return false}
   }
-  async function installOcrV13(){
+  async function installOcrV14(){
     const input=document.getElementById('imgInput');if(!input||typeof window.addOcrRow!=='function')return;
     input.onchange=async e=>{
       const file=e.target.files?.[0];if(!file)return;
       const st=document.getElementById('ocrStatus'),raw=document.getElementById('ocrRaw'),rows=document.getElementById('ocrRows');
-      if(st)st.textContent='קורא את צילום המסך ומחפש רק שורות שנראות כמו אחזקות אמיתיות...';
+      if(st)st.textContent='קורא צילום Blink ומחלץ סימול, מספר מניות ומחיר קנייה ממוצע...';
       try{
         let text='';
         try{text=(await Tesseract.recognize(file,'heb+eng')).data.text||''}catch(_){text=(await Tesseract.recognize(file,'eng')).data.text||''}
         if(raw)raw.value=text;
-        const lines=text.split(/\r?\n/).map(x=>x.trim()).filter(Boolean),cand=[];
-        lines.forEach((line,idx)=>{for(const m of line.toUpperCase().matchAll(/\b[A-Z]{1,5}\b/g)){const s=m[0];if(!OCR_SKIP.has(s)&&portfolioContext(lines,idx,s))cand.push({s,idx})}});
-        const uniq=[];for(const x of cand){if(!uniq.some(y=>y.s===x.s))uniq.push(x)}
-        const checked=await Promise.all(uniq.slice(0,20).map(async x=>({...x,ok:await ocrValidSymbol(x.s)})));
-        const good=checked.filter(x=>x.ok).slice(0,15);
+        const b=extractBlink(text);
         if(rows)rows.innerHTML='';
-        for(const x of good){const f=inferPortfolioFields(lines,x.idx);window.addOcrRow(x.s,f.qty??'',f.buy??'')}
-        if(!good.length){window.addOcrRow();if(st)st.textContent='לא מצאתי שורת מניה אמינה בצילום, ולכן לא הכנסתי סימולים אקראיים. שלח את צילום המקור כדי שאכוון את הזיהוי בדיוק למבנה של Blink.'}
-        else if(st)st.textContent=`זוהו ${good.length} מניות אמינות. בדוק כמות ומחיר ממוצע לפני שמירה.`;
+        const ok=await valid(b.symbol);
+        if(ok&&Number.isFinite(b.qty)&&b.qty>0&&Number.isFinite(b.buy)&&b.buy>0){
+          window.addOcrRow(b.symbol,b.qty,b.buy);
+          if(st)st.textContent=`זוהתה אחזקה: ${b.symbol} · ${b.qty} מניות · מחיר קנייה ממוצע $${b.buy.toFixed(2)}. בדוק ושמור.`;
+          return;
+        }
+        // Fallback: keep a correctly validated symbol even if OCR missed one numeric field.
+        if(ok){window.addOcrRow(b.symbol,Number.isFinite(b.qty)?b.qty:'',Number.isFinite(b.buy)?b.buy:'');if(st)st.textContent=`זוהה ${b.symbol}, אבל אחד הנתונים המספריים לא נקרא היטב. השלם רק את השדה החסר.`;return}
+        window.addOcrRow();
+        if(st)st.textContent='לא הצלחתי לזהות את האחזקה בביטחון מהצילום הזה; לא הכנסתי סימולים אקראיים.';
       }catch(e){if(st)st.textContent='הסריקה נכשלה; התיק לא שונה.'}
     };
   }
 
-  // IMPORTANT: do not auto-run /api/strategy/validate here. It is intentionally manual.
-  const boot=()=>{setTimeout(install,0);setTimeout(enhancePredictionUI,50);setTimeout(installOcrV13,1400)};
+  const boot=()=>{setTimeout(install,0);setTimeout(enhancePredictionUI,50);setTimeout(installOcrV14,1500)};
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);
   else boot();
 })();
