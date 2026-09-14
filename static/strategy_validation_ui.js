@@ -1,4 +1,4 @@
-// Strategy validation dashboard v4 — production-safe
+// Strategy validation dashboard v5 — production-safe
 (function(){
   function pct(v){return v==null?'—':`${Number(v).toFixed(1)}%`}
   function errText(detail){
@@ -84,23 +84,33 @@
     const dscore=document.getElementById('dScore');if(dscore){const label=dscore.nextElementSibling;if(label)label.textContent='ציון התאמה לשיטה (לא אחוז הצלחה)';}
   }
 
-  // Keep only genuine day-trading candidates; never pad the list with weak names.
+  // Scanner v13: rank the backend candidates instead of deleting the entire list
+  // when the opening-session RVOL/news gate is too strict.
   const previousRefresh=window.refreshDayScanner;
   if(typeof previousRefresh==='function'){
     window.refreshDayScanner=async function(manual=false){
       if(typeof scannerBusy!=='undefined'&&scannerBusy)return;
       if(typeof scannerBusy!=='undefined')scannerBusy=true;
       const st=document.getElementById('scannerStatus');
-      if(st){st.textContent='סורק מועמדות שעוברות את השיטה...';st.className='live-badge live-delayed'}
+      if(st){st.textContent='סורק ומדרג את המועמדות החזקות ביותר...';st.className='live-badge live-delayed'}
       try{
         const r=await fetch('/api/scanner/day?top=20&candidates=60',{cache:'no-store'});const j=await r.json();
         if(!r.ok)throw new Error(j.detail||'Scanner error');
-        const all=Array.isArray(j.results)?j.results:[];
-        const qualified=all.filter(x=>Number(x.score||0)>=80&&((Number.isFinite(+x.rvol)&&+x.rvol>=1.2)||(x.news_count||0)>0)).slice(0,10);
-        dayData=qualified.map(x=>({...x,name:x.name||x.ticker,summary:`RVOL ${Number.isFinite(+x.rvol)?(+x.rvol).toFixed(2)+'×':'—'} · ${x.news_count||0} חדשות`}));
+        const all=(Array.isArray(j.results)?j.results:[]).filter(x=>x&&x.ticker&&Number.isFinite(Number(x.score)));
+        const ranked=[...all].sort((a,b)=>Number(b.score||0)-Number(a.score||0));
+        const strong=ranked.filter(x=>Number(x.score||0)>=80&&((Number.isFinite(+x.rvol)&&+x.rvol>=1.2)||(x.news_count||0)>0));
+        const chosen=[];
+        for(const x of strong){if(chosen.length>=10)break;chosen.push(x)}
+        for(const x of ranked){if(chosen.length>=10)break;if(!chosen.some(y=>y.ticker===x.ticker))chosen.push(x)}
+        dayData=chosen.map(x=>({...x,name:x.name||x.ticker,summary:`RVOL ${Number.isFinite(+x.rvol)?(+x.rvol).toFixed(2)+'×':'—'} · ${x.news_count||0} חדשות`}));
         if(typeof renderTables==='function')renderTables();if(typeof renderHome==='function')renderHome();enhancePredictionUI();
         if(typeof loadLivePerformance==='function')loadLivePerformance(false);
-        if(st){const short=qualified.length<10?` · רק ${qualified.length} עברו את הסף`:'';st.textContent=`${j.full_market?'סריקת שוק מלאה':'סריקת גיבוי'} · ${j.feed||'—'}${short}`;st.className='live-badge '+(j.full_market?'live-on':'live-delayed');}
+        if(st){
+          const strongCount=chosen.filter(x=>Number(x.score||0)>=80&&((Number.isFinite(+x.rvol)&&+x.rvol>=1.2)||(x.news_count||0)>0)).length;
+          const suffix=chosen.length?` · ${chosen.length} מוצגות · ${strongCount} עברו סף מלא`:' · השרת לא החזיר מועמדות';
+          st.textContent=`${j.full_market?'סריקת שוק מלאה':'סריקת גיבוי'} · ${j.feed||'—'}${suffix}`;
+          st.className='live-badge '+(chosen.length?(j.full_market?'live-on':'live-delayed'):'live-error');
+        }
       }catch(e){if(st){st.textContent='שגיאת סריקה';st.className='live-badge live-error';st.title=e.message}}
       finally{if(typeof scannerBusy!=='undefined')scannerBusy=false}
     };
@@ -109,7 +119,63 @@
   const previousRender=window.renderTables;
   if(typeof previousRender==='function')window.renderTables=function(){previousRender();enhancePredictionUI();};
 
+  // OCR v13: reject ordinary English/Hebrew text that happens to be a valid ticker.
+  // Only accept a candidate when it has portfolio-like numeric context, or when it
+  // already exists in the user's holdings and the screenshot is updating it.
+  const OCR_SKIP=new Set(['WWW','WEB','USD','TOTAL','PRICE','VALUE','NASDAQ','NYSE','ETF','BUY','SELL','AVG','COST','MARKET','LIMIT','DAY','GTC','PNL','GAIN','LOSS','PORTFOLIO','OPEN','CLOSE','HIGH','LOW','CHANGE','TODAY']);
+  function ocrNums(s){return [...String(s||'').matchAll(/-?\d+(?:[.,]\d+)?/g)].map(m=>Number(m[0].replace(',','.'))).filter(Number.isFinite)}
+  function portfolioContext(lines,idx,sym){
+    const existing=Array.isArray(window.holdings)&&window.holdings.some(h=>String(h.symbol||'').toUpperCase()===sym);
+    const chunk=lines.slice(Math.max(0,idx-1),Math.min(lines.length,idx+3)).join(' ');
+    const nums=ocrNums(chunk);
+    const financial=/[$₪%]|מחיר|כמות|יחידות|שווי|רווח|הפסד|ממוצע|קניה|קנייה|shares?|qty|price|value|cost/i.test(chunk);
+    return existing || (financial&&nums.length>=2);
+  }
+  async function ocrValidSymbol(sym){
+    if(!sym||sym.length>5||OCR_SKIP.has(sym))return false;
+    if(sym.length===1 && !(Array.isArray(window.holdings)&&window.holdings.some(h=>String(h.symbol||'').toUpperCase()===sym)))return false;
+    try{
+      const r=await fetch('/api/stock/'+encodeURIComponent(sym)+'/bundle?range=1M',{cache:'no-store'});if(!r.ok)return false;
+      const j=await r.json();return !!(j?.quote?.price||(j?.bars||[]).length);
+    }catch(_){return false}
+  }
+  function inferPortfolioFields(lines,idx){
+    const chunk=lines.slice(Math.max(0,idx-1),Math.min(lines.length,idx+4)).join(' ');
+    let qty=null,buy=null;
+    const qm=chunk.match(/(?:qty|quantity|shares?|כמות|יחידות)\s*[:\-]?\s*(\d+(?:[.,]\d+)?)/i);
+    if(qm)qty=Number(qm[1].replace(',','.'));
+    const bm=chunk.match(/(?:avg(?:erage)?\s*(?:price)?|cost\s*basis|buy\s*price|מחיר\s*(?:קניה|קנייה|ממוצע)|עלות\s*ממוצעת)\s*[:\-]?\s*[$₪]?\s*(\d+(?:[.,]\d+)?)/i);
+    if(bm)buy=Number(bm[1].replace(',','.'));
+    const ns=ocrNums(chunk).filter(n=>n>0);
+    if(qty==null){const q=ns.find(n=>n>0&&n<100000&&Math.abs(n-Math.round(n))<0.0001);if(q!=null)qty=q}
+    if(buy==null){const p=ns.find(n=>n>0&&n!==qty&&n<100000);if(p!=null)buy=p}
+    return {qty,buy};
+  }
+  async function installOcrV13(){
+    const input=document.getElementById('imgInput');if(!input||typeof window.addOcrRow!=='function')return;
+    input.onchange=async e=>{
+      const file=e.target.files?.[0];if(!file)return;
+      const st=document.getElementById('ocrStatus'),raw=document.getElementById('ocrRaw'),rows=document.getElementById('ocrRows');
+      if(st)st.textContent='קורא את צילום המסך ומחפש רק שורות שנראות כמו אחזקות אמיתיות...';
+      try{
+        let text='';
+        try{text=(await Tesseract.recognize(file,'heb+eng')).data.text||''}catch(_){text=(await Tesseract.recognize(file,'eng')).data.text||''}
+        if(raw)raw.value=text;
+        const lines=text.split(/\r?\n/).map(x=>x.trim()).filter(Boolean),cand=[];
+        lines.forEach((line,idx)=>{for(const m of line.toUpperCase().matchAll(/\b[A-Z]{1,5}\b/g)){const s=m[0];if(!OCR_SKIP.has(s)&&portfolioContext(lines,idx,s))cand.push({s,idx})}});
+        const uniq=[];for(const x of cand){if(!uniq.some(y=>y.s===x.s))uniq.push(x)}
+        const checked=await Promise.all(uniq.slice(0,20).map(async x=>({...x,ok:await ocrValidSymbol(x.s)})));
+        const good=checked.filter(x=>x.ok).slice(0,15);
+        if(rows)rows.innerHTML='';
+        for(const x of good){const f=inferPortfolioFields(lines,x.idx);window.addOcrRow(x.s,f.qty??'',f.buy??'')}
+        if(!good.length){window.addOcrRow();if(st)st.textContent='לא מצאתי שורת מניה אמינה בצילום, ולכן לא הכנסתי סימולים אקראיים. שלח את צילום המקור כדי שאכוון את הזיהוי בדיוק למבנה של Blink.'}
+        else if(st)st.textContent=`זוהו ${good.length} מניות אמינות. בדוק כמות ומחיר ממוצע לפני שמירה.`;
+      }catch(e){if(st)st.textContent='הסריקה נכשלה; התיק לא שונה.'}
+    };
+  }
+
   // IMPORTANT: do not auto-run /api/strategy/validate here. It is intentionally manual.
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{setTimeout(install,0);setTimeout(enhancePredictionUI,50)});
-  else {setTimeout(install,0);setTimeout(enhancePredictionUI,50)}
+  const boot=()=>{setTimeout(install,0);setTimeout(enhancePredictionUI,50);setTimeout(installOcrV13,1400)};
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);
+  else boot();
 })();
