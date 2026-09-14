@@ -5,7 +5,7 @@ import httpx
 from fastapi.responses import Response
 
 
-RUNTIME_FIX_VERSION = "2026.09.14-r8-iex-snapshot-envelope"
+RUNTIME_FIX_VERSION = "2026.09.14-r9-scanner-ocr"
 
 
 def _research_dates():
@@ -143,11 +143,9 @@ def install_runtime_fixes(app):
             async with sem:
                 try:
                     j=await mod._alpaca_json(client,"https://data.alpaca.markets/v2/stocks/snapshots",{"symbols":",".join(chunk),"feed":mod.ALPACA_FEED})
-                    if not isinstance(j,dict):
-                        return {}
+                    if not isinstance(j,dict): return {}
                     snapshots=j.get("snapshots")
-                    if isinstance(snapshots,dict):
-                        return snapshots
+                    if isinstance(snapshots,dict): return snapshots
                     return j
                 except Exception:
                     return {}
@@ -175,7 +173,6 @@ def install_runtime_fixes(app):
         return merged,snapmap,len(assets)
 
     def _session_expected_fraction(now_ny):
-        """Approximate cumulative regular-session volume curve for opening RVOL."""
         t=now_ny.time()
         if t < dtime(9,30): return 0.03
         mins=max(0,min(390,(now_ny.hour*60+now_ny.minute)-(9*60+30)))
@@ -253,5 +250,72 @@ def install_runtime_fixes(app):
                 route.dependant.call=_day_scanner_iex
             break
 
+    ocr_patch = r'''<script id="portfolio-ocr-r9">
+(function(){
+  const SKIP=new Set(['USD','TOTAL','PRICE','VALUE','NASDAQ','NYSE','NYS','ETF','BUY','SELL','AVG','PCT','COST','MARKET','LIMIT','DAY','GTC','PNL']);
+  const num=v=>{if(v==null)return null;const n=Number(String(v).replace(/[$₪,%\s]/g,'').replace(',','.'));return Number.isFinite(n)?n:null};
+  async function validSymbol(s){
+    if(!s||SKIP.has(s)||s.length>5)return false;
+    try{const r=await fetch('/api/stock/'+encodeURIComponent(s)+'/bundle?range=1M',{cache:'no-store'});if(!r.ok)return false;const j=await r.json();return !!(j?.quote?.price||(j?.bars||[]).length)}catch(e){return false}
+  }
+  function labeled(text,patterns){
+    for(const p of patterns){const m=text.match(p);if(m){const n=num(m[1]);if(n!=null&&n>0)return n}}
+    return null;
+  }
+  async function scanPortfolioImage(file){
+    const status=document.getElementById('ocrStatus'), raw=document.getElementById('ocrRaw'), rows=document.getElementById('ocrRows');
+    status.textContent='קורא את התמונה ומאמת מניות...';
+    let text='';
+    try{
+      if(typeof Tesseract==='undefined')throw new Error('OCR library unavailable');
+      try{text=(await Tesseract.recognize(file,'heb+eng')).data.text||''}catch(_e){text=(await Tesseract.recognize(file,'eng')).data.text||''}
+      raw.value=text;
+      const upper=text.toUpperCase();
+      const candidates=[...new Set([...upper.matchAll(/\b[A-Z]{1,5}\b/g)].map(m=>m[0]).filter(x=>!SKIP.has(x)))].slice(0,25);
+      const checks=await Promise.all(candidates.map(async s=>[s,await validSymbol(s)]));
+      const symbols=checks.filter(x=>x[1]).map(x=>x[0]).slice(0,12);
+      rows.innerHTML='';
+      const qty=labeled(text,[/(?:כמות|מספר\s*מניות|quantity|shares?)\s*[:\-]?\s*([0-9]+(?:[.,][0-9]+)?)/i]);
+      const buy=labeled(text,[/(?:מחיר\s*(?:קנייה|ממוצע)|עלות\s*ממוצעת|average\s*price|avg\.?\s*price|buy\s*price|cost\s*basis)\s*[:\-]?\s*[$₪]?\s*([0-9]+(?:[.,][0-9]+)?)/i]);
+      if(!symbols.length){
+        if(typeof addOcrRow==='function')addOcrRow();
+        status.textContent='לא זוהה סימול מניה בוודאות. השארתי שורה לעריכה ידנית ולא שמרתי נתון חשוד.';
+        return;
+      }
+      symbols.forEach((s,i)=>addOcrRow(s,i===0&&qty?qty:'',i===0&&buy?buy:''));
+      const filled=(qty&&buy)?' זוהו גם כמות ומחיר קנייה.':' הסימול אומת מול נתוני השוק; כמות/מחיר שלא זוהו נשארו ריקים לבדיקה.';
+      status.textContent='הזיהוי הסתיים.'+filled;
+    }catch(err){
+      status.textContent='הזיהוי נכשל; לא נשמרו נתונים אוטומטית. אפשר להזין ידנית.';
+    }
+  }
+  window.addEventListener('load',()=>{
+    const input=document.getElementById('imgInput'); if(!input)return;
+    input.onchange=async e=>{const f=e.target.files?.[0];if(f)await scanPortfolioImage(f)};
+  });
+})();
+</script>'''
+
+    @app.middleware("http")
+    async def _inject_frontend_runtime_patch(request, call_next):
+        response = await call_next(request)
+        if request.url.path != "/" or response.status_code != 200:
+            return response
+        ctype = response.headers.get("content-type", "")
+        if "text/html" not in ctype:
+            return response
+        try:
+            body = b"".join([chunk async for chunk in response.body_iterator])
+            html = body.decode("utf-8")
+            if "portfolio-ocr-r9" not in html:
+                html = html.replace("</body>", ocr_patch + "</body>")
+            headers = {k:v for k,v in response.headers.items() if k.lower() not in ("content-length","content-type")}
+            headers["Cache-Control"] = "no-store"
+            return Response(content=html,status_code=response.status_code,headers=headers,media_type="text/html; charset=utf-8")
+        except Exception as exc:
+            print("FRONTEND_PATCH_ERROR="+repr(exc),flush=True)
+            return response
+
     print("PRODUCTION_RUNTIME_SAFE=true", flush=True)
     print("IEX_FULL_MARKET_SCANNER=true", flush=True)
+    print("PORTFOLIO_OCR_PATCH=true", flush=True)
