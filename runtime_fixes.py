@@ -5,7 +5,7 @@ import httpx
 from fastapi.responses import Response
 
 
-RUNTIME_FIX_VERSION = "2026.09.14-r7-iex-full-market"
+RUNTIME_FIX_VERSION = "2026.09.14-r8-iex-snapshot-envelope"
 
 
 def _research_dates():
@@ -136,7 +136,6 @@ def install_runtime_fixes(app):
     async def _iex_universe_candidates(client, candidate_count):
         """Market-wide discovery that works with the free IEX feed; no SIP screener required."""
         assets = await mod._get_assets_all(client)
-        # Snapshot endpoint accepts comma-separated symbols. Moderate chunks avoid URL-size limits.
         chunks=[assets[i:i+180] for i in range(0,len(assets),180)]
         sem=asyncio.Semaphore(7)
         rows=[]
@@ -144,7 +143,12 @@ def install_runtime_fixes(app):
             async with sem:
                 try:
                     j=await mod._alpaca_json(client,"https://data.alpaca.markets/v2/stocks/snapshots",{"symbols":",".join(chunk),"feed":mod.ALPACA_FEED})
-                    return j if isinstance(j,dict) else {}
+                    if not isinstance(j,dict):
+                        return {}
+                    snapshots=j.get("snapshots")
+                    if isinstance(snapshots,dict):
+                        return snapshots
+                    return j
                 except Exception:
                     return {}
         packs=await asyncio.gather(*[pull(c) for c in chunks])
@@ -158,11 +162,9 @@ def install_runtime_fixes(app):
                 if price<=0 or prev_close<=0 or price<1 or price>500: continue
                 change=(price/prev_close-1)*100
                 vol=float(daily.get("v") or 0)
-                # Day-explosion universe: meaningful positive gap/momentum OR exceptional early activity.
                 if change < 2.0 and vol < 100000: continue
                 rows.append((sym,change,vol,snap))
         rows.sort(key=lambda z:(z[1],z[2]),reverse=True)
-        # Keep a blend of biggest movers and most liquid active names.
         movers=rows[:max(candidate_count,60)]
         liquid=sorted(rows,key=lambda z:z[2],reverse=True)[:max(20,candidate_count//2)]
         merged=[]; seen=set(); snapmap={}
@@ -188,7 +190,6 @@ def install_runtime_fixes(app):
     async def _day_scanner_iex(top=10,candidates=40):
         top=max(3,min(int(top),20)); candidates=max(top,min(int(candidates),60))
         if not (mod.ALPACA_KEY and mod.ALPACA_SECRET):
-            # Preserve the original route behavior when Alpaca is not configured.
             return await original_day_endpoint(top=top,candidates=candidates)
         now=datetime.now(timezone.utc); now_ny=now.astimezone(mod.NY)
         async with httpx.AsyncClient(timeout=40) as client:
@@ -226,9 +227,7 @@ def install_runtime_fixes(app):
                 try:
                     created=datetime.fromisoformat(str(articles[0].get("created_at")).replace("Z","+00:00")); news_minutes=max(0,(now-created).total_seconds()/60)
                 except Exception: pass
-            # Use average daily volume for liquidity points; use time-normalized RVOL for abnormal activity.
             score=mod._score_day_candidate(change,rvol,avg_vol or daily_volume,price,len(articles),news_minutes,strength)
-            # Before 09:45 ET, require less completed-session evidence; catalyst/gap/RVOL remain decisive.
             if now_ny.time()<dtime(9,45) and change>=5 and rvol is not None and rvol>=2: score=min(100,score+8)
             risk=3
             if price<2: risk+=1
@@ -245,8 +244,6 @@ def install_runtime_fixes(app):
     mod._persist_scanner_signals = _persist_scanner_signals_fixed
     mod._refresh_live_signal_rows = _refresh_live_signal_rows_fixed
 
-    # Replace the existing /api/scanner/day endpoint in-place. FastAPI keeps the
-    # original route object, so changing endpoint + dependant.call avoids duplicate paths.
     original_day_endpoint=None
     for route in app.routes:
         if getattr(route,"path",None)=="/api/scanner/day" and "GET" in getattr(route,"methods",set()):
