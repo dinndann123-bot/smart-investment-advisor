@@ -1,8 +1,7 @@
 """Minimal production startup safety for Smart Investment Advisor V22.
 
-This module deliberately does only one thing: make the existing static index safe
-for mobile startup. It does NOT replace FastAPI routes, install research, run
-background work, or inject JavaScript feature layers.
+This module keeps the existing static index safe for mobile startup and adds a
+small client-side guard for transient empty day-scanner responses.
 """
 from pathlib import Path
 
@@ -44,6 +43,54 @@ try:
             if tag not in html:
                 html = html.replace('</head>', tag + '\n</head>', 1)
 
+        # Never let a transient 200 response with results:[] wipe a valid scanner
+        # list from the UI. Cache only genuinely non-empty live responses. If a
+        # later refresh is empty, reuse the last good payload and mark it stale so
+        # the UI/data layer can distinguish it from a fresh scan.
+        scanner_guard = """<script id="day-scan-last-good-r11">
+(()=>{
+  const KEY='smartAdvisor:lastGoodDayScan:v1';
+  const nativeFetch=window.fetch.bind(window);
+  window.fetch=async function(input,init){
+    const url=typeof input==='string'?input:(input&&input.url)||'';
+    const res=await nativeFetch(input,init);
+    if(!url.includes('/api/scanner/day')) return res;
+    try{
+      const clone=res.clone();
+      const data=await clone.json();
+      const rows=Array.isArray(data&&data.results)?data.results:[];
+      if(res.ok && rows.length){
+        try{localStorage.setItem(KEY,JSON.stringify({savedAt:Date.now(),payload:data}))}catch(_){ }
+        return res;
+      }
+      if(res.ok && rows.length===0){
+        try{
+          const raw=localStorage.getItem(KEY);
+          const cached=raw?JSON.parse(raw):null;
+          if(cached&&cached.payload&&Array.isArray(cached.payload.results)&&cached.payload.results.length){
+            const payload={...cached.payload,
+              source:'client_last_good_cache',
+              stale:true,
+              stale_reason:'live_scan_returned_empty',
+              live_generated_at:data&&data.generated_at||null,
+              cached_at:new Date(cached.savedAt).toISOString()
+            };
+            console.warn('DAY_SCAN_EMPTY_PROTECTED=true',payload.results.length);
+            return new Response(JSON.stringify(payload),{
+              status:200,
+              headers:{'Content-Type':'application/json','Cache-Control':'no-store'}
+            });
+          }
+        }catch(_){ }
+      }
+    }catch(_){ }
+    return res;
+  };
+})();
+</script>"""
+        if 'day-scan-last-good-r11' not in html:
+            html = html.replace('</head>', scanner_guard + '\n</head>', 1)
+
         # One small cleanup only. No reload loop, no route replacement.
         cleanup = """<script>
 window.addEventListener('load',()=>{
@@ -82,6 +129,7 @@ window.addEventListener('load',()=>{
 
     _responses.FileResponse = _safe_file_response
     print('V22_MINIMAL_BOOT_INSTALLED=true', flush=True)
+    print('DAY_SCAN_LAST_GOOD_GUARD_R11=true', flush=True)
 except Exception as exc:
     # During dependency installation FastAPI may not exist yet. This is harmless;
     # sitecustomize will run again in the actual application interpreter.
