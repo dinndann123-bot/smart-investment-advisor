@@ -1,0 +1,39 @@
+name: Apply Top 10 Ranking Policy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-top10-ranking-policy.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch day scanner ranking policy
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('runtime_fixes.py')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace('RUNTIME_FIX_VERSION = "2026.09.14-r14-scanner-ocr"','RUNTIME_FIX_VERSION = "2026.09.15-r15-top10-learning"')
+          s=s.replace('syms=[x[0] for x in rows[:max(candidate_count,60)]]','syms=[x[0] for x in rows[:max(candidate_count,200)]]')
+          s=s.replace('top=max(3,min(int(top),20)); candidates=max(top,min(int(candidates),60)); now=datetime.now(timezone.utc)','top=10; candidates=max(200,min(int(candidates) if candidates else 200,500)); now=datetime.now(timezone.utc)')
+          s=s.replace('if rows:\n                        saved=mod._persist_scanner_signals(rows,now.isoformat(),"alpaca_iex_full_market")','if len(rows) >= 10:\n                        saved=mod._persist_scanner_signals(rows,now.isoformat(),"alpaca_iex_full_market")')
+          s=s.replace('if rows:\n                saved=mod._persist_scanner_signals(rows,now.isoformat(),"fallback_liquid_watchlist")','if len(rows) >= 10:\n                saved=mod._persist_scanner_signals(rows,now.isoformat(),"fallback_liquid_watchlist")')
+          s=s.replace('"saved_signals":saved,"results":rows,"rvol_basis":"session_normalized"})','"saved_signals":saved,"results":rows,"rvol_basis":"session_normalized","ranking_policy":"always_top_10","learning_sample":True})')
+          s=s.replace('print("DAY_SCANNER_FAILSAFE_R14=true",flush=True)','print("DAY_SCANNER_TOP10_R15=true",flush=True)')
+          p.write_text(s,encoding='utf-8')
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add runtime_fixes.py
+          git diff --cached --quiet || git commit -m "Make day scanner always rank Top 10 candidates"
+          git push
