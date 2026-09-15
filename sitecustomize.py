@@ -14,15 +14,18 @@ try:
         if path.endswith("static/index.html"):
             try:
                 html = Path(path).read_text(encoding="utf-8")
-                tag = '<script src="/static/canonical_bootstrap.js?v=3" defer></script>'
-                if tag not in html:
+                tag = '<script src="/static/canonical_bootstrap.js?v=4" defer></script>'
+                if 'canonical_bootstrap.js' not in html:
                     html = html.replace("</body>", tag + "\n</body>")
-                response = HTMLResponse(html, headers={"Cache-Control":"no-store, no-cache, must-revalidate"})
+                else:
+                    import re
+                    html = re.sub(r'<script src="/static/canonical_bootstrap\.js\?v=\d+" defer></script>', tag, html)
+                response = HTMLResponse(html, headers={"Cache-Control":"no-store, no-cache, must-revalidate","Pragma":"no-cache","Expires":"0"})
                 return await response(scope, receive, send)
             except Exception:
                 pass
         return await _original(self, scope, receive, send)
     FileResponse.__call__ = _canonical_ui_call
-    print("CANONICAL_UI_ACTIVE=true")
+    print("CANONICAL_UI_ACTIVE=true version=4")
 except Exception as exc:
     print(f"CANONICAL_UI_ACTIVE=false error={exc}")
