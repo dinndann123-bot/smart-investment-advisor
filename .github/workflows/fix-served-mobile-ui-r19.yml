@@ -1,0 +1,50 @@
+name: Fix served mobile UI r19
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/fix-served-mobile-ui-r19.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch served static index
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('static/index.html')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace('.hero h1{font-size:38px;margin:0 0 8px;font-weight:900;letter-spacing:-.5px}', '.hero h1{font-size:38px;margin:0 0 8px;font-weight:900;letter-spacing:-.5px}.brand-title{display:flex;align-items:center;gap:12px}.brand-logo{width:52px;height:52px;border-radius:14px;object-fit:contain;background:rgba(255,255,255,.12);padding:5px}.header-back{display:none;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.12);color:#fff;border-radius:12px;width:44px;height:44px;font-size:26px;cursor:pointer}',1)
+          s=s.replace('.hero{padding:20px 16px 16px}.hero h1{font-size:29px}.shell{padding:12px 12px 92px}', '.hero{padding:20px 16px 16px}.hero h1{font-size:29px}.hero-inner{align-items:flex-start;flex-wrap:nowrap}.brand-title{gap:8px}.brand-logo{width:42px;height:42px;border-radius:11px}.header-back{display:grid;place-items:center;flex:0 0 44px}.hero-actions{display:none!important}.shell{padding:12px 12px 92px}',1)
+          old='''      <div>\n        <h1>היועץ החכם להשקעות</h1>\n        <p>סינון, דירוג ומעקב אחר מניות לפי השיטה שלנו — השקעה ארוכת טווח ומסחר יומי.</p>\n        <div class="statusbar" id="apiStatus">נתוני שוק: ממתין לחיבור API</div>\n      </div>'''
+          new='''      <button class="header-back" id="headerBackBtn" onclick="goBackPage()" aria-label="חזרה">‹</button>\n      <div>\n        <div class="brand-title"><img class="brand-logo" src="/static/icons/icon-192.png" alt="לוגו"><h1>היועץ החכם להשקעות</h1></div>\n        <p>סינון, דירוג ומעקב אחר מניות לפי השיטה שלנו — השקעה ארוכת טווח ומסחר יומי.</p>\n        <div class="statusbar" id="apiStatus">נתוני שוק: מתחבר…</div>\n      </div>'''
+          s=s.replace(old,new,1)
+          s=s.replace('''        <button class="btn btn-light" onclick="go('portfolio')">התיק שלי</button>\n        <button class="btn btn-ghost" onclick="go('settings')">הגדרות</button>\n''','',1)
+          patch=r'''<script id="served-ui-r19">
+(function(){
+  const cleanStatus=()=>{
+    const el=document.getElementById('apiStatus'); if(!el)return;
+    const t=(el.textContent||'').trim();
+    if(/Alpaca/i.test(t) && !/(שגיאה|מנותק|לא מחובר|failed|error)/i.test(t)) el.textContent='● נתוני שוק מחוברים • Alpaca פעיל';
+    else if(/Alpha\s*Vantage/i.test(t)) el.textContent=t.replace(/\s*[•·|-]?\s*Alpha\s*Vantage\s*(?:לא\s*מוגדר|לא\s*מחובר|[^•·|]*)/ig,'').replace(/\s{2,}/g,' ').trim();
+  };
+  document.addEventListener('DOMContentLoaded',()=>{cleanStatus();const el=document.getElementById('apiStatus');if(el)new MutationObserver(cleanStatus).observe(el,{childList:true,subtree:true,characterData:true});});
+  const stack=[];
+  const install=()=>{if(typeof window.go!=='function')return setTimeout(install,50);const nativeGo=window.go;if(nativeGo.__r19)return;function wrapped(page){const active=document.querySelector('.page.active');const cur=active&&active.id?active.id.replace(/^page-/,''):null;if(cur&&cur!==page)stack.push(cur);return nativeGo(page)}wrapped.__r19=true;window.go=wrapped;window.goBackPage=function(){const prev=stack.pop();if(prev)return nativeGo(prev);if(history.length>1)return history.back();return nativeGo('home')};}; install();
+})();
+</script>
+'''
+          if 'served-ui-r19' not in s: s=s.replace('</body>',patch+'</body>',1)
+          p.write_text(s,encoding='utf-8')
+          PY
+      - name: Commit served UI fix
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add static/index.html
+          git diff --cached --quiet && exit 0
+          git commit -m "Fix mobile header in served static UI"
+          git push
