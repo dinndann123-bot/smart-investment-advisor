@@ -4,7 +4,7 @@ from datetime import datetime, timezone, timedelta, time as dtime
 import httpx
 from fastapi.responses import Response
 
-RUNTIME_FIX_VERSION = "2026.09.14-r14-scanner-ocr"
+RUNTIME_FIX_VERSION = "2026.09.15-r15-top10-learning"
 
 
 def _research_dates():
@@ -188,7 +188,7 @@ def install_runtime_fixes(app):
                 if ch<-8 and vol<25000: continue
                 rows.append((sym,ch,vol)); snapmap[sym]=snap
         rows.sort(key=lambda z:(z[1],z[2]),reverse=True)
-        syms=[x[0] for x in rows[:max(candidate_count,60)]]
+        syms=[x[0] for x in rows[:max(candidate_count,200)]]
         return syms,snapmap,len(assets)
 
     def _remember(payload):
@@ -205,7 +205,7 @@ def install_runtime_fixes(app):
         return payload
 
     async def day_scanner_failsafe(top:int=10,candidates:int=40):
-        top=max(3,min(int(top),20)); candidates=max(top,min(int(candidates),60)); now=datetime.now(timezone.utc)
+        top=10; candidates=max(200,min(int(candidates) if candidates else 200,500)); now=datetime.now(timezone.utc)
         if not (mod.ALPACA_KEY and mod.ALPACA_SECRET):
             try:
                 p=await original_day_endpoint(top=top,candidates=candidates)
@@ -219,11 +219,11 @@ def install_runtime_fixes(app):
                 symbols,snapshots,universe_size=await _iex_candidates(client,candidates)
                 if symbols:
                     rows=await _score_symbols(client,symbols,snapshots,"alpaca_iex_full_market",top)
-                    if rows:
+                    if len(rows) >= 10:
                         saved=mod._persist_scanner_signals(rows,now.isoformat(),"alpaca_iex_full_market")
                         return _remember({"generated_at":now.isoformat(),"source":"alpaca_iex_full_market","feed":mod.ALPACA_FEED,
                                 "full_market":True,"screener_error":None,"candidate_count":len(symbols),"universe_size":universe_size,
-                                "saved_signals":saved,"results":rows,"rvol_basis":"session_normalized"})
+                                "saved_signals":saved,"results":rows,"rvol_basis":"session_normalized","ranking_policy":"always_top_10","learning_sample":True})
             except Exception as exc:
                 print("IEX_FAILSAFE_PRIMARY="+repr(exc),flush=True)
 
@@ -233,11 +233,11 @@ def install_runtime_fixes(app):
             except Exception as exc:
                 print("SCANNER_FALLBACK_SCORE_FAIL="+repr(exc),flush=True)
                 rows=[]
-            if rows:
+            if len(rows) >= 10:
                 saved=mod._persist_scanner_signals(rows,now.isoformat(),"fallback_liquid_watchlist")
                 return _remember({"generated_at":now.isoformat(),"source":"fallback_liquid_watchlist","feed":mod.ALPACA_FEED,
                         "full_market":False,"screener_error":"IEX full-market returned no usable candidates; fallback activated automatically.",
-                        "candidate_count":len(fallback),"saved_signals":saved,"results":rows,"rvol_basis":"session_normalized"})
+                        "candidate_count":len(fallback),"saved_signals":saved,"results":rows,"rvol_basis":"session_normalized","ranking_policy":"always_top_10","learning_sample":True})
 
         try:
             p=await original_day_endpoint(top=top,candidates=candidates)
@@ -327,5 +327,5 @@ def install_runtime_fixes(app):
             print("FRONTEND_PATCH_ERROR="+repr(exc),flush=True); return response
 
     print("PRODUCTION_RUNTIME_SAFE=true",flush=True)
-    print("DAY_SCANNER_FAILSAFE_R14=true",flush=True)
+    print("DAY_SCANNER_TOP10_R15=true",flush=True)
     print("PORTFOLIO_OCR_BLINK_R14=true",flush=True)
