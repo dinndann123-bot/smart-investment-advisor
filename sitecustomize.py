@@ -65,6 +65,10 @@ try:
         if 'day-scan-last-good-r11' not in html:
             html = html.replace('</head>', scanner_guard + '\n</head>', 1)
 
+        day_sync_tag = '<script src="/static/day_sync_r16.js?v=16"></script>'
+        if 'day_sync_r16.js' not in html:
+            html = html.replace('</head>', day_sync_tag + '\n</head>', 1)
+
         feature_patch = r'''<script id="portfolio-timing-ocr-r12">
 (()=>{
   const money=n=>Number.isFinite(+n)?'$'+(+n).toFixed(2):'—';
