@@ -1,0 +1,3 @@
+Render GitHub integration health check
+2026-09-15
+Purpose: verify automatic deployment from main after reconnecting the Render GitHub App.
