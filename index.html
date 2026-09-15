@@ -16,7 +16,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:Arial,"Noto Sans
 .app{min-height:100vh}
 .hero{background:linear-gradient(135deg,#19244f,#2d3f8f 60%,#5b4dc9);color:#fff;padding:30px 24px 22px}
 .hero-inner{max-width:1400px;margin:auto;display:flex;justify-content:space-between;gap:20px;align-items:flex-end;flex-wrap:wrap}
-.hero h1{font-size:38px;margin:0 0 8px;font-weight:900;letter-spacing:-.5px}
+.hero h1{font-size:38px;margin:0 0 8px;font-weight:900;letter-spacing:-.5px}.brand-title{display:flex;align-items:center;gap:12px}.brand-logo{width:52px;height:52px;border-radius:14px;object-fit:contain;background:rgba(255,255,255,.12);padding:5px}.header-back{display:none;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.12);color:#fff;border-radius:12px;width:44px;height:44px;font-size:26px;cursor:pointer}
 .hero p{margin:0;color:#dce4ff;font-size:15px}
 .hero-actions{display:flex;gap:10px;flex-wrap:wrap}
 .btn{border:0;border-radius:12px;padding:10px 14px;font-weight:700;cursor:pointer}
@@ -126,7 +126,7 @@ button:focus-visible,.btn:focus-visible,input:focus-visible,select:focus-visible
 .compact-actions{margin-top:0}
 #homeLearningPanel{margin-top:16px}
 @media(max-width:760px){
-  .hero{padding:20px 16px 16px}.hero h1{font-size:29px}.shell{padding:12px 12px 92px}
+  .hero{padding:20px 16px 16px}.hero h1{font-size:29px}.hero-inner{align-items:flex-start;flex-wrap:nowrap}.brand-title{gap:8px}.brand-logo{width:42px;height:42px;border-radius:11px}.header-back{display:grid;place-items:center;flex:0 0 auto}.hero-actions{display:none!important}.shell{padding:12px 12px 92px}
   .clockbar{grid-template-columns:1fr 1fr;padding:8px 12px}
   .nav{position:fixed;bottom:0;top:auto;left:0;right:0;z-index:40;background:rgba(255,255,255,.97);padding:7px 8px calc(7px + env(safe-area-inset-bottom));border-top:1px solid var(--line);justify-content:space-around;box-shadow:0 -8px 28px rgba(35,48,74,.08)}
   .nav button{border:0;background:transparent;display:grid;gap:2px;justify-items:center;padding:6px 8px;min-width:62px;font-size:18px}
@@ -168,15 +168,14 @@ button:focus-visible,.btn:focus-visible,input:focus-visible,select:focus-visible
 <div class="app">
   <header class="hero">
     <div class="hero-inner">
+      <button class="header-back" id="headerBackBtn" onclick="goBackPage()" aria-label="חזרה למסך הקודם">‹</button>
       <div>
-        <h1>היועץ החכם להשקעות</h1>
+        <div class="brand-title"><img class="brand-logo" src="/static/icons/icon-192.png" alt="לוגו השור"><h1>היועץ החכם להשקעות</h1></div>
         <p>סינון, דירוג ומעקב אחר מניות לפי השיטה שלנו — השקעה ארוכת טווח ומסחר יומי.</p>
         <div class="statusbar" id="apiStatus">נתוני שוק: ממתין לחיבור API</div>
       </div>
       <div class="hero-actions">
         <button id="installAppBtn" class="btn btn-light" onclick="promptInstallApp()" style="display:none">📲 התקן אפליקציה</button>
-        <button class="btn btn-light" onclick="go('portfolio')">התיק שלי</button>
-        <button class="btn btn-ghost" onclick="go('settings')">הגדרות</button>
       </div>
     </div>
   </header>
@@ -1859,6 +1858,26 @@ window.addEventListener('load',refreshInstallButton);
       document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')check()});
     }catch(e){console.warn('PWA registration failed',e)}
   });
+})();
+</script>
+<script>
+(function(){
+  const hist=[];
+  const original=window.go;
+  if(typeof original==='function'){
+    window.go=function(page){
+      const active=document.querySelector('.page.active');
+      const current=active&&active.id?active.id.replace('page-',''):null;
+      if(current&&current!==page&&hist[hist.length-1]!==current) hist.push(current);
+      return original.apply(this,arguments);
+    };
+  }
+  window.goBackPage=function(){
+    const previous=hist.pop();
+    if(previous&&typeof original==='function') return original(previous);
+    if(window.history.length>1) return window.history.back();
+    if(typeof original==='function') return original('home');
+  };
 })();
 </script>
 </body></html>
