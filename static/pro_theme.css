@@ -1,0 +1,9 @@
+/* Professional black/gold visual system — canonical UI asset */
+:root{--brand-gold:#e7b84b;--brand-gold-soft:#f4d477;--brand-black:#080a0c;--brand-panel:#111519;--brand-border:#2c3136;--brand-muted:#9ba2aa}
+body{background:linear-gradient(180deg,#07090b 0%,#0d1115 100%)!important;color:#f6f7f8}
+.hero{background:linear-gradient(135deg,#07090b,#11161a)!important;border-bottom:1px solid rgba(231,184,75,.22)}
+.hero h1{color:var(--brand-gold-soft)!important}.statusbar{color:#c6cbd0}.card,.panel,.stat,.stock-card{border-color:var(--brand-border)!important;box-shadow:0 10px 28px rgba(0,0,0,.18)}
+.btn-primary,.nav button.active{background:linear-gradient(135deg,var(--brand-gold-soft),var(--brand-gold))!important;color:#111!important;border-color:transparent!important}
+.brand-lockup{display:flex;align-items:center;gap:12px}.brand-bull{display:inline-grid;place-items:center;width:50px;height:50px;border-radius:14px;background:linear-gradient(145deg,#171b1f,#080a0c);border:1px solid rgba(231,184,75,.65);color:var(--brand-gold);font-size:30px;box-shadow:inset 0 0 20px rgba(231,184,75,.08),0 5px 18px rgba(0,0,0,.28)}
+.header-back-pro{display:none;width:42px;height:42px;border-radius:12px;border:1px solid rgba(231,184,75,.42);background:#101418;color:var(--brand-gold-soft);font-size:32px;line-height:1}
+@media(max-width:760px){.brand-bull{width:42px;height:42px;font-size:25px}.header-back-pro{display:grid;place-items:center}.hero-actions .mobile-duplicate{display:none!important}}
