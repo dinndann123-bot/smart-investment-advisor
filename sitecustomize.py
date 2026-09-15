@@ -8,7 +8,7 @@ try:
         if path.endswith("static/index.html"):
             try:
                 html = Path(path).read_text(encoding="utf-8")
-                tag = '<script src="/static/canonical_bootstrap.js?v=5" defer></script>'
+                tag = '<script src="/static/canonical_bootstrap.js?v=6" defer></script>'
                 import re
                 if 'canonical_bootstrap.js' not in html:
                     html = html.replace("</body>", tag + "\n</body>")
@@ -20,6 +20,6 @@ try:
                 pass
         return await _original(self, scope, receive, send)
     FileResponse.__call__ = _canonical_ui_call
-    print("CANONICAL_UI_ACTIVE=true version=5")
+    print("CANONICAL_UI_ACTIVE=true version=6")
 except Exception as exc:
     print(f"CANONICAL_UI_ACTIVE=false error={exc}")
