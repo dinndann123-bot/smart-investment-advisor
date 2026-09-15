@@ -1,4 +1,4 @@
-"""Activation bridge for the canonical presentation bootstrap only."""
+"""Activation bridge for the clean frontend v3 bootstrap."""
 from pathlib import Path
 try:
     from fastapi.responses import FileResponse, HTMLResponse
@@ -8,7 +8,7 @@ try:
         if path.endswith("static/index.html"):
             try:
                 html = Path(path).read_text(encoding="utf-8")
-                tag = '<script src="/static/canonical_bootstrap.js?v=6" defer></script>'
+                tag = '<script src="/static/canonical_bootstrap.js?v=7" defer></script>'
                 import re
                 if 'canonical_bootstrap.js' not in html:
                     html = html.replace("</body>", tag + "\n</body>")
@@ -20,6 +20,6 @@ try:
                 pass
         return await _original(self, scope, receive, send)
     FileResponse.__call__ = _canonical_ui_call
-    print("CANONICAL_UI_ACTIVE=true version=6")
+    print("CANONICAL_UI_ACTIVE=true version=7 frontend=v3")
 except Exception as exc:
     print(f"CANONICAL_UI_ACTIVE=false error={exc}")
