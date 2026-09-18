@@ -6,7 +6,6 @@ _code=urllib.request.urlopen(_STABLE, timeout=30).read().decode('utf-8')
 exec(compile(_code, _STABLE, 'exec'), globals(), globals())
 
 # Add research/learning endpoints only after the stable app has been created.
-# This deliberately does not replace UI, scanner routes, charts, or Alpaca setup.
 try:
     import sys
     _core = sys.modules[__name__]
@@ -14,19 +13,26 @@ try:
     from missed_movers_learning import install_missed_movers_learning
     install_signal_journal(app, _core)
     install_missed_movers_learning(app, _core)
-    LEARNING_ENGINE_STATUS = {
-        'installed': True,
-        'strategy_version': 'strategy-learning-v2',
-        'stable_base': '1b8068c52a5f7ba5ab6ee455999330b102dbc90a',
-    }
+    LEARNING_ENGINE_STATUS = {'installed': True,'strategy_version':'strategy-learning-v2','stable_base':'1b8068c52a5f7ba5ab6ee455999330b102dbc90a'}
 except Exception as _learning_error:
-    # Fail-open: a learning-layer problem must never prevent the stable app boot.
-    LEARNING_ENGINE_STATUS = {
-        'installed': False,
-        'strategy_version': 'strategy-learning-v2',
-        'error': f'{type(_learning_error).__name__}: {_learning_error}',
-    }
+    LEARNING_ENGINE_STATUS = {'installed':False,'strategy_version':'strategy-learning-v2','error':f'{type(_learning_error).__name__}: {_learning_error}'}
 
 @app.get('/api/learning/status')
 async def learning_status():
     return LEARNING_ENGINE_STATUS
+
+# Startup smoke test is read/local-only: it verifies route installation and DB schema
+# without calling the scanner or Alpaca and therefore cannot affect trading/UI behavior.
+@app.on_event('startup')
+async def _learning_startup_smoke():
+    try:
+        paths={getattr(r,'path',None) for r in app.routes}
+        required={'/api/learning/status','/api/learning/capture-top10','/api/learning/evaluate','/api/learning/journal','/api/learning/summary','/api/learning/missed-movers','/api/learning/missed-movers/summary'}
+        missing=sorted(required-paths)
+        from signal_journal import _db as _journal_db
+        from missed_movers_learning import _db as _missed_db
+        c1=_journal_db(); c1.execute('SELECT 1 FROM signal_journal LIMIT 1').fetchall(); c1.close()
+        c2=_missed_db(); c2.execute('SELECT 1 FROM missed_movers LIMIT 1').fetchall(); c2.close()
+        print(f'LEARNING_SMOKE installed={LEARNING_ENGINE_STATUS.get("installed")} routes_ok={not missing} missing={missing} db_ok=true version={LEARNING_ENGINE_STATUS.get("strategy_version")}', flush=True)
+    except Exception as e:
+        print(f'LEARNING_SMOKE_ERROR {type(e).__name__}: {e}', flush=True)
