@@ -12,6 +12,7 @@ from fastapi import HTTPException, Query
 from runtime_fixes import install_runtime_fixes
 from market_search import install_market_search
 from long_strategy import install_long_strategy
+from timing_learning import measure_day_timing, summarize_timing
 
 NY = ZoneInfo("America/New_York")
 
@@ -87,7 +88,7 @@ def _events(symbol, days):
         volume_accel=early[-1]["v"]/max(1,statistics.mean([b["v"] for b in early[:-1]])) if len(early)>1 else 1
         early_range=(max(b["h"] for b in early)/min(b["l"] for b in early)-1)*100
         max_up=(max(b["h"] for b in post)/px-1)*100
-        out.append({"symbol":symbol,"date":date,"price":px,"gap_pct":gap,"move_to_1000_pct":move,"rvol":rvol,"strength":strength,"volume_accel":volume_accel,"early_range_pct":early_range,"est_daily_volume":baseline*13,"max_up_pct":max_up,"hit10":int(max_up>=10),"hit20":int(max_up>=20),"hit30":int(max_up>=30)})
+        out.append({"symbol":symbol,"date":date,"price":px,"gap_pct":gap,"move_to_1000_pct":move,"rvol":rvol,"strength":strength,"volume_accel":volume_accel,"early_range_pct":early_range,"est_daily_volume":baseline*13,"max_up_pct":max_up,"hit10":int(max_up>=10),"hit20":int(max_up>=20),"hit30":int(max_up>=30),"timing_windows":measure_day_timing(bars)})
         prev_close=bars[-1]["c"]
     return out
 
@@ -153,51 +154,42 @@ def install_explosion_learning(app):
         if feed not in {"iex","sip","delayed_sip"}: feed="iex"
 
         symbol_count=max(50,min(symbols,len(UNIVERSE)))
-        cache_key=(max(180,days),symbol_count,feed)
+        cache_key=(max(180,days),symbol_count,feed,"timing-v1")
         cached=_CACHE.get(cache_key)
         if cached:
             age=(datetime.now(timezone.utc)-cached["at"]).total_seconds()
             if age <= _CACHE_TTL_SECONDS:
-                out=dict(cached["value"])
-                out["cached"]=True
-                out["cache_age_seconds"]=round(age,1)
-                return out
+                out=dict(cached["value"]); out["cached"]=True; out["cache_age_seconds"]=round(age,1); return out
 
         headers={"APCA-API-KEY-ID":key,"APCA-API-SECRET-KEY":secret}
         universe=UNIVERSE[:symbol_count]
-        raw=[]; errors=[]
-        sem=asyncio.Semaphore(8)
-
+        raw=[]; errors=[]; sem=asyncio.Semaphore(8)
         async with httpx.AsyncClient(timeout=45) as client:
             async def one(symbol):
                 async with sem:
                     try:
                         ds,err=await _fetch(client,symbol,headers,feed,max(180,days))
-                        if err:
-                            return [], err
-                        return _events(symbol,ds), None
-                    except Exception as exc:
-                        return [], f"{symbol}: {exc}"
-
+                        if err:return [],err
+                        return _events(symbol,ds),None
+                    except Exception as exc:return [],f"{symbol}: {exc}"
             results=await asyncio.gather(*[one(symbol) for symbol in universe])
-
         for events,err in results:
-            if err:
-                errors.append(err)
+            if err:errors.append(err)
             raw.extend(events)
 
         eligible=[e for e in raw if e["price"]>=1 and e["est_daily_volume"]>=100000]
         dates=sorted({e["date"] for e in eligible})
-        if len(eligible)<300 or len(dates)<30: raise HTTPException(503,f"אין מספיק היסטוריה ללימוד ({len(eligible)} אירועים)")
+        if len(eligible)<300 or len(dates)<30:raise HTTPException(503,f"אין מספיק היסטוריה ללימוד ({len(eligible)} אירועים)")
         split=dates[max(1,int(len(dates)*.70))]
-        train=[e for e in eligible if e["date"]<split]
-        test=[e for e in eligible if e["date"]>=split]
+        train=[e for e in eligible if e["date"]<split]; test=[e for e in eligible if e["date"]>=split]
         model=_fit(train)
         for e in train+test:
             e["explosion_score"],e["reasons"]=_score(e,model); e["color"]=_color(e["explosion_score"])
         feature_importance=sorted([{"feature":f,"weight_pct":round(m["weight"]*100,1),"exploders_mean":m["positive_mean"],"others_mean":m["negative_mean"],"direction":"higher" if m["direction"]>0 else "lower"} for f,m in model.items()],key=lambda x:x["weight_pct"],reverse=True)
         biggest=sorted(test,key=lambda e:e["max_up_pct"],reverse=True)[:25]
         strongest=sorted(test,key=lambda e:e["explosion_score"],reverse=True)[:25]
-        out={"ok":True,"method":"explosion-pattern chronological holdout","cutoff_ny":"10:00","feed":feed,"split_date":split,"samples":{"total":len(eligible),"train":len(train),"test":len(test)},"baseline_test":_summary(test),"color_buckets_test":_bucket(test),"feature_importance_train_only":feature_importance,"largest_holdout_explosions":biggest,"strongest_holdout_signals":strongest,"error_count":len(errors),"errors":errors[:20],"cached":False,"limitations":["המודל לומד רק מידע שהיה זמין עד 10:00 ניו יורק.","המשקולות נלמדות מתקופת train בלבד; holdout משמש לבדיקה בלבד.","היקום עדיין קבוע ואינו כל השוק האמריקאי.","חדשות, float ו-short interest עדיין אינם כלולים ולכן יתווספו כשכבות נפרדות.","ב-Feed מסוג IEX הנתונים אינם מייצגים את כל עסקאות השוק המאוחד; SIP מדויק יותר כאשר זמין.","צבע הוא דמיון היסטורי לדפוסי התפוצצות ולא הבטחה לרווח."]}
+        timing_train=summarize_timing(train)
+        timing_holdout=summarize_timing(test)
+        out={"ok":True,"method":"explosion-pattern chronological holdout + timing-v1","cutoff_ny":"10:00","feed":feed,"split_date":split,"samples":{"total":len(eligible),"train":len(train),"test":len(test)},"baseline_test":_summary(test),"color_buckets_test":_bucket(test),"feature_importance_train_only":feature_importance,"timing":{"entry_windows_ny":["09:30","09:35","09:45","10:00"],"train":timing_train,"holdout":timing_holdout,"score_impact":"none until holdout validation"},"largest_holdout_explosions":biggest,"strongest_holdout_signals":strongest,"error_count":len(errors),"errors":errors[:20],"cached":False,"limitations":["המודל לומד רק מידע שהיה זמין עד 10:00 ניו יורק לציון ההתפוצצות.","מדדי התזמון נמדדים כרגע בנפרד ואינם משנים את הציון עד לאימות holdout.","המשקולות נלמדות מתקופת train בלבד; holdout משמש לבדיקה בלבד.","היקום עדיין קבוע ואינו כל השוק האמריקאי.","חדשות, float ו-short interest עדיין אינם כלולים ולכן יתווספו כשכבות נפרדות.","ב-Feed מסוג IEX הנתונים אינם מייצגים את כל עסקאות השוק המאוחד; SIP מדויק יותר כאשר זמין.","צבע הוא דמיון היסטורי לדפוסי התפוצצות ולא הבטחה לרווח."]}
         _CACHE[cache_key]={"at":datetime.now(timezone.utc),"value":out}
         return out
