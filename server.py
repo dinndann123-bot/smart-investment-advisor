@@ -5,6 +5,7 @@ from fastapi.routing import APIRoute
 
 import app as core
 from runtime_fixes import install_runtime_fixes
+from signal_journal import install_signal_journal
 
 app = core.app
 BASE_DIR = Path(__file__).resolve().parent
@@ -12,6 +13,7 @@ BASE_DIR = Path(__file__).resolve().parent
 # Install production route/runtime fixes explicitly. Keeping this in server.py makes
 # the Render entrypoint deterministic instead of relying on sitecustomize side effects.
 install_runtime_fixes(app)
+install_signal_journal(app, core)
 
 # Keep every API/WebSocket/static route from app.py, but replace only the home HTML
 # response so UX additions can evolve independently without rewriting the large UI file.
