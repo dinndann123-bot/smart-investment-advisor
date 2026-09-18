@@ -36,6 +36,14 @@ async def _bars(core,client,symbol,start,end,feed=None):
     if r.status_code>=400:return [],f'http_{r.status_code}'
     return (r.json() or {}).get('bars') or [],None
 
+def _valid_bars_after_signal(bars,captured):
+    out=[]
+    for b in bars or []:
+        if _f(b.get('h')) is None or _f(b.get('l')) is None or _f(b.get('c')) is None:continue
+        t=_iso(b.get('t'))
+        if t and t>=captured:out.append(b)
+    return out
+
 async def _premarket(core,symbols):
     if not(core.ALPACA_KEY and core.ALPACA_SECRET):return {}
     now=datetime.now(timezone.utc).astimezone(NY);day=now.date().isoformat();out={}
@@ -59,15 +67,22 @@ async def _evaluate_rows(core,rows):
                 ny=captured.astimezone(NY);op=ny.replace(hour=9,minute=30,second=0,microsecond=0);cl=ny.replace(hour=16,minute=0,second=0,microsecond=0);start=max(op,ny.replace(second=0,microsecond=0));safe=now-timedelta(seconds=10);startu=start.astimezone(timezone.utc);closeu=cl.astimezone(timezone.utc);end=min(safe,closeu)
                 if start>=cl:failures.append({'symbol':sym,'reason':'capture_after_regular_close'});continue
                 if end<=startu:failures.append({'symbol':sym,'reason':'no_elapsed_bar_window'});continue
-                primary_feed=str(getattr(core,'ALPACA_FEED','iex') or 'iex').lower();bars,err=await _bars(core,c,sym,startu.isoformat(),end.isoformat(),primary_feed);used_feed=primary_feed
+                primary_feed=str(getattr(core,'ALPACA_FEED','iex') or 'iex').lower();raw,err=await _bars(core,c,sym,startu.isoformat(),end.isoformat(),primary_feed);used_feed=primary_feed;bars=_valid_bars_after_signal(raw,captured)
                 if err:failures.append({'symbol':sym,'reason':err,'feed':primary_feed});continue
-                bars=[b for b in bars if _f(b.get('h')) is not None and _f(b.get('l')) is not None and _f(b.get('c')) is not None]
                 if not bars and primary_feed!='sip':
                     sip,serr=await _bars(core,c,sym,startu.isoformat(),end.isoformat(),'sip')
                     if not serr:
-                        sip=[b for b in sip if _f(b.get('h')) is not None and _f(b.get('l')) is not None and _f(b.get('c')) is not None]
-                        if sip:bars=sip;used_feed='sip'
-                if not bars:failures.append({'symbol':sym,'reason':'coverage_missing_no_valid_minute_bars','feeds_tried':[primary_feed] if primary_feed=='sip' else [primary_feed,'sip']});continue
+                        bars=_valid_bars_after_signal(sip,captured)
+                        if bars:used_feed='sip'
+                if not bars:
+                    wide_start=max(op,start-timedelta(minutes=30)).astimezone(timezone.utc);wide_end=min(closeu,end+timedelta(minutes=5));sip,serr=await _bars(core,c,sym,wide_start.isoformat(),wide_end.isoformat(),'sip')
+                    if not serr:
+                        filtered=[]
+                        for b in _valid_bars_after_signal(sip,captured):
+                            t=_iso(b.get('t'))
+                            if t and t<=end:filtered.append(b)
+                        if filtered:bars=filtered;used_feed='sip_retry'
+                if not bars:failures.append({'symbol':sym,'reason':'coverage_missing_no_valid_minute_bars','feeds_tried':[primary_feed,'sip','sip_retry'] if primary_feed!='sip' else ['sip','sip_retry']});continue
                 first=bars[0];entry=_f(first.get('c')) or scanner;peak=max(bars,key=lambda b:_f(b.get('h')));trough=min(bars,key=lambda b:_f(b.get('l')));last=bars[-1];pp=_f(peak.get('h'));tp=_f(trough.get('l'));cp=_f(last.get('c'));ft=_iso(first.get('t'));pt=_iso(peak.get('t'));tt=_iso(trough.get('t'));complete=now>=closeu
                 results.append({'id':row['id'],'symbol':sym,'peak_price':pp,'trough_price':tp,'close_price':cp,'mfe_pct':(pp/entry-1)*100,'mae_pct':(tp/entry-1)*100,'close_return_pct':(cp/entry-1)*100,'minutes_to_peak':(pt-captured).total_seconds()/60 if pt else None,'minutes_to_trough':(tt-captured).total_seconds()/60 if tt else None,'exit_price':cp,'exit_return_pct':(cp/entry-1)*100,'outcome_status':'complete' if complete else 'partial','outcome_bars':len(bars),'evaluated_at':now.isoformat(),'first_bar_time':ft.isoformat() if ft else None,'peak_time':pt.isoformat() if pt else None,'trough_time':tt.isoformat() if tt else None,'entry_bar_price':entry,'entry_slippage_pct':(entry/scanner-1)*100,'drawdown_from_peak_pct':(cp/pp-1)*100 if pp and cp else None,'evaluation_feed':used_feed})
             except Exception as e:failures.append({'symbol':sym,'reason':f'exception_{type(e).__name__}'})
@@ -93,7 +108,7 @@ def install_signal_journal(app,core):
     async def evaluate(limit:int=100):
         con=_db();raw=con.execute("SELECT * FROM signal_journal WHERE outcome_status IS NULL OR outcome_status!='complete' ORDER BY captured_at ASC LIMIT ?",(max(1,min(limit,300)),)).fetchall();rows=[dict(r) for r in raw];results,failures=await _evaluate_rows(core,rows)
         for x in results:con.execute('UPDATE signal_journal SET evaluated_at=?,peak_price=?,trough_price=?,close_price=?,mfe_pct=?,mae_pct=?,close_return_pct=?,minutes_to_peak=?,minutes_to_trough=?,exit_price=?,exit_return_pct=?,outcome_status=?,outcome_bars=?,first_bar_time=?,peak_time=?,trough_time=?,entry_bar_price=?,entry_slippage_pct=?,drawdown_from_peak_pct=?,evaluation_feed=? WHERE id=?',(x['evaluated_at'],x['peak_price'],x['trough_price'],x['close_price'],x['mfe_pct'],x['mae_pct'],x['close_return_pct'],x['minutes_to_peak'],x['minutes_to_trough'],x['exit_price'],x['exit_return_pct'],x['outcome_status'],x['outcome_bars'],x['first_bar_time'],x['peak_time'],x['trough_time'],x['entry_bar_price'],x['entry_slippage_pct'],x['drawdown_from_peak_pct'],x['evaluation_feed'],x['id']))
-        con.commit();con.close();return {'ok':True,'requested':len(rows),'evaluated':len(results),'complete':sum(x['outcome_status']=='complete' for x in results),'partial':sum(x['outcome_status']=='partial' for x in results),'feeds':{'iex':sum(x.get('evaluation_feed')=='iex' for x in results),'sip':sum(x.get('evaluation_feed')=='sip' for x in results)},'failures':failures,'strategy_version':STRATEGY_VERSION}
+        con.commit();con.close();return {'ok':True,'requested':len(rows),'evaluated':len(results),'complete':sum(x['outcome_status']=='complete' for x in results),'partial':sum(x['outcome_status']=='partial' for x in results),'feeds':{'iex':sum(x.get('evaluation_feed')=='iex' for x in results),'sip':sum(x.get('evaluation_feed')=='sip' for x in results),'sip_retry':sum(x.get('evaluation_feed')=='sip_retry' for x in results)},'failures':failures,'strategy_version':STRATEGY_VERSION}
 
     @app.get('/api/learning/journal')
     async def journal(limit:int=100):
@@ -101,4 +116,4 @@ def install_signal_journal(app,core):
 
     @app.get('/api/learning/summary')
     async def summary():
-        con=_db();r=con.execute("SELECT COUNT(*) n,SUM(CASE WHEN outcome_status='complete' THEN 1 ELSE 0 END) complete,AVG(CASE WHEN outcome_status IS NOT NULL THEN mfe_pct END) avg_mfe,AVG(CASE WHEN outcome_status IS NOT NULL THEN mae_pct END) avg_mae,AVG(CASE WHEN outcome_status IS NOT NULL THEN close_return_pct END) avg_close,AVG(CASE WHEN outcome_status IS NOT NULL THEN premarket_gap_pct END) avg_pm_gap,AVG(CASE WHEN outcome_status IS NOT NULL THEN minutes_to_peak END) avg_minutes_to_peak,AVG(CASE WHEN outcome_status IS NOT NULL THEN entry_slippage_pct END) avg_entry_slippage,AVG(CASE WHEN outcome_status IS NOT NULL THEN drawdown_from_peak_pct END) avg_drawdown_from_peak,SUM(CASE WHEN evaluation_feed='iex' THEN 1 ELSE 0 END) eval_iex,SUM(CASE WHEN evaluation_feed='sip' THEN 1 ELSE 0 END) eval_sip FROM signal_journal WHERE strategy_version=?",(STRATEGY_VERSION,)).fetchone();con.close();return {'ok':True,**dict(r),'strategy_version':STRATEGY_VERSION}
+        con=_db();r=con.execute("SELECT COUNT(*) n,SUM(CASE WHEN outcome_status='complete' THEN 1 ELSE 0 END) complete,AVG(CASE WHEN outcome_status IS NOT NULL THEN mfe_pct END) avg_mfe,AVG(CASE WHEN outcome_status IS NOT NULL THEN mae_pct END) avg_mae,AVG(CASE WHEN outcome_status IS NOT NULL THEN close_return_pct END) avg_close,AVG(CASE WHEN outcome_status IS NOT NULL THEN premarket_gap_pct END) avg_pm_gap,AVG(CASE WHEN outcome_status IS NOT NULL THEN minutes_to_peak END) avg_minutes_to_peak,AVG(CASE WHEN outcome_status IS NOT NULL THEN entry_slippage_pct END) avg_entry_slippage,AVG(CASE WHEN outcome_status IS NOT NULL THEN drawdown_from_peak_pct END) avg_drawdown_from_peak,SUM(CASE WHEN evaluation_feed='iex' THEN 1 ELSE 0 END) eval_iex,SUM(CASE WHEN evaluation_feed='sip' THEN 1 ELSE 0 END) eval_sip,SUM(CASE WHEN evaluation_feed='sip_retry' THEN 1 ELSE 0 END) eval_sip_retry FROM signal_journal WHERE strategy_version=?",(STRATEGY_VERSION,)).fetchone();con.close();return {'ok':True,**dict(r),'strategy_version':STRATEGY_VERSION}
