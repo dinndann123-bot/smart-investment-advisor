@@ -21,8 +21,6 @@ except Exception as _learning_error:
 async def learning_status():
     return LEARNING_ENGINE_STATUS
 
-# Startup smoke test is read/local-only: it verifies route installation and DB schema
-# without calling the scanner or Alpaca and therefore cannot affect trading/UI behavior.
 @app.on_event('startup')
 async def _learning_startup_smoke():
     try:
@@ -36,3 +34,18 @@ async def _learning_startup_smoke():
         print(f'LEARNING_SMOKE installed={LEARNING_ENGINE_STATUS.get("installed")} routes_ok={not missing} missing={missing} db_ok=true version={LEARNING_ENGINE_STATUS.get("strategy_version")}', flush=True)
     except Exception as e:
         print(f'LEARNING_SMOKE_ERROR {type(e).__name__}: {e}', flush=True)
+
+# One controlled live capture after startup. It only reads the existing scanner/Alpaca
+# and writes to the learning SQLite journal; failures never affect the stable app.
+@app.on_event('startup')
+async def _learning_live_capture_once():
+    if not LEARNING_ENGINE_STATUS.get('installed'):
+        return
+    try:
+        capture_route=next((r for r in app.routes if getattr(r,'path',None)=='/api/learning/capture-top10'),None)
+        if not capture_route:
+            print('LEARNING_CAPTURE_ERROR route_missing',flush=True); return
+        result=await capture_route.endpoint(force=True)
+        print(f'LEARNING_CAPTURE ok={result.get("ok")} saved={result.get("saved")} premarket={result.get("premarket_enriched")} source={result.get("source")} session={result.get("session")} version={result.get("strategy_version")}',flush=True)
+    except Exception as e:
+        print(f'LEARNING_CAPTURE_ERROR {type(e).__name__}: {e}',flush=True)
