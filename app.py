@@ -18,8 +18,6 @@ try:
             bars=(r.json() or {}).get('bars') or [];return bool(bars),('ok' if bars else 'no_bars')
         except Exception as e:return False,type(e).__name__
     async def _fallback_ranked(wanted):
-        # Use the stable per-symbol analysis endpoint, not fabricated rows. Every
-        # fallback candidate must be observable on the configured feed first.
         rows=[]
         for sym in _liquid_universe:
             if len(rows)>=wanted:break
@@ -27,14 +25,10 @@ try:
             if not ok:continue
             try:
                 a=await analyze(sym)
-                if not isinstance(a,dict):continue
-                price=a.get('price'); ch=a.get('change')
-                if price is None:continue
-                score=float(a.get('score') or 0)
-                rows.append({'ticker':sym,'name':sym,'price':price,'change':ch,'score':score,'confidence':a.get('confidence'),'action':a.get('action'),'target':a.get('target'),'stop':a.get('stop'),'rvol':a.get('rvol'),'move_to_1000_pct':a.get('move_to_1000_pct'),'reasons':a.get('reasons') or [],'data_observable':True,'data_feed':ALPACA_FEED,'fallback_verified':True})
+                if not isinstance(a,dict) or a.get('price') is None:continue
+                rows.append({'ticker':sym,'name':sym,'price':a.get('price'),'change':a.get('change'),'score':float(a.get('score') or 0),'confidence':a.get('confidence'),'action':a.get('action'),'target':a.get('target'),'stop':a.get('stop'),'rvol':a.get('rvol'),'move_to_1000_pct':a.get('move_to_1000_pct'),'reasons':a.get('reasons') or [],'data_observable':True,'data_feed':ALPACA_FEED,'fallback_verified':True})
             except Exception:continue
-        rows.sort(key=lambda x:(float(x.get('score') or 0),float(x.get('change') or -999)),reverse=True)
-        return rows[:wanted]
+        rows.sort(key=lambda x:(float(x.get('score') or 0),float(x.get('change') or -999)),reverse=True);return rows[:wanted]
     async def _aligned_day_scanner(top:int=10,candidates:int=40):
         wanted=max(3,min(top,20));base=await _original_day_scanner(top=20,candidates=max(wanted,min(max(candidates,60),60)));rows=list((base or {}).get('results') or []);observable=[];rejected=[]
         for row in rows:
@@ -45,9 +39,6 @@ try:
                 row=dict(row);row['data_observable']=True;row['data_feed']=ALPACA_FEED;observable.append(row)
             else:rejected.append({'ticker':sym,'reason':reason})
             if len(observable)>=wanted:break
-        # SIP discovery can legitimately fall back or return too few IEX-observable
-        # names. Fill the remainder from verified liquid symbols using the same stable
-        # analyzer. Never emit an unobservable/fabricated Top-10 row.
         if len(observable)<wanted:
             existing={x.get('ticker') for x in observable};fills=await _fallback_ranked(wanted)
             for row in fills:
@@ -90,6 +81,15 @@ async def _delayed_learning_evaluation(delay_seconds=95):
         ev=await evaluate.endpoint(limit=100);print(f'LEARNING_EVALUATE_DELAYED ok={ev.get("ok")} requested={ev.get("requested")} evaluated={ev.get("evaluated")} complete={ev.get("complete")} partial={ev.get("partial")} delay={delay_seconds}',flush=True)
     except Exception as e:print(f'LEARNING_EVALUATE_DELAYED_ERROR {type(e).__name__}: {e}',flush=True)
 
+async def _delayed_missed_movers(delay_seconds=20):
+    await asyncio.sleep(delay_seconds)
+    try:
+        route=next((r for r in app.routes if getattr(r,'path',None)=='/api/learning/missed-movers'),None)
+        if not route:return
+        mm=await route.endpoint(threshold_pct=8.0,limit=100)
+        print(f'LEARNING_MISSED_MOVERS ok={mm.get("ok")} movers={mm.get("market_movers")} overlap={mm.get("top10_overlap")} false_negatives={mm.get("false_negatives")} saved={mm.get("saved")} threshold={mm.get("threshold_pct")} missed={[(x.get("symbol"),x.get("move_pct")) for x in (mm.get("missed") or [])[:10]]}',flush=True)
+    except Exception as e:print(f'LEARNING_MISSED_MOVERS_ERROR {type(e).__name__}: {e}',flush=True)
+
 @app.on_event('startup')
 async def _learning_live_cycle_once():
     if not LEARNING_ENGINE_STATUS.get('installed'):return
@@ -97,7 +97,7 @@ async def _learning_live_cycle_once():
         capture=next((r for r in app.routes if getattr(r,'path',None)=='/api/learning/capture-top10'),None)
         if not capture:print('LEARNING_CYCLE_ERROR capture_route_missing',flush=True);return
         result=await capture.endpoint(force=True);print(f'LEARNING_CAPTURE ok={result.get("ok")} saved={result.get("saved")} premarket={result.get("premarket_enriched")} source={result.get("source")} session={result.get("session")} version={result.get("strategy_version")}',flush=True)
-        asyncio.create_task(_delayed_learning_evaluation())
+        asyncio.create_task(_delayed_missed_movers());asyncio.create_task(_delayed_learning_evaluation())
         from signal_journal import _db as _journal_db
         con=_journal_db();audit=con.execute("SELECT COUNT(*) n,COUNT(DISTINCT symbol) symbols,SUM(CASE WHEN premarket_price IS NOT NULL THEN 1 ELSE 0 END) pm,MIN(captured_at) first_capture,MAX(captured_at) last_capture FROM signal_journal WHERE trade_date=date('now') AND strategy_version='strategy-learning-v2'").fetchone();con.close();print(f'LEARNING_JOURNAL_AUDIT rows={audit[0]} symbols={audit[1]} premarket_rows={audit[2] or 0} first={audit[3]} last={audit[4]} alignment={SCANNER_UNIVERSE_ALIGNMENT}',flush=True)
     except Exception as e:print(f'LEARNING_CYCLE_ERROR {type(e).__name__}: {e}',flush=True)
