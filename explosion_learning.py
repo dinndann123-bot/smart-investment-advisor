@@ -13,6 +13,7 @@ from runtime_fixes import install_runtime_fixes
 from market_search import install_market_search
 from long_strategy import install_long_strategy
 from timing_learning import measure_day_timing, summarize_timing, summarize_timing_patterns
+from signal_journal import install_signal_journal
 
 NY = ZoneInfo("America/New_York")
 
@@ -90,6 +91,13 @@ def _bucket(test):return [{"color":name,**_summary([e for e in test if lo<=e["ex
 
 def install_explosion_learning(app):
     install_runtime_fixes(app); install_long_strategy(app); install_market_search(app)
+    # app.py is Render's real production entrypoint. Install the persistent signal journal here
+    # so snapshots, pre-market enrichment and end-of-day evaluation are available in production.
+    import sys
+    core=sys.modules.get("app")
+    if core is not None and not getattr(app.state,"signal_journal_installed",False):
+        install_signal_journal(app,core)
+        app.state.signal_journal_installed=True
     @app.get("/api/strategy/explosions")
     async def explosion_learning(days:int=Query(180,ge=120,le=365),symbols:int=Query(90,ge=50,le=len(UNIVERSE))):
         key=os.getenv("ALPACA_API_KEY","").strip(); secret=os.getenv("ALPACA_SECRET_KEY","").strip(); feed=os.getenv("ALPACA_FEED","iex").strip().lower() or "iex"
