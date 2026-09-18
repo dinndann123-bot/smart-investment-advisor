@@ -6,7 +6,7 @@ import httpx
 from fastapi import HTTPException
 
 NY=ZoneInfo('America/New_York'); DB=Path(__file__).resolve().parent/'signal_journal.sqlite3'; STRATEGY_VERSION='strategy-learning-v2'
-OUTCOME_COLS={'evaluated_at':'TEXT','peak_price':'REAL','trough_price':'REAL','close_price':'REAL','mfe_pct':'REAL','mae_pct':'REAL','close_return_pct':'REAL','minutes_to_peak':'REAL','minutes_to_trough':'REAL','exit_price':'REAL','exit_return_pct':'REAL','outcome_status':'TEXT','outcome_bars':'INTEGER','strategy_version':'TEXT','session':'TEXT','feature_snapshot':'TEXT','first_bar_time':'TEXT','peak_time':'TEXT','trough_time':'TEXT','entry_bar_price':'REAL','entry_slippage_pct':'REAL','drawdown_from_peak_pct':'REAL'}
+OUTCOME_COLS={'evaluated_at':'TEXT','peak_price':'REAL','trough_price':'REAL','close_price':'REAL','mfe_pct':'REAL','mae_pct':'REAL','close_return_pct':'REAL','minutes_to_peak':'REAL','minutes_to_trough':'REAL','exit_price':'REAL','exit_return_pct':'REAL','outcome_status':'TEXT','outcome_bars':'INTEGER','strategy_version':'TEXT','session':'TEXT','feature_snapshot':'TEXT','first_bar_time':'TEXT','peak_time':'TEXT','trough_time':'TEXT','entry_bar_price':'REAL','entry_slippage_pct':'REAL','drawdown_from_peak_pct':'REAL','evaluation_feed':'TEXT'}
 
 def _db():
     con=sqlite3.connect(DB);con.row_factory=sqlite3.Row;con.execute('''CREATE TABLE IF NOT EXISTS signal_journal(id INTEGER PRIMARY KEY AUTOINCREMENT,trade_date TEXT,captured_at TEXT,rank INTEGER,symbol TEXT,score REAL,price REAL,gap_pct REAL,rvol REAL,momentum_pct REAL,premarket_price REAL,premarket_gap_pct REAL,premarket_volume REAL,premarket_high REAL,premarket_low REAL,source TEXT,payload TEXT,UNIQUE(trade_date,symbol,captured_at))''');existing={r[1] for r in con.execute('PRAGMA table_info(signal_journal)').fetchall()}
@@ -28,9 +28,9 @@ def _session(ny):
 
 def _features(x,p,g):return {'score':_f(x.get('score')),'price':_f(x.get('price')),'gap_pct':_f(x.get('gap_pct') if x.get('gap_pct') is not None else x.get('change')),'rvol':_f(x.get('rvol')),'momentum_pct':_f(x.get('move_to_1000_pct') if x.get('move_to_1000_pct') is not None else x.get('change')),'premarket_price':p.get('premarket_price'),'premarket_gap_pct':g,'premarket_volume':p.get('premarket_volume'),'premarket_high':p.get('premarket_high'),'premarket_low':p.get('premarket_low')}
 
-async def _bars(core,client,symbol,start,end):
+async def _bars(core,client,symbol,start,end,feed=None):
     if not(core.ALPACA_KEY and core.ALPACA_SECRET):return [],'no_credentials'
-    h={'APCA-API-KEY-ID':core.ALPACA_KEY,'APCA-API-SECRET-KEY':core.ALPACA_SECRET};p={'timeframe':'1Min','start':start,'end':end,'limit':10000,'feed':core.ALPACA_FEED,'adjustment':'split','sort':'asc'}
+    h={'APCA-API-KEY-ID':core.ALPACA_KEY,'APCA-API-SECRET-KEY':core.ALPACA_SECRET};p={'timeframe':'1Min','start':start,'end':end,'limit':10000,'feed':feed or core.ALPACA_FEED,'adjustment':'split','sort':'asc'}
     try:r=await client.get(f'https://data.alpaca.markets/v2/stocks/{symbol}/bars',headers=h,params=p)
     except Exception as e:return [],f'request_{type(e).__name__}'
     if r.status_code>=400:return [],f'http_{r.status_code}'
@@ -59,12 +59,17 @@ async def _evaluate_rows(core,rows):
                 ny=captured.astimezone(NY);op=ny.replace(hour=9,minute=30,second=0,microsecond=0);cl=ny.replace(hour=16,minute=0,second=0,microsecond=0);start=max(op,ny.replace(second=0,microsecond=0));safe=now-timedelta(seconds=10);startu=start.astimezone(timezone.utc);closeu=cl.astimezone(timezone.utc);end=min(safe,closeu)
                 if start>=cl:failures.append({'symbol':sym,'reason':'capture_after_regular_close'});continue
                 if end<=startu:failures.append({'symbol':sym,'reason':'no_elapsed_bar_window'});continue
-                bars,err=await _bars(core,c,sym,startu.isoformat(),end.isoformat())
-                if err:failures.append({'symbol':sym,'reason':err});continue
+                primary_feed=str(getattr(core,'ALPACA_FEED','iex') or 'iex').lower();bars,err=await _bars(core,c,sym,startu.isoformat(),end.isoformat(),primary_feed);used_feed=primary_feed
+                if err:failures.append({'symbol':sym,'reason':err,'feed':primary_feed});continue
                 bars=[b for b in bars if _f(b.get('h')) is not None and _f(b.get('l')) is not None and _f(b.get('c')) is not None]
-                if not bars:failures.append({'symbol':sym,'reason':'no_valid_iex_minute_bars'});continue
+                if not bars and primary_feed!='sip':
+                    sip,serr=await _bars(core,c,sym,startu.isoformat(),end.isoformat(),'sip')
+                    if not serr:
+                        sip=[b for b in sip if _f(b.get('h')) is not None and _f(b.get('l')) is not None and _f(b.get('c')) is not None]
+                        if sip:bars=sip;used_feed='sip'
+                if not bars:failures.append({'symbol':sym,'reason':'coverage_missing_no_valid_minute_bars','feeds_tried':[primary_feed] if primary_feed=='sip' else [primary_feed,'sip']});continue
                 first=bars[0];entry=_f(first.get('c')) or scanner;peak=max(bars,key=lambda b:_f(b.get('h')));trough=min(bars,key=lambda b:_f(b.get('l')));last=bars[-1];pp=_f(peak.get('h'));tp=_f(trough.get('l'));cp=_f(last.get('c'));ft=_iso(first.get('t'));pt=_iso(peak.get('t'));tt=_iso(trough.get('t'));complete=now>=closeu
-                results.append({'id':row['id'],'symbol':sym,'peak_price':pp,'trough_price':tp,'close_price':cp,'mfe_pct':(pp/entry-1)*100,'mae_pct':(tp/entry-1)*100,'close_return_pct':(cp/entry-1)*100,'minutes_to_peak':(pt-captured).total_seconds()/60 if pt else None,'minutes_to_trough':(tt-captured).total_seconds()/60 if tt else None,'exit_price':cp,'exit_return_pct':(cp/entry-1)*100,'outcome_status':'complete' if complete else 'partial','outcome_bars':len(bars),'evaluated_at':now.isoformat(),'first_bar_time':ft.isoformat() if ft else None,'peak_time':pt.isoformat() if pt else None,'trough_time':tt.isoformat() if tt else None,'entry_bar_price':entry,'entry_slippage_pct':(entry/scanner-1)*100,'drawdown_from_peak_pct':(cp/pp-1)*100 if pp and cp else None})
+                results.append({'id':row['id'],'symbol':sym,'peak_price':pp,'trough_price':tp,'close_price':cp,'mfe_pct':(pp/entry-1)*100,'mae_pct':(tp/entry-1)*100,'close_return_pct':(cp/entry-1)*100,'minutes_to_peak':(pt-captured).total_seconds()/60 if pt else None,'minutes_to_trough':(tt-captured).total_seconds()/60 if tt else None,'exit_price':cp,'exit_return_pct':(cp/entry-1)*100,'outcome_status':'complete' if complete else 'partial','outcome_bars':len(bars),'evaluated_at':now.isoformat(),'first_bar_time':ft.isoformat() if ft else None,'peak_time':pt.isoformat() if pt else None,'trough_time':tt.isoformat() if tt else None,'entry_bar_price':entry,'entry_slippage_pct':(entry/scanner-1)*100,'drawdown_from_peak_pct':(cp/pp-1)*100 if pp and cp else None,'evaluation_feed':used_feed})
             except Exception as e:failures.append({'symbol':sym,'reason':f'exception_{type(e).__name__}'})
     return results,failures
 
@@ -87,8 +92,8 @@ def install_signal_journal(app,core):
     @app.post('/api/learning/evaluate')
     async def evaluate(limit:int=100):
         con=_db();raw=con.execute("SELECT * FROM signal_journal WHERE outcome_status IS NULL OR outcome_status!='complete' ORDER BY captured_at ASC LIMIT ?",(max(1,min(limit,300)),)).fetchall();rows=[dict(r) for r in raw];results,failures=await _evaluate_rows(core,rows)
-        for x in results:con.execute('UPDATE signal_journal SET evaluated_at=?,peak_price=?,trough_price=?,close_price=?,mfe_pct=?,mae_pct=?,close_return_pct=?,minutes_to_peak=?,minutes_to_trough=?,exit_price=?,exit_return_pct=?,outcome_status=?,outcome_bars=?,first_bar_time=?,peak_time=?,trough_time=?,entry_bar_price=?,entry_slippage_pct=?,drawdown_from_peak_pct=? WHERE id=?',(x['evaluated_at'],x['peak_price'],x['trough_price'],x['close_price'],x['mfe_pct'],x['mae_pct'],x['close_return_pct'],x['minutes_to_peak'],x['minutes_to_trough'],x['exit_price'],x['exit_return_pct'],x['outcome_status'],x['outcome_bars'],x['first_bar_time'],x['peak_time'],x['trough_time'],x['entry_bar_price'],x['entry_slippage_pct'],x['drawdown_from_peak_pct'],x['id']))
-        con.commit();con.close();return {'ok':True,'requested':len(rows),'evaluated':len(results),'complete':sum(x['outcome_status']=='complete' for x in results),'partial':sum(x['outcome_status']=='partial' for x in results),'failures':failures,'strategy_version':STRATEGY_VERSION}
+        for x in results:con.execute('UPDATE signal_journal SET evaluated_at=?,peak_price=?,trough_price=?,close_price=?,mfe_pct=?,mae_pct=?,close_return_pct=?,minutes_to_peak=?,minutes_to_trough=?,exit_price=?,exit_return_pct=?,outcome_status=?,outcome_bars=?,first_bar_time=?,peak_time=?,trough_time=?,entry_bar_price=?,entry_slippage_pct=?,drawdown_from_peak_pct=?,evaluation_feed=? WHERE id=?',(x['evaluated_at'],x['peak_price'],x['trough_price'],x['close_price'],x['mfe_pct'],x['mae_pct'],x['close_return_pct'],x['minutes_to_peak'],x['minutes_to_trough'],x['exit_price'],x['exit_return_pct'],x['outcome_status'],x['outcome_bars'],x['first_bar_time'],x['peak_time'],x['trough_time'],x['entry_bar_price'],x['entry_slippage_pct'],x['drawdown_from_peak_pct'],x['evaluation_feed'],x['id']))
+        con.commit();con.close();return {'ok':True,'requested':len(rows),'evaluated':len(results),'complete':sum(x['outcome_status']=='complete' for x in results),'partial':sum(x['outcome_status']=='partial' for x in results),'feeds':{'iex':sum(x.get('evaluation_feed')=='iex' for x in results),'sip':sum(x.get('evaluation_feed')=='sip' for x in results)},'failures':failures,'strategy_version':STRATEGY_VERSION}
 
     @app.get('/api/learning/journal')
     async def journal(limit:int=100):
@@ -96,4 +101,4 @@ def install_signal_journal(app,core):
 
     @app.get('/api/learning/summary')
     async def summary():
-        con=_db();r=con.execute("SELECT COUNT(*) n,SUM(CASE WHEN outcome_status='complete' THEN 1 ELSE 0 END) complete,AVG(CASE WHEN outcome_status IS NOT NULL THEN mfe_pct END) avg_mfe,AVG(CASE WHEN outcome_status IS NOT NULL THEN mae_pct END) avg_mae,AVG(CASE WHEN outcome_status IS NOT NULL THEN close_return_pct END) avg_close,AVG(CASE WHEN outcome_status IS NOT NULL THEN premarket_gap_pct END) avg_pm_gap,AVG(CASE WHEN outcome_status IS NOT NULL THEN minutes_to_peak END) avg_minutes_to_peak,AVG(CASE WHEN outcome_status IS NOT NULL THEN entry_slippage_pct END) avg_entry_slippage,AVG(CASE WHEN outcome_status IS NOT NULL THEN drawdown_from_peak_pct END) avg_drawdown_from_peak FROM signal_journal WHERE strategy_version=?",(STRATEGY_VERSION,)).fetchone();con.close();return {'ok':True,**dict(r),'strategy_version':STRATEGY_VERSION}
+        con=_db();r=con.execute("SELECT COUNT(*) n,SUM(CASE WHEN outcome_status='complete' THEN 1 ELSE 0 END) complete,AVG(CASE WHEN outcome_status IS NOT NULL THEN mfe_pct END) avg_mfe,AVG(CASE WHEN outcome_status IS NOT NULL THEN mae_pct END) avg_mae,AVG(CASE WHEN outcome_status IS NOT NULL THEN close_return_pct END) avg_close,AVG(CASE WHEN outcome_status IS NOT NULL THEN premarket_gap_pct END) avg_pm_gap,AVG(CASE WHEN outcome_status IS NOT NULL THEN minutes_to_peak END) avg_minutes_to_peak,AVG(CASE WHEN outcome_status IS NOT NULL THEN entry_slippage_pct END) avg_entry_slippage,AVG(CASE WHEN outcome_status IS NOT NULL THEN drawdown_from_peak_pct END) avg_drawdown_from_peak,SUM(CASE WHEN evaluation_feed='iex' THEN 1 ELSE 0 END) eval_iex,SUM(CASE WHEN evaluation_feed='sip' THEN 1 ELSE 0 END) eval_sip FROM signal_journal WHERE strategy_version=?",(STRATEGY_VERSION,)).fetchone();con.close();return {'ok':True,**dict(r),'strategy_version':STRATEGY_VERSION}
