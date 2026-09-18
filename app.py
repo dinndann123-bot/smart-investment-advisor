@@ -56,8 +56,9 @@ try:
     _core=sys.modules[__name__]
     from signal_journal import install_signal_journal
     from missed_movers_learning import install_missed_movers_learning
-    install_signal_journal(app,_core);install_missed_movers_learning(app,_core)
-    LEARNING_ENGINE_STATUS={'installed':True,'strategy_version':'strategy-learning-v2','stable_base':'1b8068c52a5f7ba5ab6ee455999330b102dbc90a','universe_alignment':SCANNER_UNIVERSE_ALIGNMENT}
+    from learning_comparison import install_learning_comparison
+    install_signal_journal(app,_core);install_missed_movers_learning(app,_core);install_learning_comparison(app,_core)
+    LEARNING_ENGINE_STATUS={'installed':True,'strategy_version':'strategy-learning-v2','stable_base':'1b8068c52a5f7ba5ab6ee455999330b102dbc90a','universe_alignment':SCANNER_UNIVERSE_ALIGNMENT,'feature_comparison':True}
 except Exception as _learning_error:LEARNING_ENGINE_STATUS={'installed':False,'strategy_version':'strategy-learning-v2','error':f'{type(_learning_error).__name__}: {_learning_error}','universe_alignment':SCANNER_UNIVERSE_ALIGNMENT}
 
 @app.get('/api/learning/status')
@@ -66,11 +67,11 @@ async def learning_status():return LEARNING_ENGINE_STATUS
 @app.on_event('startup')
 async def _learning_startup_smoke():
     try:
-        paths={getattr(r,'path',None) for r in app.routes};required={'/api/learning/status','/api/learning/capture-top10','/api/learning/evaluate','/api/learning/journal','/api/learning/summary','/api/learning/missed-movers','/api/learning/missed-movers/summary'};missing=sorted(required-paths)
+        paths={getattr(r,'path',None) for r in app.routes};required={'/api/learning/status','/api/learning/capture-top10','/api/learning/evaluate','/api/learning/journal','/api/learning/summary','/api/learning/missed-movers','/api/learning/missed-movers/summary','/api/learning/feature-comparison'};missing=sorted(required-paths)
         from signal_journal import _db as _journal_db
         from missed_movers_learning import _db as _missed_db
         c1=_journal_db();c1.execute('SELECT 1 FROM signal_journal LIMIT 1').fetchall();c1.close();c2=_missed_db();c2.execute('SELECT 1 FROM missed_movers LIMIT 1').fetchall();c2.close()
-        print(f'LEARNING_SMOKE installed={LEARNING_ENGINE_STATUS.get("installed")} routes_ok={not missing} missing={missing} db_ok=true alignment={SCANNER_UNIVERSE_ALIGNMENT} version={LEARNING_ENGINE_STATUS.get("strategy_version")}',flush=True)
+        print(f'LEARNING_SMOKE installed={LEARNING_ENGINE_STATUS.get("installed")} routes_ok={not missing} missing={missing} db_ok=true comparison={LEARNING_ENGINE_STATUS.get("feature_comparison")} alignment={SCANNER_UNIVERSE_ALIGNMENT} version={LEARNING_ENGINE_STATUS.get("strategy_version")}',flush=True)
     except Exception as e:print(f'LEARNING_SMOKE_ERROR {type(e).__name__}: {e}',flush=True)
 
 async def _delayed_learning_evaluation(delay_seconds=95):
@@ -88,6 +89,9 @@ async def _delayed_missed_movers(delay_seconds=20):
         if not route:return
         mm=await route.endpoint(threshold_pct=8.0,limit=50)
         print(f'LEARNING_MISSED_MOVERS ok={mm.get("ok")} raw={mm.get("raw_market_movers")} eligible={mm.get("eligible_stock_movers")} captured={mm.get("eligible_top10_overlap")} missed={mm.get("eligible_false_negatives")} capture_rate={mm.get("eligible_capture_rate_pct")} excluded={mm.get("excluded_instruments")} verified={mm.get("verified_iex")} saved={mm.get("saved")} threshold={mm.get("threshold_pct")} top_missed={[(x.get("symbol"),x.get("move_pct"),x.get("premarket_gap_pct"),x.get("premarket_volume"),x.get("overnight_halted")) for x in (mm.get("missed") or [])[:10]]}',flush=True)
+        compare=next((r for r in app.routes if getattr(r,'path',None)=='/api/learning/feature-comparison'),None)
+        if compare:
+            fc=await compare.endpoint();print(f'LEARNING_FEATURE_COMPARISON captured={fc.get("captured")} missed={fc.get("missed")} delta={fc.get("delta_missed_minus_captured")}',flush=True)
     except Exception as e:print(f'LEARNING_MISSED_MOVERS_ERROR {type(e).__name__}: {e}',flush=True)
 
 @app.on_event('startup')
