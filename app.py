@@ -86,8 +86,8 @@ async def _delayed_missed_movers(delay_seconds=20):
     try:
         route=next((r for r in app.routes if getattr(r,'path',None)=='/api/learning/missed-movers'),None)
         if not route:return
-        mm=await route.endpoint(threshold_pct=8.0,limit=100)
-        print(f'LEARNING_MISSED_MOVERS ok={mm.get("ok")} movers={mm.get("market_movers")} overlap={mm.get("top10_overlap")} false_negatives={mm.get("false_negatives")} saved={mm.get("saved")} threshold={mm.get("threshold_pct")} missed={[(x.get("symbol"),x.get("move_pct")) for x in (mm.get("missed") or [])[:10]]}',flush=True)
+        mm=await route.endpoint(threshold_pct=8.0,limit=50)
+        print(f'LEARNING_MISSED_MOVERS ok={mm.get("ok")} raw={mm.get("raw_market_movers")} eligible={mm.get("eligible_stock_movers")} captured={mm.get("eligible_top10_overlap")} missed={mm.get("eligible_false_negatives")} capture_rate={mm.get("eligible_capture_rate_pct")} excluded={mm.get("excluded_instruments")} verified={mm.get("verified_iex")} saved={mm.get("saved")} threshold={mm.get("threshold_pct")} top_missed={[(x.get("symbol"),x.get("move_pct"),x.get("premarket_gap_pct"),x.get("premarket_volume"),x.get("overnight_halted")) for x in (mm.get("missed") or [])[:10]]}',flush=True)
     except Exception as e:print(f'LEARNING_MISSED_MOVERS_ERROR {type(e).__name__}: {e}',flush=True)
 
 @app.on_event('startup')
