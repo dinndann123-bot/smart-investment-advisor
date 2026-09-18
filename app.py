@@ -79,7 +79,7 @@ async def _delayed_learning_evaluation(delay_seconds=95):
     try:
         evaluate=next((r for r in app.routes if getattr(r,'path',None)=='/api/learning/evaluate'),None)
         if not evaluate:return
-        ev=await evaluate.endpoint(limit=100);print(f'LEARNING_EVALUATE_DELAYED ok={ev.get("ok")} requested={ev.get("requested")} evaluated={ev.get("evaluated")} complete={ev.get("complete")} partial={ev.get("partial")} delay={delay_seconds}',flush=True)
+        ev=await evaluate.endpoint(limit=100);print(f'LEARNING_EVALUATE_DELAYED ok={ev.get("ok")} requested={ev.get("requested")} evaluated={ev.get("evaluated")} complete={ev.get("complete")} partial={ev.get("partial")} failures={ev.get("failures")} delay={delay_seconds}',flush=True)
     except Exception as e:print(f'LEARNING_EVALUATE_DELAYED_ERROR {type(e).__name__}: {e}',flush=True)
 
 async def _delayed_missed_movers(delay_seconds=20):
@@ -91,7 +91,7 @@ async def _delayed_missed_movers(delay_seconds=20):
         print(f'LEARNING_MISSED_MOVERS ok={mm.get("ok")} raw={mm.get("raw_market_movers")} eligible={mm.get("eligible_stock_movers")} captured={mm.get("eligible_top10_overlap")} missed={mm.get("eligible_false_negatives")} capture_rate={mm.get("eligible_capture_rate_pct")} excluded={mm.get("excluded_instruments")} verified={mm.get("verified_iex")} saved={mm.get("saved")} threshold={mm.get("threshold_pct")} top_missed={[(x.get("symbol"),x.get("move_pct"),x.get("premarket_gap_pct"),x.get("premarket_volume"),x.get("overnight_halted")) for x in (mm.get("missed") or [])[:10]]}',flush=True)
         compare=next((r for r in app.routes if getattr(r,'path',None)=='/api/learning/feature-comparison'),None)
         if compare:
-            fc=await compare.endpoint();print(f'LEARNING_FEATURE_COMPARISON captured={fc.get("captured")} missed={fc.get("missed")} delta={fc.get("delta_missed_minus_captured")} missing_premarket={fc.get("missing_premarket")}',flush=True)
+            fc=await compare.endpoint();print(f'LEARNING_FEATURE_COMPARISON captured={fc.get("captured")} missed={fc.get("missed")} delta={fc.get("delta_missed_minus_captured")} missing_premarket={fc.get("missing_premarket")} data_quality={fc.get("data_quality")}',flush=True)
     except Exception as e:print(f'LEARNING_MISSED_MOVERS_ERROR {type(e).__name__}: {e}',flush=True)
 
 @app.on_event('startup')
