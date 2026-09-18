@@ -1,17 +1,30 @@
 """Alpaca trading-endpoint compatibility layer.
 
-The app historically hard-coded paper-api.alpaca.markets for clock/calendar/assets.
-Alpaca paper and live credentials are separate. Until those call sites are fully
-centralized, retry only Alpaca Trading API requests against the matching live host
-when the paper host rejects authentication. Market Data (data.alpaca.markets) is
-never rewritten.
+Retries Alpaca Trading API calls against the live host when paper credentials are
+not accepted. It also prints safe configuration diagnostics at process startup so
+Render logs can confirm that required environment variables are actually present.
+Secret values are never printed.
 """
+import os
 from urllib.parse import urlsplit, urlunsplit
 
 try:
     import httpx
 except Exception:  # pragma: no cover
     httpx = None
+
+
+def _configured(name):
+    return bool((os.getenv(name) or "").strip())
+
+
+# Safe startup diagnostics: presence only, never values.
+print(
+    "ALPACA_RUNTIME_CONFIG "
+    f"api_key={'set' if _configured('ALPACA_API_KEY') else 'missing'} "
+    f"secret_key={'set' if _configured('ALPACA_SECRET_KEY') else 'missing'} "
+    f"feed={(os.getenv('ALPACA_FEED') or 'iex').strip().lower()}"
+)
 
 
 def _live_alpaca_url(url):
