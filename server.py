@@ -10,29 +10,27 @@ from signal_journal import install_signal_journal
 app = core.app
 BASE_DIR = Path(__file__).resolve().parent
 
-# Install production route/runtime fixes explicitly. Keeping this in server.py makes
-# the Render entrypoint deterministic instead of relying on sitecustomize side effects.
+# Production modules are installed explicitly at the Render entrypoint.
 install_runtime_fixes(app)
 install_signal_journal(app, core)
 
-# Keep every API/WebSocket/static route from app.py, but replace only the home HTML
-# response so UX additions can evolve independently without rewriting the large UI file.
 app.router.routes[:] = [
     route for route in app.router.routes
     if not (isinstance(route, APIRoute) and route.path == "/" and "GET" in route.methods)
 ]
 
-
 @app.get("/", response_class=HTMLResponse)
 async def enhanced_root():
     html = (BASE_DIR / "static" / "index.html").read_text(encoding="utf-8")
-    head_addition = '<link rel="stylesheet" href="/static/hebrew_ux_v3.css?v=3">'
-    body_addition = '<script src="/static/hebrew_ux_v3.js?v=3" defer></script>'
-    if head_addition not in html:
-        html = html.replace("</head>", head_addition + "\n</head>", 1)
-    if body_addition not in html:
-        html = html.replace("</body>", body_addition + "\n</body>", 1)
-    return HTMLResponse(
-        html,
-        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
-    )
+    additions_head = [
+        '<link rel="stylesheet" href="/static/hebrew_ux_v3.css?v=3">',
+    ]
+    additions_body = [
+        '<script src="/static/hebrew_ux_v3.js?v=3" defer></script>',
+        '<script src="/static/strategy_learning_r15.js?v=15.3" defer></script>',
+    ]
+    for tag in additions_head:
+        if tag not in html: html=html.replace('</head>',tag+'\n</head>',1)
+    for tag in additions_body:
+        if tag not in html: html=html.replace('</body>',tag+'\n</body>',1)
+    return HTMLResponse(html,headers={'Cache-Control':'no-cache, no-store, must-revalidate','Pragma':'no-cache','Expires':'0'})
