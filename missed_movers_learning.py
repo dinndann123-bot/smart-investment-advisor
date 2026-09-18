@@ -18,22 +18,22 @@ def _db():
         if col not in existing:con.execute(f'ALTER TABLE missed_movers ADD COLUMN {col} {typ}')
     con.commit(); return con
 
-async def _sip_movers(core,limit=100):
-    if not (core.ALPACA_KEY and core.ALPACA_SECRET):return []
+async def _sip_movers(core,limit=50):
+    if not (core.ALPACA_KEY and core.ALPACA_SECRET):return [],{'status':'no_credentials','count':0}
     h={'APCA-API-KEY-ID':core.ALPACA_KEY,'APCA-API-SECRET-KEY':core.ALPACA_SECRET}
-    out=[]
+    # Alpaca movers API accepts top=1..50. Passing 100 returned HTTP 400 and was
+    # previously swallowed as an empty market. Clamp at the provider contract.
+    requested_top=max(1,min(int(limit or 50),50))
     async with httpx.AsyncClient(timeout=30) as c:
-        for kind in ('gainers',):
-            r=await c.get(f'https://data.alpaca.markets/v1beta1/screener/stocks/movers',headers=h,params={'top':max(20,min(limit,100))})
-            if r.status_code>=400:continue
-            data=r.json() or {}
-            for x in data.get(kind) or []:
-                sym=str(x.get('symbol') or '').upper(); pct=_f(x.get('percent_change')); price=_f(x.get('price')); change=_f(x.get('change'))
-                if sym and pct is not None:out.append({'symbol':sym,'move_pct':pct,'price':price,'change':change,'raw':x})
-    seen=set(); uniq=[]
-    for x in sorted(out,key=lambda z:z['move_pct'],reverse=True):
-        if x['symbol'] not in seen:seen.add(x['symbol']);uniq.append(x)
-    return uniq
+        r=await c.get('https://data.alpaca.markets/v1beta1/screener/stocks/movers',headers=h,params={'top':requested_top})
+    if r.status_code>=400:
+        return [],{'status':f'http_{r.status_code}','count':0,'requested_top':requested_top,'body':(r.text or '')[:200]}
+    data=r.json() or {}; raw=data.get('gainers') or []; out=[]
+    for x in raw:
+        sym=str(x.get('symbol') or '').upper(); pct=_f(x.get('percent_change')); price=_f(x.get('price')); change=_f(x.get('change'))
+        if sym and pct is not None:out.append({'symbol':sym,'move_pct':pct,'price':price,'change':change,'raw':x})
+    out.sort(key=lambda z:z['move_pct'],reverse=True)
+    return out,{'status':'ok','count':len(out),'raw_gainers':len(raw),'requested_top':requested_top,'keys':list(data.keys())[:10]}
 
 async def _iex_snapshot(core,symbol):
     if not (core.ALPACA_KEY and core.ALPACA_SECRET):return None
@@ -54,15 +54,15 @@ async def _premarket(core,symbol,day):
 def install_missed_movers_learning(app,core):
     @app.post('/api/learning/missed-movers')
     async def missed_movers(threshold_pct:float=MOVE_THRESHOLD_PCT,limit:int=100):
-        now=datetime.now(timezone.utc);day=now.astimezone(NY).date().isoformat();discovered=await _sip_movers(core,limit);con=_db();top={}
+        now=datetime.now(timezone.utc);day=now.astimezone(NY).date().isoformat();discovered,diag=await _sip_movers(core,limit);con=_db();top={}
         for r in con.execute('SELECT symbol,MIN(rank) best_rank,MIN(captured_at) first_seen FROM signal_journal WHERE trade_date=? AND strategy_version=? GROUP BY symbol',(day,STRATEGY_VERSION)).fetchall():top[r['symbol']]={'rank':int(r['best_rank']),'first_seen':r['first_seen']}
         movers=[x for x in discovered if x['move_pct']>=threshold_pct];saved=0;missed=[];verified_count=0;overlap=0
-        for x in movers[:max(1,min(limit,100))]:
+        for x in movers[:max(1,min(limit,50))]:
             symbol=x['symbol']; snap=await _iex_snapshot(core,symbol); verified=bool(snap); verified_count+=1 if verified else 0;hit=top.get(symbol);overlap+=1 if hit else 0;pm=await _premarket(core,symbol,day) if verified else {}; prev=_f((snap or {}).get('prevDailyBar',{}).get('c')); pmgap=((pm.get('last')/prev)-1)*100 if pm.get('last') and prev else None
             features={'point_in_time_rule':'SIP screener discovers broad-market outcome movers; IEX only verifies observability and supplies premarket features','sip_mover':x['raw'],'iex_snapshot':snap,'premarket':pm}
             con.execute('INSERT OR REPLACE INTO missed_movers(trade_date,symbol,observed_at,move_pct,price,volume,was_top10,top10_best_rank,strategy_version,features,premarket_gap_pct,premarket_volume,premarket_high,premarket_low,premarket_last,first_seen_top10,discovery_source,verification_feed,verified) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(day,symbol,now.isoformat(),x['move_pct'],x['price'],_f((snap or {}).get('dailyBar',{}).get('v')),1 if hit else 0,hit['rank'] if hit else None,STRATEGY_VERSION,json.dumps(features,ensure_ascii=False),pmgap,pm.get('volume'),pm.get('high'),pm.get('low'),pm.get('last'),hit['first_seen'] if hit else None,'alpaca_sip_screener',core.ALPACA_FEED,1 if verified else 0));saved+=1
             if not hit:missed.append({'symbol':symbol,'move_pct':round(x['move_pct'],2),'verified_iex':verified,'premarket_gap_pct':round(pmgap,2) if pmgap is not None else None,'premarket_volume':pm.get('volume'),'premarket_range_pct':round((pm['high']/pm['low']-1)*100,2) if pm.get('high') and pm.get('low') else None})
-        con.commit();con.close();return {'ok':True,'trade_date':day,'threshold_pct':threshold_pct,'market_movers':len(movers),'top10_overlap':overlap,'false_negatives':len(missed),'verified_iex':verified_count,'missed':missed[:25],'saved':saved,'strategy_version':STRATEGY_VERSION,'discovery_source':'alpaca_sip_screener','verification_feed':core.ALPACA_FEED,'point_in_time':True}
+        con.commit();con.close();return {'ok':True,'trade_date':day,'threshold_pct':threshold_pct,'market_movers':len(movers),'top10_overlap':overlap,'false_negatives':len(missed),'verified_iex':verified_count,'missed':missed[:25],'saved':saved,'strategy_version':STRATEGY_VERSION,'discovery_source':'alpaca_sip_screener','discovery_diag':diag,'verification_feed':core.ALPACA_FEED,'point_in_time':True}
 
     @app.get('/api/learning/missed-movers/summary')
     async def missed_summary(days:int=30):
