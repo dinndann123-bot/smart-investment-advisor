@@ -7,10 +7,11 @@ from fastapi import HTTPException
 
 NY=ZoneInfo('America/New_York')
 DB=Path(__file__).resolve().parent/'signal_journal.sqlite3'
+STRATEGY_VERSION='strategy-learning-v2'
 OUTCOME_COLS={
  'evaluated_at':'TEXT','peak_price':'REAL','trough_price':'REAL','close_price':'REAL','mfe_pct':'REAL','mae_pct':'REAL',
  'close_return_pct':'REAL','minutes_to_peak':'REAL','minutes_to_trough':'REAL','exit_price':'REAL','exit_return_pct':'REAL',
- 'outcome_status':'TEXT','outcome_bars':'INTEGER'
+ 'outcome_status':'TEXT','outcome_bars':'INTEGER','strategy_version':'TEXT','session':'TEXT','feature_snapshot':'TEXT'
 }
 
 def _db():
@@ -19,6 +20,7 @@ def _db():
     existing={r[1] for r in con.execute('PRAGMA table_info(signal_journal)').fetchall()}
     for col,typ in OUTCOME_COLS.items():
         if col not in existing: con.execute(f'ALTER TABLE signal_journal ADD COLUMN {col} {typ}')
+    con.execute('CREATE INDEX IF NOT EXISTS idx_signal_trade_version ON signal_journal(trade_date,strategy_version,captured_at)')
     con.commit(); return con
 
 def _f(v):
@@ -28,6 +30,15 @@ def _f(v):
 def _iso(v):
     try:return datetime.fromisoformat(str(v).replace('Z','+00:00'))
     except:return None
+
+def _session(ny):
+    mins=ny.hour*60+ny.minute
+    if 240<=mins<570:return 'premarket'
+    if 570<=mins<960:return 'regular'
+    return 'afterhours'
+
+def _features(x,p,pmgap):
+    return {'score':_f(x.get('score')),'price':_f(x.get('price')),'gap_pct':_f(x.get('gap_pct') if x.get('gap_pct') is not None else x.get('change')),'rvol':_f(x.get('rvol')),'momentum_pct':_f(x.get('move_to_1000_pct') if x.get('move_to_1000_pct') is not None else x.get('change')),'premarket_price':p.get('premarket_price'),'premarket_gap_pct':pmgap,'premarket_volume':p.get('premarket_volume'),'premarket_high':p.get('premarket_high'),'premarket_low':p.get('premarket_low')}
 
 async def _bars(core,client,symbol,start,end,extended=True):
     if not (core.ALPACA_KEY and core.ALPACA_SECRET): return []
@@ -58,8 +69,7 @@ async def _evaluate_rows(core,rows):
             try:
                 captured=_iso(row['captured_at']); entry=_f(row['price'])
                 if not captured or not entry or entry<=0:continue
-                ny=captured.astimezone(NY); day=ny.date().isoformat(); start=max(ny.replace(hour=9,minute=30,second=0,microsecond=0),ny)
-                end=ny.replace(hour=16,minute=0,second=0,microsecond=0)
+                ny=captured.astimezone(NY); start=max(ny.replace(hour=9,minute=30,second=0,microsecond=0),ny); end=ny.replace(hour=16,minute=0,second=0,microsecond=0)
                 if start>=end:continue
                 query_end=min(now,end.astimezone(timezone.utc))
                 if query_end<=start.astimezone(timezone.utc):continue
@@ -67,47 +77,43 @@ async def _evaluate_rows(core,rows):
                 bars=[b for b in bars if _f(b.get('h')) is not None and _f(b.get('l')) is not None and _f(b.get('c')) is not None]
                 if not bars:continue
                 peak=max(bars,key=lambda b:_f(b.get('h'))); trough=min(bars,key=lambda b:_f(b.get('l'))); last=bars[-1]
-                peak_px=_f(peak.get('h')); trough_px=_f(trough.get('l')); close_px=_f(last.get('c'))
-                pt=_iso(peak.get('t')); tt=_iso(trough.get('t'))
-                mins_peak=(pt-captured).total_seconds()/60 if pt else None; mins_trough=(tt-captured).total_seconds()/60 if tt else None
-                # Research exit: close of the minute that makes the post-capture high. This is descriptive, not a tradable look-ahead signal.
-                exit_px=_f(peak.get('c')) or peak_px
-                complete=query_end>=end.astimezone(timezone.utc)
-                results.append({'id':row['id'],'peak_price':peak_px,'trough_price':trough_px,'close_price':close_px,
-                    'mfe_pct':(peak_px/entry-1)*100,'mae_pct':(trough_px/entry-1)*100,'close_return_pct':(close_px/entry-1)*100,
-                    'minutes_to_peak':mins_peak,'minutes_to_trough':mins_trough,'exit_price':exit_px,'exit_return_pct':(exit_px/entry-1)*100,
-                    'outcome_status':'complete' if complete else 'partial','outcome_bars':len(bars),'evaluated_at':now.isoformat()})
+                peak_px=_f(peak.get('h')); trough_px=_f(trough.get('l')); close_px=_f(last.get('c')); pt=_iso(peak.get('t')); tt=_iso(trough.get('t'))
+                exit_px=_f(peak.get('c')) or peak_px; complete=query_end>=end.astimezone(timezone.utc)
+                results.append({'id':row['id'],'peak_price':peak_px,'trough_price':trough_px,'close_price':close_px,'mfe_pct':(peak_px/entry-1)*100,'mae_pct':(trough_px/entry-1)*100,'close_return_pct':(close_px/entry-1)*100,'minutes_to_peak':(pt-captured).total_seconds()/60 if pt else None,'minutes_to_trough':(tt-captured).total_seconds()/60 if tt else None,'exit_price':exit_px,'exit_return_pct':(exit_px/entry-1)*100,'outcome_status':'complete' if complete else 'partial','outcome_bars':len(bars),'evaluated_at':now.isoformat()})
             except Exception:continue
     return results
 
 def install_signal_journal(app,core):
     @app.post('/api/learning/capture-top10')
-    async def capture_top10():
+    async def capture_top10(force:bool=False):
         route=next((r for r in app.routes if getattr(r,'path',None)=='/api/scanner/day' and 'GET' in getattr(r,'methods',set())),None)
         if not route:raise HTTPException(503,'scanner unavailable')
+        now=datetime.now(timezone.utc); ny=now.astimezone(NY); session=_session(ny); con=_db()
+        last=con.execute('SELECT captured_at FROM signal_journal WHERE trade_date=? AND strategy_version=? ORDER BY captured_at DESC LIMIT 1',(ny.date().isoformat(),STRATEGY_VERSION)).fetchone()
+        if last and not force:
+            prev=_iso(last['captured_at'])
+            if prev and (now-prev).total_seconds()<300:
+                con.close(); return {'ok':True,'saved':0,'skipped':'capture_interval','strategy_version':STRATEGY_VERSION,'session':session,'next_in_seconds':int(300-(now-prev).total_seconds())}
         scan=await route.endpoint(top=10,candidates=200); rows=(scan or {}).get('results') or []
-        now=datetime.now(timezone.utc); ny=now.astimezone(NY); syms=[str(x.get('ticker') or '').upper() for x in rows[:10]]; pm=await _premarket(core,syms)
-        con=_db(); saved=0
+        syms=[str(x.get('ticker') or '').upper() for x in rows[:10]]; pm=await _premarket(core,syms); saved=0
         for rank,x in enumerate(rows[:10],1):
             s=str(x.get('ticker') or '').upper(); p=pm.get(s,{}); price=_f(x.get('price')); change=_f(x.get('change')); prev=price/(1+change/100) if price and change is not None and change>-99 else None
-            pmgap=((p.get('premarket_price')/prev)-1)*100 if p.get('premarket_price') and prev else None; payload=dict(x); payload['premarket']=p
+            pmgap=((p.get('premarket_price')/prev)-1)*100 if p.get('premarket_price') and prev else None; features=_features(x,p,pmgap); payload=dict(x); payload['premarket']=p; payload['strategy_version']=STRATEGY_VERSION; payload['session']=session
             before=con.total_changes
-            con.execute('INSERT OR IGNORE INTO signal_journal(trade_date,captured_at,rank,symbol,score,price,gap_pct,rvol,momentum_pct,premarket_price,premarket_gap_pct,premarket_volume,premarket_high,premarket_low,source,payload) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(ny.date().isoformat(),now.isoformat(),rank,s,_f(x.get('score')),price,_f(x.get('gap_pct') if x.get('gap_pct') is not None else x.get('change')),_f(x.get('rvol')),_f(x.get('move_to_1000_pct') if x.get('move_to_1000_pct') is not None else x.get('change')),p.get('premarket_price'),pmgap,p.get('premarket_volume'),p.get('premarket_high'),p.get('premarket_low'),scan.get('source'),json.dumps(payload,ensure_ascii=False)))
+            con.execute('INSERT OR IGNORE INTO signal_journal(trade_date,captured_at,rank,symbol,score,price,gap_pct,rvol,momentum_pct,premarket_price,premarket_gap_pct,premarket_volume,premarket_high,premarket_low,source,payload,strategy_version,session,feature_snapshot) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(ny.date().isoformat(),now.isoformat(),rank,s,features['score'],price,features['gap_pct'],features['rvol'],features['momentum_pct'],p.get('premarket_price'),pmgap,p.get('premarket_volume'),p.get('premarket_high'),p.get('premarket_low'),scan.get('source'),json.dumps(payload,ensure_ascii=False),STRATEGY_VERSION,session,json.dumps(features,ensure_ascii=False)))
             if con.total_changes>before:saved+=1
-        con.commit(); con.close(); return {'ok':True,'saved':saved,'captured_at':now.isoformat(),'premarket_enriched':sum(1 for s in syms if s in pm),'source':scan.get('source')}
+        con.commit(); con.close(); return {'ok':True,'saved':saved,'captured_at':now.isoformat(),'premarket_enriched':sum(1 for s in syms if s in pm),'source':scan.get('source'),'strategy_version':STRATEGY_VERSION,'session':session}
 
     @app.post('/api/learning/evaluate')
     async def evaluate(limit:int=100):
-        con=_db(); raw=con.execute("SELECT * FROM signal_journal WHERE outcome_status IS NULL OR outcome_status!='complete' ORDER BY captured_at ASC LIMIT ?",(max(1,min(limit,300)),)).fetchall(); rows=[dict(r) for r in raw]
-        results=await _evaluate_rows(core,rows)
-        for x in results:
-            con.execute('''UPDATE signal_journal SET evaluated_at=?,peak_price=?,trough_price=?,close_price=?,mfe_pct=?,mae_pct=?,close_return_pct=?,minutes_to_peak=?,minutes_to_trough=?,exit_price=?,exit_return_pct=?,outcome_status=?,outcome_bars=? WHERE id=?''',(x['evaluated_at'],x['peak_price'],x['trough_price'],x['close_price'],x['mfe_pct'],x['mae_pct'],x['close_return_pct'],x['minutes_to_peak'],x['minutes_to_trough'],x['exit_price'],x['exit_return_pct'],x['outcome_status'],x['outcome_bars'],x['id']))
-        con.commit(); con.close(); return {'ok':True,'requested':len(rows),'evaluated':len(results),'complete':sum(1 for x in results if x['outcome_status']=='complete'),'partial':sum(1 for x in results if x['outcome_status']=='partial')}
+        con=_db(); raw=con.execute("SELECT * FROM signal_journal WHERE outcome_status IS NULL OR outcome_status!='complete' ORDER BY captured_at ASC LIMIT ?",(max(1,min(limit,300)),)).fetchall(); rows=[dict(r) for r in raw]; results=await _evaluate_rows(core,rows)
+        for x in results: con.execute('UPDATE signal_journal SET evaluated_at=?,peak_price=?,trough_price=?,close_price=?,mfe_pct=?,mae_pct=?,close_return_pct=?,minutes_to_peak=?,minutes_to_trough=?,exit_price=?,exit_return_pct=?,outcome_status=?,outcome_bars=? WHERE id=?',(x['evaluated_at'],x['peak_price'],x['trough_price'],x['close_price'],x['mfe_pct'],x['mae_pct'],x['close_return_pct'],x['minutes_to_peak'],x['minutes_to_trough'],x['exit_price'],x['exit_return_pct'],x['outcome_status'],x['outcome_bars'],x['id']))
+        con.commit(); con.close(); return {'ok':True,'requested':len(rows),'evaluated':len(results),'complete':sum(1 for x in results if x['outcome_status']=='complete'),'partial':sum(1 for x in results if x['outcome_status']=='partial'),'strategy_version':STRATEGY_VERSION}
 
     @app.get('/api/learning/journal')
     async def journal(limit:int=100):
-        con=_db(); rows=[dict(r) for r in con.execute('SELECT * FROM signal_journal ORDER BY captured_at DESC, rank ASC LIMIT ?',(max(1,min(limit,500)),)).fetchall()]; con.close(); return {'ok':True,'rows':rows}
+        con=_db(); rows=[dict(r) for r in con.execute('SELECT * FROM signal_journal ORDER BY captured_at DESC, rank ASC LIMIT ?',(max(1,min(limit,500)),)).fetchall()]; con.close(); return {'ok':True,'rows':rows,'strategy_version':STRATEGY_VERSION}
 
     @app.get('/api/learning/summary')
     async def summary():
-        con=_db(); r=con.execute("SELECT COUNT(*) n, SUM(CASE WHEN outcome_status='complete' THEN 1 ELSE 0 END) complete, AVG(CASE WHEN outcome_status='complete' THEN mfe_pct END) avg_mfe, AVG(CASE WHEN outcome_status='complete' THEN mae_pct END) avg_mae, AVG(CASE WHEN outcome_status='complete' THEN close_return_pct END) avg_close, AVG(CASE WHEN outcome_status='complete' THEN premarket_gap_pct END) avg_pm_gap FROM signal_journal").fetchone(); con.close(); return {'ok':True,**dict(r)}
+        con=_db(); r=con.execute("SELECT COUNT(*) n, SUM(CASE WHEN outcome_status='complete' THEN 1 ELSE 0 END) complete, AVG(CASE WHEN outcome_status='complete' THEN mfe_pct END) avg_mfe, AVG(CASE WHEN outcome_status='complete' THEN mae_pct END) avg_mae, AVG(CASE WHEN outcome_status='complete' THEN close_return_pct END) avg_close, AVG(CASE WHEN outcome_status='complete' THEN premarket_gap_pct END) avg_pm_gap, AVG(CASE WHEN outcome_status='complete' THEN minutes_to_peak END) avg_minutes_to_peak FROM signal_journal WHERE strategy_version=?",(STRATEGY_VERSION,)).fetchone(); con.close(); return {'ok':True,**dict(r),'strategy_version':STRATEGY_VERSION}
