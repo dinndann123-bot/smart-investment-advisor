@@ -4,15 +4,12 @@ from fastapi.responses import HTMLResponse
 from fastapi.routing import APIRoute
 
 import app as core
-from runtime_fixes import install_runtime_fixes
-from signal_journal import install_signal_journal
 
 app = core.app
 BASE_DIR = Path(__file__).resolve().parent
 
-# Production modules are installed explicitly at the Render entrypoint.
-install_runtime_fixes(app)
-install_signal_journal(app, core)
+# Compatibility wrapper only. Production can run app:app directly.
+# Core modules are installed in app.py so Render and local execution behave identically.
 
 app.router.routes[:] = [
     route for route in app.router.routes
@@ -22,9 +19,7 @@ app.router.routes[:] = [
 @app.get("/", response_class=HTMLResponse)
 async def enhanced_root():
     html = (BASE_DIR / "static" / "index.html").read_text(encoding="utf-8")
-    additions_head = [
-        '<link rel="stylesheet" href="/static/hebrew_ux_v3.css?v=3">',
-    ]
+    additions_head = ['<link rel="stylesheet" href="/static/hebrew_ux_v3.css?v=3">']
     additions_body = [
         '<script src="/static/hebrew_ux_v3.js?v=3" defer></script>',
         '<script src="/static/strategy_learning_r15.js?v=15.3" defer></script>',
