@@ -4,15 +4,15 @@ _STABLE='https://raw.githubusercontent.com/dinndann123-bot/smart-investment-advi
 _code=urllib.request.urlopen(_STABLE, timeout=30).read().decode('utf-8')
 exec(compile(_code, _STABLE, 'exec'), globals(), globals())
 
-# Live Discovery v6.5: snapshot-first full-market discovery with explicit
-# scanner telemetry so production logs prove which route/source actually ran.
+# Live Discovery v6.6: full-market snapshot discovery + progressive deep scan.
+# Goal: return up to 10 forward candidates without backfilling already-extended movers.
 try:
  import asyncio,httpx as _httpx,math,uuid,os
  from datetime import datetime,timezone,timedelta
  from fastapi.responses import JSONResponse
  _day_route=next((r for r in app.routes if getattr(r,'path',None)=='/api/scanner/day' and 'GET' in getattr(r,'methods',set())),None)
- STRATEGY_VERSION='strategy-learning-v6.5-snapshot-first'
- UNIVERSE_MODE='dynamic_alpaca_snapshot_first_v6_5'
+ STRATEGY_VERSION='strategy-learning-v6.6-progressive-forward-top10'
+ UNIVERSE_MODE='dynamic_alpaca_progressive_snapshot_v6_6'
  _AK=(globals().get('ALPACA_KEY') or os.getenv('ALPACA_API_KEY') or os.getenv('ALPACA_KEY') or '').strip()
  _AS=(globals().get('ALPACA_SECRET') or os.getenv('ALPACA_SECRET_KEY') or os.getenv('ALPACA_SECRET') or '').strip()
  _AF=(globals().get('ALPACA_FEED') or os.getenv('ALPACA_FEED') or 'iex').strip()
@@ -82,16 +82,16 @@ try:
  def _stage(r):
   ch=_f(r.get('change_pct'));rv=_f(r.get('rvol'));dv=_f(r.get('distance_from_pm_vwap_pct'));dh=_f(r.get('distance_from_pm_high_pct'));pmv=_f(r.get('premarket_volume'))
   if ch>=12 or dv>8 or dh>5:return 'already_extended'
-  if ch>=5 or (rv>=2 and dh>=-2):return 'early_breakout'
   if rv>=1.25 and pmv>=50000 and -10<=dh<=0 and -4<=dv<=4:return 'pre_breakout'
+  if ch>=5 or (rv>=2 and dh>=-2):return 'early_breakout'
   return 'watch'
  def _rank(r):
   ch=_f(r.get('change_pct'));gap=_f(r.get('premarket_gap_pct'));rv=_f(r.get('rvol'));pmv=_f(r.get('premarket_volume'));dv=_f(r.get('distance_from_pm_vwap_pct'));dh=_f(r.get('distance_from_pm_high_pct'));stage=_stage(r)
-  participation=min(max(rv-1,0),9)*4+min(pmv/100000,15);structure=(5 if -4<=dv<=4 else 0)+(6 if -10<=dh<=0 else 0);stage_adj={'pre_breakout':14,'early_breakout':5,'watch':0,'already_extended':-28}[stage];extension=max(ch-6,0)*3.2+max(gap-10,0)*2
+  participation=min(max(rv-1,0),9)*4+min(pmv/100000,15);structure=(5 if -4<=dv<=4 else 0)+(6 if -10<=dh<=0 else 0);stage_adj={'pre_breakout':18,'early_breakout':6,'watch':0,'already_extended':-35}[stage];extension=max(ch-6,0)*3.2+max(gap-10,0)*2
   return 30+participation+min(max(gap,0),7)*1.5+structure+stage_adj-extension,stage
  async def _scanner(top:int=10,candidates:int=40):
   generated=datetime.now(timezone.utc);scan_id=f"{generated.strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}";wanted=10 if top==10 else max(3,min(top,20))
-  print(f'SCANNER_V65_START scan_id={scan_id} top={wanted} candidates={candidates} feed={_AF}',flush=True)
+  print(f'SCANNER_V66_START scan_id={scan_id} top={wanted} requested_candidates={candidates} feed={_AF}',flush=True)
   if not(_AK and _AS):payload={'results':[],'error':'alpaca_not_configured'}
   else:
    assets=await _assets();sn=await _snapshots([a['ticker'] for a in assets]);pool=[]
@@ -99,22 +99,32 @@ try:
     if sn.get(a['ticker']):
      r=_basic(a,sn[a['ticker']])
      if r:pool.append(r)
-   pool.sort(key=_quick_rank,reverse=True);shortlist=pool[:max(30,min(int(candidates or 40),60))]
-   print(f'SCANNER_SCORE source=alpaca_{_AF}_full_market assets={len(assets)} snapshots={len(sn)} rows={len(pool)} deep={len(shortlist)}',flush=True)
-   sem=asyncio.Semaphore(20);enriched=[]
+   pool.sort(key=_quick_rank,reverse=True)
+   initial=max(40,min(int(candidates or 40),80));caps=[]
+   for cap in (initial,80,120,180):
+    cap=min(cap,len(pool))
+    if cap>0 and cap not in caps:caps.append(cap)
+   enriched=[];seen=set();forward=[];extended=[]
+   sem=asyncio.Semaphore(20)
    async def one(r):
-    async with sem:enriched.append(_features(r,await _bars(r['ticker'])))
-   await asyncio.gather(*(one(r) for r in shortlist));extended=[];forward=[]
-   for r in enriched:
-    rank,stage=_rank(r);r.update({'score':max(0,min(100,round(rank))),'forward_rank':round(rank,2),'breakout_stage':stage,'candidate_type':'prediction' if stage!='already_extended' else 'learning_observation','prediction_status':stage,'strategy_version':STRATEGY_VERSION,'scan_id':scan_id,'generated_at':generated.isoformat(),'universe_mode':UNIVERSE_MODE});(extended if stage=='already_extended' else forward).append(r)
-   forward.sort(key=lambda x:x.get('forward_rank',-999),reverse=True);extended.sort(key=lambda x:x.get('forward_rank',-999),reverse=True);sel=forward[:wanted]
-   payload={'results':sel,'extended_observations':extended[:20],'feed':_AF,'data_source':'Alpaca','assets_scanned':len(assets),'snapshot_candidates':len(pool),'deep_candidates':len(shortlist),'enriched_candidates':len(enriched),'forward_candidate_count':len(forward),'extended_observation_count':len(extended),'requested_top':wanted,'complete_top10':len(sel)>=wanted,'ranking_status':'snapshot_first_forward_only','full_market':True,'note_he':'v6.5: סריקת snapshot מהירה על השוק, ניתוח bars עמוק ל-shortlist, ו-Top 10 forward בלבד.'}
-  payload.update({'strategy_version':STRATEGY_VERSION,'scan_id':scan_id,'generated_at':generated.isoformat(),'server_timestamp':generated.isoformat(),'universe_mode':UNIVERSE_MODE,'candidate_semantics':'snapshot_first_forward_predictions','cache_policy':'no-store'})
-  print(f"SCANNER_V65_DONE scan_id={scan_id} results={len(payload.get('results',[]))} error={payload.get('error','none')}",flush=True)
+    async with sem:return _features(dict(r),await _bars(r['ticker']))
+   for cap in caps:
+    batch=[r for r in pool[:cap] if r['ticker'] not in seen]
+    if batch:
+     rows=await asyncio.gather(*(one(r) for r in batch))
+     for r in rows:
+      seen.add(r['ticker']);enriched.append(r);rank,stage=_rank(r);r.update({'score':max(0,min(100,round(rank))),'forward_rank':round(rank,2),'breakout_stage':stage,'candidate_type':'prediction' if stage!='already_extended' else 'learning_observation','prediction_status':stage,'strategy_version':STRATEGY_VERSION,'scan_id':scan_id,'generated_at':generated.isoformat(),'universe_mode':UNIVERSE_MODE});(extended if stage=='already_extended' else forward).append(r)
+    forward.sort(key=lambda x:({'pre_breakout':3,'early_breakout':2,'watch':1}.get(x.get('breakout_stage'),0),x.get('forward_rank',-999)),reverse=True)
+    print(f'SCANNER_V66_EXPAND scan_id={scan_id} deep={len(enriched)} forward={len(forward)} extended={len(extended)} cap={cap}',flush=True)
+    if len(forward)>=wanted:break
+   extended.sort(key=lambda x:x.get('forward_rank',-999),reverse=True);sel=forward[:wanted]
+   payload={'results':sel,'extended_observations':extended[:20],'feed':_AF,'data_source':'Alpaca','assets_scanned':len(assets),'snapshot_candidates':len(pool),'deep_candidates':len(enriched),'enriched_candidates':len(enriched),'forward_candidate_count':len(forward),'extended_observation_count':len(extended),'requested_top':wanted,'complete_top10':len(sel)>=wanted,'ranking_status':'progressive_forward_only','full_market':True,'progressive_caps':caps,'note_he':'v6.6: הרחבה מדורגת של הניתוח עד Top 10 קדימה; מניות שכבר התפוצצו נשמרות ללמידה בלבד ואינן משלימות את הרשימה.'}
+  payload.update({'strategy_version':STRATEGY_VERSION,'scan_id':scan_id,'generated_at':generated.isoformat(),'server_timestamp':generated.isoformat(),'universe_mode':UNIVERSE_MODE,'candidate_semantics':'progressive_forward_predictions','cache_policy':'no-store'})
+  print(f"SCANNER_V66_DONE scan_id={scan_id} results={len(payload.get('results',[]))} complete={payload.get('complete_top10')} error={payload.get('error','none')}",flush=True)
   return JSONResponse(payload,headers={'Cache-Control':'no-store, no-cache, must-revalidate, max-age=0','Pragma':'no-cache','Expires':'0','X-Scanner-Version':STRATEGY_VERSION,'X-Scan-Id':scan_id})
  if _day_route:
-  app.router.routes.remove(_day_route);app.add_api_route('/api/scanner/day',_scanner,methods=['GET'],name='scanner_day_v65')
-  SCANNER_UNIVERSE_ALIGNMENT={'installed':True,'route_rebound':True,'mode':UNIVERSE_MODE,'strategy_version':STRATEGY_VERSION,'target_count':10,'snapshot_first':True,'deep_candidate_cap':60,'extended_backfill':False}
+  app.router.routes.remove(_day_route);app.add_api_route('/api/scanner/day',_scanner,methods=['GET'],name='scanner_day_v66')
+  SCANNER_UNIVERSE_ALIGNMENT={'installed':True,'route_rebound':True,'mode':UNIVERSE_MODE,'strategy_version':STRATEGY_VERSION,'target_count':10,'snapshot_first':True,'progressive_deep_scan':True,'deep_candidate_cap':180,'extended_backfill':False}
  else:SCANNER_UNIVERSE_ALIGNMENT={'installed':False,'error':'day_route_missing'}
 except Exception as e:SCANNER_UNIVERSE_ALIGNMENT={'installed':False,'error':f'{type(e).__name__}: {e}'}
 try:
