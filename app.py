@@ -4,15 +4,15 @@ _STABLE='https://raw.githubusercontent.com/dinndann123-bot/smart-investment-advi
 _code=urllib.request.urlopen(_STABLE, timeout=30).read().decode('utf-8')
 exec(compile(_code, _STABLE, 'exec'), globals(), globals())
 
-# Live Discovery v6.2: candidate-pool selection is deliberately independent of
-# realized % move. UI and historical research remain untouched. Experimental.
+# Live Discovery v6.3: explicit breakout-stage classification. The ranking aims
+# at forward opportunity, while extended names remain observable for learning.
 try:
  import asyncio,httpx as _httpx,math,uuid
  from datetime import datetime,timezone,timedelta
  from fastapi.responses import JSONResponse
  _day_route=next((r for r in app.routes if getattr(r,'path',None)=='/api/scanner/day' and 'GET' in getattr(r,'methods',set())),None)
- STRATEGY_VERSION='strategy-learning-v6.2-unbiased-pool'
- UNIVERSE_MODE='dynamic_alpaca_unbiased_pool_v6_2'
+ STRATEGY_VERSION='strategy-learning-v6.3-breakout-stage'
+ UNIVERSE_MODE='dynamic_alpaca_breakout_stage_v6_3'
  def _f(v,d=0.0):
   try:
    x=float(v);return x if math.isfinite(x) else d
@@ -38,10 +38,10 @@ try:
     except:pass
   await asyncio.gather(*(one(symbols[i:i+100]) for i in range(0,len(symbols),100)));return found
  def _basic(meta,s):
-  lt=s.get('latestTrade') or {};mb=s.get('minuteBar') or {};db=s.get('dailyBar') or {};pb=s.get('prevDailyBar') or {};p=_f(lt.get('p'),_f(mb.get('c'),_f(db.get('c'))));prev=_f(pb.get('c'));vol=_f(db.get('v'));prevvol=_f(pb.get('v'))
+  lt=s.get('latestTrade') or {};mb=s.get('minuteBar') or {};db=s.get('dailyBar') or {};pb=s.get('prevDailyBar') or {};p=_f(lt.get('p'),_f(mb.get('c'),_f(db.get('c'))));prev=_f(pb.get('c'));vol=_f(db.get('v'))
   if not(p>0 and prev>0) or p<0.5 or p*vol<250000:return None
-  ch=(p/prev-1)*100;liq=p*vol
-  return {**meta,'price':round(p,4),'prev_close':prev,'change':round(ch,2),'change_pct':round(ch,2),'day_volume':vol,'prev_day_volume':prevvol,'dollar_volume':round(liq,2),'market_timestamp':lt.get('t') or mb.get('t') or db.get('t'),'data_source':'Alpaca','data_feed':ALPACA_FEED,'data_verified':True,'stale':False}
+  ch=(p/prev-1)*100
+  return {**meta,'price':round(p,4),'prev_close':prev,'change':round(ch,2),'change_pct':round(ch,2),'day_volume':vol,'dollar_volume':round(p*vol,2),'market_timestamp':lt.get('t') or mb.get('t') or db.get('t'),'data_source':'Alpaca','data_feed':ALPACA_FEED,'data_verified':True,'stale':False}
  async def _bars(symbol,days=12):
   end=datetime.now(timezone.utc);start=end-timedelta(days=days)
   try:
@@ -76,12 +76,18 @@ try:
   except:pass
   baseline=(sum(hist[-7:])/len(hist[-7:])) if hist else 0;todaycum=sum(_f(b.get('v')) for _,b in todays);rvol=todaycum/baseline if baseline else 0;price=_f(r.get('price'));distv=(price/pmvwap-1)*100 if pmvwap else 0;disth=(price/pmh-1)*100 if pmh else 0
   r.update({'premarket_volume':round(pmv),'premarket_high':round(pmh,4) if pmh else None,'premarket_low':round(pml,4) if pml else None,'premarket_vwap':round(pmvwap,4) if pmvwap else None,'premarket_gap_pct':round(gap,2) if firstpm else None,'rvol':round(rvol,2) if rvol else None,'rvol_baseline_sessions':min(len(hist),7),'distance_from_pm_vwap_pct':round(distv,2) if pmvwap else None,'distance_from_pm_high_pct':round(disth,2) if pmh else None});return r
+ def _stage(r):
+  ch=_f(r.get('change_pct'));rv=_f(r.get('rvol'));dv=_f(r.get('distance_from_pm_vwap_pct'));dh=_f(r.get('distance_from_pm_high_pct'));pmv=_f(r.get('premarket_volume'))
+  # Stage labels are hypotheses for validation, not claims of predictive accuracy.
+  if ch>=12 or dv>8 or dh>5:return 'already_extended'
+  if ch>=5 or (rv>=2 and dh>=-2):return 'early_breakout'
+  if rv>=1.25 and pmv>=50000 and -10<=dh<=0 and -4<=dv<=4:return 'pre_breakout'
+  return 'watch'
  def _rank(r):
-  ch=_f(r.get('change_pct'));gap=_f(r.get('premarket_gap_pct'));rv=_f(r.get('rvol'));pmv=_f(r.get('premarket_volume'));dv=_f(r.get('distance_from_pm_vwap_pct'));dh=_f(r.get('distance_from_pm_high_pct'));participation=min(max(rv-1,0),9)*4+min(pmv/100000,15);gap_signal=min(max(gap,0),7)*1.5;structure=(4 if -3<=dv<=5 else 0)+(4 if -8<=dh<=1 else 0);extension=max(ch-6,0)*3.2+max(gap-10,0)*2
-  if ch>=12:extension+=12
-  if ch>=20:extension+=22
-  score=35+participation+gap_signal+structure-extension
-  return score,{'rvol':rv,'premarket_volume':pmv,'premarket_gap_pct':gap,'distance_from_pm_vwap_pct':dv,'distance_from_pm_high_pct':dh,'extension_risk':round(extension,2),'forward_rank':round(score,2),'experimental':True}
+  ch=_f(r.get('change_pct'));gap=_f(r.get('premarket_gap_pct'));rv=_f(r.get('rvol'));pmv=_f(r.get('premarket_volume'));dv=_f(r.get('distance_from_pm_vwap_pct'));dh=_f(r.get('distance_from_pm_high_pct'));stage=_stage(r)
+  participation=min(max(rv-1,0),9)*4+min(pmv/100000,15);gap_signal=min(max(gap,0),7)*1.5;structure=(5 if -4<=dv<=4 else 0)+(6 if -10<=dh<=0 else 0);stage_adj={'pre_breakout':14,'early_breakout':5,'watch':0,'already_extended':-28}[stage];extension=max(ch-6,0)*3.2+max(gap-10,0)*2
+  score=30+participation+gap_signal+structure+stage_adj-extension
+  return score,stage,{'rvol':rv,'premarket_volume':pmv,'premarket_gap_pct':gap,'distance_from_pm_vwap_pct':dv,'distance_from_pm_high_pct':dh,'breakout_stage':stage,'extension_risk':round(extension,2),'forward_rank':round(score,2),'experimental':True}
  async def _scanner(top:int=10,candidates:int=40):
   generated=datetime.now(timezone.utc);scan_id=f"{generated.strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}";wanted=10 if top==10 else max(3,min(top,20))
   if not(ALPACA_KEY and ALPACA_SECRET):payload={'results':[],'error':'alpaca_not_configured'}
@@ -91,21 +97,21 @@ try:
     if sn.get(a['ticker']):
      r=_basic(a,sn[a['ticker']])
      if r:pool.append(r)
-   # Critical v6.2 change: NO change_pct/gainer factor in candidate-pool selection.
-   # Use liquidity only to choose which symbols are affordable to enrich. Realized
-   # move is retained solely as a later extension-risk feature.
-   pool.sort(key=lambda x:_f(x.get('dollar_volume')),reverse=True);pool=pool[:300]
-   sem=asyncio.Semaphore(10);enriched=[]
+   pool.sort(key=lambda x:_f(x.get('dollar_volume')),reverse=True);pool=pool[:300];sem=asyncio.Semaphore(10);enriched=[]
    async def one(r):
     async with sem:enriched.append(_features(r,await _bars(r['ticker'])))
    await asyncio.gather(*(one(r) for r in pool))
+   extended=[];forward=[]
    for r in enriched:
-    rank,m=_rank(r);r.update({'score':max(0,min(100,round(rank))),'forward_rank':round(rank,2),'gate_metrics':m,'candidate_type':'prediction','prediction_status':'unbiased_pool_pre_move_candidate','strategy_version':STRATEGY_VERSION,'scan_id':scan_id,'generated_at':generated.isoformat(),'universe_mode':UNIVERSE_MODE})
-   enriched.sort(key=lambda x:x.get('forward_rank',-999),reverse=True);sel=enriched[:wanted]
-   payload={'results':sel,'feed':ALPACA_FEED,'data_source':'Alpaca','assets_scanned':len(assets),'enriched_candidates':len(enriched),'requested_top':wanted,'complete_top10':len(sel)>=wanted,'ranking_status':'experimental_learning_overlay','full_market':True,'note_he':'v6.2: candidate pool נבחר לפי נזילות בלבד, ללא בונוס לעלייה שכבר התרחשה. אחוז התנועה משמש רק כסיכון extension. שינוי ניסיוני עד בדיקת out-of-sample.'}
-  payload.update({'strategy_version':STRATEGY_VERSION,'scan_id':scan_id,'generated_at':generated.isoformat(),'server_timestamp':generated.isoformat(),'universe_mode':UNIVERSE_MODE,'universe_alignment':UNIVERSE_MODE,'candidate_semantics':'ten_forward_candidates_not_top_movers','cache_policy':'no-store'})
+    rank,stage,m=_rank(r);r.update({'score':max(0,min(100,round(rank))),'forward_rank':round(rank,2),'gate_metrics':m,'breakout_stage':stage,'candidate_type':'prediction' if stage!='already_extended' else 'learning_observation','prediction_status':stage,'strategy_version':STRATEGY_VERSION,'scan_id':scan_id,'generated_at':generated.isoformat(),'universe_mode':UNIVERSE_MODE})
+    (extended if stage=='already_extended' else forward).append(r)
+   # Forward list is filled first from non-extended names. Extended names are kept
+   # separately for learning and only backfill if data scarcity prevents 10 rows.
+   forward.sort(key=lambda x:x.get('forward_rank',-999),reverse=True);extended.sort(key=lambda x:x.get('forward_rank',-999),reverse=True);sel=(forward+extended)[:wanted]
+   payload={'results':sel,'extended_observations':extended[:20],'feed':ALPACA_FEED,'data_source':'Alpaca','assets_scanned':len(assets),'enriched_candidates':len(enriched),'forward_candidate_count':len(forward),'extended_observation_count':len(extended),'requested_top':wanted,'complete_top10':len(sel)>=wanted,'ranking_status':'experimental_learning_overlay','full_market':True,'note_he':'v6.3 מפריד pre-breakout / early-breakout / already-extended. מניות extended נשמרות למחקר אך אינן ממלאות את העשירייה כל עוד קיימות 10 מועמדות forward. הספים ניסיוניים עד out-of-sample.'}
+  payload.update({'strategy_version':STRATEGY_VERSION,'scan_id':scan_id,'generated_at':generated.isoformat(),'server_timestamp':generated.isoformat(),'universe_mode':UNIVERSE_MODE,'universe_alignment':UNIVERSE_MODE,'candidate_semantics':'forward_candidates_with_extended_learning_bucket','cache_policy':'no-store'})
   return JSONResponse(payload,headers={'Cache-Control':'no-store, no-cache, must-revalidate, max-age=0','Pragma':'no-cache','Expires':'0','X-Scanner-Version':STRATEGY_VERSION,'X-Scan-Id':scan_id})
- if _day_route:_day_route.endpoint=_scanner;SCANNER_UNIVERSE_ALIGNMENT={'installed':True,'mode':UNIVERSE_MODE,'strategy_version':STRATEGY_VERSION,'target_count':10,'ui_untouched':True,'historical_universe_untouched':True,'experimental':True,'cache_policy':'no-store','pool_selection':'liquidity_only_no_realized_move'}
+ if _day_route:_day_route.endpoint=_scanner;SCANNER_UNIVERSE_ALIGNMENT={'installed':True,'mode':UNIVERSE_MODE,'strategy_version':STRATEGY_VERSION,'target_count':10,'ui_untouched':True,'historical_universe_untouched':True,'experimental':True,'cache_policy':'no-store','stage_classification':True}
  else:SCANNER_UNIVERSE_ALIGNMENT={'installed':False,'error':'day_route_missing'}
 except Exception as e:SCANNER_UNIVERSE_ALIGNMENT={'installed':False,'error':f'{type(e).__name__}: {e}'}
 try:
@@ -115,7 +121,7 @@ try:
  from missed_movers_learning import install_missed_movers_learning
  from learning_comparison import install_learning_comparison
  install_signal_journal(app,_core);install_missed_movers_learning(app,_core);install_learning_comparison(app,_core)
- LEARNING_ENGINE_STATUS={'installed':True,'strategy_version':'strategy-learning-v6.2-unbiased-pool','stable_base':'1b8068c52a5f7ba5ab6ee455999330b102dbc90a','universe_alignment':SCANNER_UNIVERSE_ALIGNMENT,'feature_comparison':True}
+ LEARNING_ENGINE_STATUS={'installed':True,'strategy_version':STRATEGY_VERSION,'stable_base':'1b8068c52a5f7ba5ab6ee455999330b102dbc90a','universe_alignment':SCANNER_UNIVERSE_ALIGNMENT,'feature_comparison':True}
 except Exception as e:LEARNING_ENGINE_STATUS={'installed':False,'error':f'{type(e).__name__}: {e}','universe_alignment':SCANNER_UNIVERSE_ALIGNMENT}
 @app.get('/api/learning/status')
 async def learning_status():return LEARNING_ENGINE_STATUS
