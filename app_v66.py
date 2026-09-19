@@ -4,14 +4,14 @@ _STABLE='https://raw.githubusercontent.com/dinndann123-bot/smart-investment-advi
 _code=urllib.request.urlopen(_STABLE, timeout=30).read().decode('utf-8')
 exec(compile(_code, _STABLE, 'exec'), globals(), globals())
 
-# Live Discovery v6.6.2: full-market predictive shortlist with strict anti-chase gating.
+# Live Discovery v6.6.3: predictive Top-10 must be pre-breakout / early-breakout, never generic watch.
 try:
  import asyncio,httpx as _httpx,math,uuid,os
  from datetime import datetime,timezone,timedelta
  from fastapi.responses import JSONResponse
  _day_route=next((r for r in app.routes if getattr(r,'path',None)=='/api/scanner/day' and 'GET' in getattr(r,'methods',set())),None)
- STRATEGY_VERSION='strategy-learning-v6.6.2-anti-chase-full-market'
- UNIVERSE_MODE='dynamic_alpaca_full_market_predictive_shortlist_v6_6_2'
+ STRATEGY_VERSION='strategy-learning-v6.6.3-predictive-gate'
+ UNIVERSE_MODE='dynamic_alpaca_full_market_predictive_shortlist_v6_6_3'
  _AK=(globals().get('ALPACA_KEY') or os.getenv('ALPACA_API_KEY') or os.getenv('ALPACA_KEY') or '').strip();_AS=(globals().get('ALPACA_SECRET') or os.getenv('ALPACA_SECRET_KEY') or os.getenv('ALPACA_SECRET') or '').strip();_AF=(globals().get('ALPACA_FEED') or os.getenv('ALPACA_FEED') or 'iex').strip()
  def _f(v,d=0.0):
   try:x=float(v);return x if math.isfinite(x) else d
@@ -46,8 +46,7 @@ try:
  def _quick_rank(r):
   ch=_f(r.get('change_pct'));gap=_f(r.get('snapshot_gap_pct'));vr=_f(r.get('snapshot_volume_ratio'));rp=_f(r.get('snapshot_range_position'),.5);dv=_f(r.get('dollar_volume'))
   liquidity=min(math.log10(max(dv,1)),10)*3;participation=min(vr,6)*5;constructive=max(0,min(rp,1))*8;early=max(0,min(ch,4))*2+max(0,min(gap,4))*1.2
-  # Strong anti-chase penalty already at full-market ranking. Big movers remain available for learning only.
-  extension=max(ch-6,0)*12+max(gap-8,0)*8
+  extension=max(ch-5,0)*14+max(gap-7,0)*9
   return liquidity+participation+constructive+early-extension
  async def _bars(symbol,client,days=6):
   end=datetime.now(timezone.utc);start=end-timedelta(days=days)
@@ -79,20 +78,24 @@ try:
     if v>0:hist.append(v)
   except:pass
   baseline=(sum(hist[-5:])/len(hist[-5:])) if hist else 0;todaycum=sum(_f(b.get('v')) for _,b in todays);rvol=todaycum/baseline if baseline else 0;price=_f(r.get('price'));distv=(price/pmvwap-1)*100 if pmvwap else 0;disth=(price/pmh-1)*100 if pmh else 0
-  r.update({'premarket_volume':round(pmv),'premarket_high':round(pmh,4) if pmh else None,'premarket_low':round(pml,4) if pml else None,'premarket_vwap':round(pmvwap,4) if pmvwap else None,'premarket_gap_pct':round(gap,2) if firstpm else None,'rvol':round(rvol,2) if rvol else None,'distance_from_pm_vwap_pct':round(distv,2) if pmvwap else None,'distance_from_pm_high_pct':round(disth,2) if pmh else None});return r
+  # Intraday move-used: how much of today's low-to-high range has already been consumed at signal time.
+  day_low=_f(r.get('price'));day_high=_f(r.get('price'))
+  if todays:
+   day_low=min([_f(b.get('l'),day_low) for _,b in todays] or [day_low]);day_high=max([_f(b.get('h'),day_high) for _,b in todays] or [day_high])
+  move_used=((price-day_low)/(day_high-day_low)*100) if day_high>day_low else 50
+  r.update({'premarket_volume':round(pmv),'premarket_high':round(pmh,4) if pmh else None,'premarket_low':round(pml,4) if pml else None,'premarket_vwap':round(pmvwap,4) if pmvwap else None,'premarket_gap_pct':round(gap,2) if firstpm else None,'rvol':round(rvol,2) if rvol else None,'distance_from_pm_vwap_pct':round(distv,2) if pmvwap else None,'distance_from_pm_high_pct':round(disth,2) if pmh else None,'intraday_move_used_pct':round(move_used,1),'intraday_low':round(day_low,4),'intraday_high':round(day_high,4)});return r
  def _stage(r):
-  ch=_f(r.get('change_pct'));gap=_f(r.get('premarket_gap_pct'),_f(r.get('snapshot_gap_pct')));rv=_f(r.get('rvol'));dv=_f(r.get('distance_from_pm_vwap_pct'));dh=_f(r.get('distance_from_pm_high_pct'));pmv=_f(r.get('premarket_volume'))
-  # Strict hard gate: the prediction list is not allowed to chase a move already in progress.
-  if ch>=10 or gap>=12 or dv>7 or dh>4:return 'already_extended'
-  if rv>=1.2 and pmv>=30000 and -12<=dh<=1 and -5<=dv<=5 and ch<8:return 'pre_breakout'
-  if 1<=ch<8 and rv>=1.3 and dh<=2:return 'early_breakout'
+  ch=_f(r.get('change_pct'));gap=_f(r.get('premarket_gap_pct'),_f(r.get('snapshot_gap_pct')));rv=_f(r.get('rvol'));dv=_f(r.get('distance_from_pm_vwap_pct'));dh=_f(r.get('distance_from_pm_high_pct'));pmv=_f(r.get('premarket_volume'));used=_f(r.get('intraday_move_used_pct'),50)
+  if ch>=9 or gap>=11 or dv>6 or dh>3.5 or (ch>=5 and used>=92):return 'already_extended'
+  if rv>=1.2 and pmv>=30000 and -10<=dh<=0.8 and -4<=dv<=4 and ch<7 and used<92:return 'pre_breakout'
+  if 0.5<=ch<7 and rv>=1.3 and -2<=dh<=1.5 and dv<=4.5 and used<90:return 'early_breakout'
   return 'watch'
  def _rank(r):
-  ch=_f(r.get('change_pct'));gap=_f(r.get('premarket_gap_pct'));rv=_f(r.get('rvol'));pmv=_f(r.get('premarket_volume'));dv=_f(r.get('distance_from_pm_vwap_pct'));dh=_f(r.get('distance_from_pm_high_pct'));stage=_stage(r)
-  participation=min(max(rv-1,0),9)*4+min(pmv/100000,15);structure=(6 if -5<=dv<=5 else 0)+(7 if -12<=dh<=1 else 0);stage_adj={'pre_breakout':22,'early_breakout':8,'watch':0,'already_extended':-100}[stage];extension=max(ch-5,0)*6+max(gap-8,0)*4
+  ch=_f(r.get('change_pct'));gap=_f(r.get('premarket_gap_pct'));rv=_f(r.get('rvol'));pmv=_f(r.get('premarket_volume'));dv=_f(r.get('distance_from_pm_vwap_pct'));dh=_f(r.get('distance_from_pm_high_pct'));used=_f(r.get('intraday_move_used_pct'),50);stage=_stage(r)
+  participation=min(max(rv-1,0),9)*4+min(pmv/100000,15);structure=(7 if -4<=dv<=4 else 0)+(8 if -10<=dh<=.8 else 0);stage_adj={'pre_breakout':28,'early_breakout':14,'watch':-25,'already_extended':-100}[stage];extension=max(ch-4,0)*7+max(gap-7,0)*5+max(used-85,0)*.8
   return 30+participation+min(max(gap,0),6)*1.2+structure+stage_adj-extension,stage
  async def _scanner(top:int=10,candidates:int=40):
-  generated=datetime.now(timezone.utc);scan_id=f"{generated.strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}";wanted=10 if top==10 else max(3,min(top,20));print(f'SCANNER_V662_START scan_id={scan_id} top={wanted} feed={_AF}',flush=True)
+  generated=datetime.now(timezone.utc);scan_id=f"{generated.strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}";wanted=10 if top==10 else max(3,min(top,20));print(f'SCANNER_V663_START scan_id={scan_id} top={wanted} feed={_AF}',flush=True)
   if not(_AK and _AS):payload={'results':[],'error':'alpaca_not_configured'}
   else:
    assets=await _assets();sn=await _snapshots([a['ticker'] for a in assets]);pool=[]
@@ -100,11 +103,11 @@ try:
     if sn.get(a['ticker']):
      r=_basic(a,sn[a['ticker']])
      if r:pool.append(r)
-   pool.sort(key=_quick_rank,reverse=True);initial=max(40,min(int(candidates or 40),80));caps=[]
-   for cap in (initial,80,120,180):
+   pool.sort(key=_quick_rank,reverse=True);initial=max(80,min(int(candidates or 80),180));caps=[]
+   for cap in (initial,120,180):
     cap=min(cap,len(pool))
     if cap>0 and cap not in caps:caps.append(cap)
-   enriched=[];seen=set();forward=[];extended=[];sem=asyncio.Semaphore(24)
+   enriched=[];seen=set();forward=[];watch=[];extended=[];sem=asyncio.Semaphore(24)
    async with _httpx.AsyncClient(timeout=7,limits=_httpx.Limits(max_connections=30,max_keepalive_connections=20)) as bars_client:
     async def one(r):
      async with sem:return _features(dict(r),await _bars(r['ticker'],bars_client))
@@ -113,14 +116,14 @@ try:
      if batch:
       rows=await asyncio.gather(*(one(r) for r in batch))
       for r in rows:
-       seen.add(r['ticker']);enriched.append(r);rank,stage=_rank(r);r.update({'score':max(0,min(100,round(rank))),'forward_rank':round(rank,2),'breakout_stage':stage,'candidate_type':'prediction' if stage!='already_extended' else 'learning_observation','prediction_status':stage,'strategy_version':STRATEGY_VERSION,'scan_id':scan_id,'generated_at':generated.isoformat(),'universe_mode':UNIVERSE_MODE});(extended if stage=='already_extended' else forward).append(r)
-     forward.sort(key=lambda x:({'pre_breakout':3,'early_breakout':2,'watch':1}.get(x.get('breakout_stage'),0),x.get('forward_rank',-999)),reverse=True);print(f'SCANNER_V662_EXPAND scan_id={scan_id} full_market={len(pool)} deep={len(enriched)} forward={len(forward)} extended={len(extended)} cap={cap}',flush=True)
+       seen.add(r['ticker']);enriched.append(r);rank,stage=_rank(r);r.update({'score':max(0,min(100,round(rank))),'forward_rank':round(rank,2),'breakout_stage':stage,'candidate_type':'prediction' if stage in {'pre_breakout','early_breakout'} else 'learning_observation','prediction_status':stage,'strategy_version':STRATEGY_VERSION,'scan_id':scan_id,'generated_at':generated.isoformat(),'universe_mode':UNIVERSE_MODE});({'already_extended':extended,'watch':watch}.get(stage,forward)).append(r)
+     forward.sort(key=lambda x:({'pre_breakout':2,'early_breakout':1}.get(x.get('breakout_stage'),0),x.get('forward_rank',-999)),reverse=True);print(f'SCANNER_V663_EXPAND scan_id={scan_id} full_market={len(pool)} deep={len(enriched)} predictive={len(forward)} watch={len(watch)} extended={len(extended)} cap={cap}',flush=True)
      if len(forward)>=wanted:break
-   extended.sort(key=lambda x:x.get('forward_rank',-999),reverse=True);sel=forward[:wanted]
-   payload={'results':sel,'extended_observations':extended[:20],'feed':_AF,'data_source':'Alpaca','assets_scanned':len(assets),'snapshot_candidates':len(pool),'full_market_ranked_count':len(pool),'deep_candidates':len(enriched),'forward_candidate_count':len(forward),'extended_observation_count':len(extended),'requested_top':wanted,'complete_top10':len(sel)>=wanted,'ranking_status':'strict_anti_chase_full_market_predictive_shortlist','full_market':True,'progressive_caps':caps,'note_he':'כל השוק עובר דירוג. מניות שכבר עלו 10%+ או התארכו משמעותית מסווגות לתצפיות למידה ולא מורשות להיכנס ל-Top 10 החזוי.'}
-  payload.update({'strategy_version':STRATEGY_VERSION,'scan_id':scan_id,'generated_at':generated.isoformat(),'server_timestamp':generated.isoformat(),'universe_mode':UNIVERSE_MODE,'candidate_semantics':'strict_prebreakout_prediction','cache_policy':'no-store'});print(f"SCANNER_V662_DONE scan_id={scan_id} full_market={payload.get('full_market_ranked_count',0)} results={len(payload.get('results',[]))} complete={payload.get('complete_top10')} error={payload.get('error','none')}",flush=True);return JSONResponse(payload,headers={'Cache-Control':'no-store, no-cache, must-revalidate, max-age=0','Pragma':'no-cache','Expires':'0','X-Scanner-Version':STRATEGY_VERSION,'X-Scan-Id':scan_id})
+   watch.sort(key=lambda x:x.get('forward_rank',-999),reverse=True);extended.sort(key=lambda x:x.get('forward_rank',-999),reverse=True);sel=forward[:wanted]
+   payload={'results':sel,'watch_observations':watch[:30],'extended_observations':extended[:30],'feed':_AF,'data_source':'Alpaca','assets_scanned':len(assets),'snapshot_candidates':len(pool),'full_market_ranked_count':len(pool),'deep_candidates':len(enriched),'forward_candidate_count':len(forward),'watch_observation_count':len(watch),'extended_observation_count':len(extended),'requested_top':wanted,'complete_top10':len(sel)>=wanted,'ranking_status':'predictive_only_pre_or_early_breakout','full_market':True,'progressive_caps':caps,'note_he':'Top 10 כולל רק pre-breakout או early-breakout. watch ומניה שכבר התארכה נשמרות ללמידה בלבד.'}
+  payload.update({'strategy_version':STRATEGY_VERSION,'scan_id':scan_id,'generated_at':generated.isoformat(),'server_timestamp':generated.isoformat(),'universe_mode':UNIVERSE_MODE,'candidate_semantics':'predictive_prebreakout_or_earlybreakout_only','cache_policy':'no-store'});print(f"SCANNER_V663_DONE scan_id={scan_id} full_market={payload.get('full_market_ranked_count',0)} results={len(payload.get('results',[]))} predictive={payload.get('forward_candidate_count',0)} watch={payload.get('watch_observation_count',0)} extended={payload.get('extended_observation_count',0)} complete={payload.get('complete_top10')} error={payload.get('error','none')}",flush=True);return JSONResponse(payload,headers={'Cache-Control':'no-store, no-cache, must-revalidate, max-age=0','Pragma':'no-cache','Expires':'0','X-Scanner-Version':STRATEGY_VERSION,'X-Scan-Id':scan_id})
  if _day_route:
-  app.router.routes.remove(_day_route);app.add_api_route('/api/scanner/day',_scanner,methods=['GET'],name='scanner_day_v662');SCANNER_UNIVERSE_ALIGNMENT={'installed':True,'route_rebound':True,'mode':UNIVERSE_MODE,'strategy_version':STRATEGY_VERSION,'target_count':10,'full_market_snapshot_rank':True,'strict_anti_chase':True,'progressive_deep_scan':True,'deep_candidate_cap':180}
+  app.router.routes.remove(_day_route);app.add_api_route('/api/scanner/day',_scanner,methods=['GET'],name='scanner_day_v663');SCANNER_UNIVERSE_ALIGNMENT={'installed':True,'route_rebound':True,'mode':UNIVERSE_MODE,'strategy_version':STRATEGY_VERSION,'target_count':10,'full_market_snapshot_rank':True,'predictive_only_gate':True,'watch_excluded_from_top10':True,'strict_anti_chase':True,'progressive_deep_scan':True,'deep_candidate_cap':180}
  else:SCANNER_UNIVERSE_ALIGNMENT={'installed':False,'error':'day_route_missing'}
 except Exception as e:SCANNER_UNIVERSE_ALIGNMENT={'installed':False,'error':f'{type(e).__name__}: {e}'}
 try:
