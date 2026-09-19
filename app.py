@@ -4,15 +4,16 @@ _STABLE='https://raw.githubusercontent.com/dinndann123-bot/smart-investment-advi
 _code=urllib.request.urlopen(_STABLE, timeout=30).read().decode('utf-8')
 exec(compile(_code, _STABLE, 'exec'), globals(), globals())
 
-# Live Discovery v6.3: explicit breakout-stage classification. The ranking aims
-# at forward opportunity, while extended names remain observable for learning.
+# Live Discovery v6.3.1: explicit breakout-stage classification + hard route
+# rebind. Replacing APIRoute.endpoint after FastAPI startup is insufficient,
+# because the route handler is compiled when APIRoute is created.
 try:
  import asyncio,httpx as _httpx,math,uuid
  from datetime import datetime,timezone,timedelta
  from fastapi.responses import JSONResponse
  _day_route=next((r for r in app.routes if getattr(r,'path',None)=='/api/scanner/day' and 'GET' in getattr(r,'methods',set())),None)
- STRATEGY_VERSION='strategy-learning-v6.3-breakout-stage'
- UNIVERSE_MODE='dynamic_alpaca_breakout_stage_v6_3'
+ STRATEGY_VERSION='strategy-learning-v6.3.1-breakout-stage-route-rebind'
+ UNIVERSE_MODE='dynamic_alpaca_breakout_stage_v6_3_1'
  def _f(v,d=0.0):
   try:
    x=float(v);return x if math.isfinite(x) else d
@@ -78,7 +79,6 @@ try:
   r.update({'premarket_volume':round(pmv),'premarket_high':round(pmh,4) if pmh else None,'premarket_low':round(pml,4) if pml else None,'premarket_vwap':round(pmvwap,4) if pmvwap else None,'premarket_gap_pct':round(gap,2) if firstpm else None,'rvol':round(rvol,2) if rvol else None,'rvol_baseline_sessions':min(len(hist),7),'distance_from_pm_vwap_pct':round(distv,2) if pmvwap else None,'distance_from_pm_high_pct':round(disth,2) if pmh else None});return r
  def _stage(r):
   ch=_f(r.get('change_pct'));rv=_f(r.get('rvol'));dv=_f(r.get('distance_from_pm_vwap_pct'));dh=_f(r.get('distance_from_pm_high_pct'));pmv=_f(r.get('premarket_volume'))
-  # Stage labels are hypotheses for validation, not claims of predictive accuracy.
   if ch>=12 or dv>8 or dh>5:return 'already_extended'
   if ch>=5 or (rv>=2 and dh>=-2):return 'early_breakout'
   if rv>=1.25 and pmv>=50000 and -10<=dh<=0 and -4<=dv<=4:return 'pre_breakout'
@@ -105,15 +105,20 @@ try:
    for r in enriched:
     rank,stage,m=_rank(r);r.update({'score':max(0,min(100,round(rank))),'forward_rank':round(rank,2),'gate_metrics':m,'breakout_stage':stage,'candidate_type':'prediction' if stage!='already_extended' else 'learning_observation','prediction_status':stage,'strategy_version':STRATEGY_VERSION,'scan_id':scan_id,'generated_at':generated.isoformat(),'universe_mode':UNIVERSE_MODE})
     (extended if stage=='already_extended' else forward).append(r)
-   # Forward list is filled first from non-extended names. Extended names are kept
-   # separately for learning and only backfill if data scarcity prevents 10 rows.
    forward.sort(key=lambda x:x.get('forward_rank',-999),reverse=True);extended.sort(key=lambda x:x.get('forward_rank',-999),reverse=True);sel=(forward+extended)[:wanted]
-   payload={'results':sel,'extended_observations':extended[:20],'feed':ALPACA_FEED,'data_source':'Alpaca','assets_scanned':len(assets),'enriched_candidates':len(enriched),'forward_candidate_count':len(forward),'extended_observation_count':len(extended),'requested_top':wanted,'complete_top10':len(sel)>=wanted,'ranking_status':'experimental_learning_overlay','full_market':True,'note_he':'v6.3 מפריד pre-breakout / early-breakout / already-extended. מניות extended נשמרות למחקר אך אינן ממלאות את העשירייה כל עוד קיימות 10 מועמדות forward. הספים ניסיוניים עד out-of-sample.'}
+   payload={'results':sel,'extended_observations':extended[:20],'feed':ALPACA_FEED,'data_source':'Alpaca','assets_scanned':len(assets),'enriched_candidates':len(enriched),'forward_candidate_count':len(forward),'extended_observation_count':len(extended),'requested_top':wanted,'complete_top10':len(sel)>=wanted,'ranking_status':'experimental_learning_overlay','full_market':True,'note_he':'v6.3.1 מפריד pre-breakout / early-breakout / already-extended. route rebind פעיל כדי לוודא שה-endpoint החדש הוא זה שמשרת את האפליקציה.'}
   payload.update({'strategy_version':STRATEGY_VERSION,'scan_id':scan_id,'generated_at':generated.isoformat(),'server_timestamp':generated.isoformat(),'universe_mode':UNIVERSE_MODE,'universe_alignment':UNIVERSE_MODE,'candidate_semantics':'forward_candidates_with_extended_learning_bucket','cache_policy':'no-store'})
   return JSONResponse(payload,headers={'Cache-Control':'no-store, no-cache, must-revalidate, max-age=0','Pragma':'no-cache','Expires':'0','X-Scanner-Version':STRATEGY_VERSION,'X-Scan-Id':scan_id})
- if _day_route:_day_route.endpoint=_scanner;SCANNER_UNIVERSE_ALIGNMENT={'installed':True,'mode':UNIVERSE_MODE,'strategy_version':STRATEGY_VERSION,'target_count':10,'ui_untouched':True,'historical_universe_untouched':True,'experimental':True,'cache_policy':'no-store','stage_classification':True}
- else:SCANNER_UNIVERSE_ALIGNMENT={'installed':False,'error':'day_route_missing'}
-except Exception as e:SCANNER_UNIVERSE_ALIGNMENT={'installed':False,'error':f'{type(e).__name__}: {e}'}
+
+ # IMPORTANT: APIRoute builds its ASGI handler at construction time. Merely
+ # assigning route.endpoint does not replace that handler. Remove the stable
+ # route object and register a fresh route so v6.3.1 actually serves requests.
+ if _day_route:
+  app.router.routes.remove(_day_route)
+  app.add_api_route('/api/scanner/day',_scanner,methods=['GET'],name='scanner_day_v631')
+  SCANNER_UNIVERSE_ALIGNMENT={'installed':True,'route_rebound':True,'mode':UNIVERSE_MODE,'strategy_version':STRATEGY_VERSION,'target_count':10,'ui_untouched':True,'historical_universe_untouched':True,'experimental':True,'cache_policy':'no-store','stage_classification':True}
+ else:SCANNER_UNIVERSE_ALIGNMENT={'installed':False,'route_rebound':False,'error':'day_route_missing'}
+except Exception as e:SCANNER_UNIVERSE_ALIGNMENT={'installed':False,'route_rebound':False,'error':f'{type(e).__name__}: {e}'}
 try:
  import sys
  _core=sys.modules[__name__]
