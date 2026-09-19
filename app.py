@@ -4,36 +4,37 @@ _STABLE='https://raw.githubusercontent.com/dinndann123-bot/smart-investment-advi
 _code=urllib.request.urlopen(_STABLE, timeout=30).read().decode('utf-8')
 exec(compile(_code, _STABLE, 'exec'), globals(), globals())
 
-# Live Discovery v6.3.2: forward-only Top 10. Already-extended names remain
-# observable for learning but can never backfill the live prediction list.
+# Live Discovery v6.4: scan the full market cheaply first, then run deep bars
+# analysis only on a small snapshot-ranked shortlist. Extended movers are
+# retained for learning and never backfill the live prediction Top 10.
 try:
  import asyncio,httpx as _httpx,math,uuid
  from datetime import datetime,timezone,timedelta
  from fastapi.responses import JSONResponse
  _day_route=next((r for r in app.routes if getattr(r,'path',None)=='/api/scanner/day' and 'GET' in getattr(r,'methods',set())),None)
- STRATEGY_VERSION='strategy-learning-v6.3.2-forward-only-top10'
- UNIVERSE_MODE='dynamic_alpaca_forward_only_v6_3_2'
+ STRATEGY_VERSION='strategy-learning-v6.4-snapshot-first'
+ UNIVERSE_MODE='dynamic_alpaca_snapshot_first_v6_4'
  def _f(v,d=0.0):
   try:
    x=float(v);return x if math.isfinite(x) else d
   except:return d
  def _h():return {'APCA-API-KEY-ID':ALPACA_KEY,'APCA-API-SECRET-KEY':ALPACA_SECRET}
  async def _assets():
-  async with _httpx.AsyncClient(timeout=30) as c:r=await c.get('https://paper-api.alpaca.markets/v2/assets',headers=_h(),params={'asset_class':'us_equity','status':'active'})
+  async with _httpx.AsyncClient(timeout=15) as c:r=await c.get('https://paper-api.alpaca.markets/v2/assets',headers=_h(),params={'asset_class':'us_equity','status':'active'})
   if r.status_code>=400:return []
   out=[]
   for a in r.json() or []:
    s=str(a.get('symbol') or '').upper().strip();ex=str(a.get('exchange') or '').upper();name=str(a.get('name') or '').lower()
    if not s or not a.get('tradable') or ex not in {'NASDAQ','NYSE','AMEX','ARCA','BATS'}:continue
    if any(k in name for k in (' etf','exchange traded',' fund','ishares','spdr ','vanguard ','invesco ')):continue
-   out.append({'ticker':s,'name':a.get('name'),'exchange':ex,'shortable':bool(a.get('shortable')),'easy_to_borrow':bool(a.get('easy_to_borrow'))})
+   out.append({'ticker':s,'name':a.get('name'),'exchange':ex})
   return out
  async def _snapshots(symbols):
-  found={};sem=asyncio.Semaphore(5)
+  found={};sem=asyncio.Semaphore(8)
   async def one(chunk):
    async with sem:
     try:
-     async with _httpx.AsyncClient(timeout=25) as c:r=await c.get('https://data.alpaca.markets/v2/stocks/snapshots',headers=_h(),params={'symbols':','.join(chunk),'feed':ALPACA_FEED})
+     async with _httpx.AsyncClient(timeout=10) as c:r=await c.get('https://data.alpaca.markets/v2/stocks/snapshots',headers=_h(),params={'symbols':','.join(chunk),'feed':ALPACA_FEED})
      if r.status_code<400:found.update(r.json() or {})
     except:pass
   await asyncio.gather(*(one(symbols[i:i+100]) for i in range(0,len(symbols),100)));return found
@@ -42,10 +43,16 @@ try:
   if not(p>0 and prev>0) or p<0.5 or p*vol<250000:return None
   ch=(p/prev-1)*100
   return {**meta,'price':round(p,4),'prev_close':prev,'change':round(ch,2),'change_pct':round(ch,2),'day_volume':vol,'dollar_volume':round(p*vol,2),'market_timestamp':lt.get('t') or mb.get('t') or db.get('t'),'data_source':'Alpaca','data_feed':ALPACA_FEED,'data_verified':True,'stale':False}
- async def _bars(symbol,days=12):
+ def _quick_rank(r):
+  ch=_f(r.get('change_pct'));dv=_f(r.get('dollar_volume'))
+  # Prefer liquid names showing early movement, but heavily penalize moves that
+  # are already extended before expensive historical analysis begins.
+  extension=max(abs(ch)-8,0)*8
+  return min(abs(ch),8)*5 + min(math.log10(max(dv,1)),10)*3 - extension
+ async def _bars(symbol,days=8):
   end=datetime.now(timezone.utc);start=end-timedelta(days=days)
   try:
-   async with _httpx.AsyncClient(timeout=20) as c:r=await c.get(f'https://data.alpaca.markets/v2/stocks/{symbol}/bars',headers=_h(),params={'timeframe':'5Min','start':start.isoformat().replace('+00:00','Z'),'end':end.isoformat().replace('+00:00','Z'),'feed':ALPACA_FEED,'adjustment':'split','limit':10000})
+   async with _httpx.AsyncClient(timeout=8) as c:r=await c.get(f'https://data.alpaca.markets/v2/stocks/{symbol}/bars',headers=_h(),params={'timeframe':'5Min','start':start.isoformat().replace('+00:00','Z'),'end':end.isoformat().replace('+00:00','Z'),'feed':ALPACA_FEED,'adjustment':'split','limit':6000})
    return (r.json() or {}).get('bars') or [] if r.status_code<400 else []
   except:return []
  def _features(r,bars):
@@ -59,8 +66,8 @@ try:
    from zoneinfo import ZoneInfo
    ny=ZoneInfo('America/New_York')
    for t,b in todays:
-    z=t.astimezone(ny);mins=z.hour*60+z.minute
-    if 240<=mins<570:pm.append((t,b))
+    z=t.astimezone(ny);m=z.hour*60+z.minute
+    if 240<=m<570:pm.append((t,b))
   except:pass
   pmv=sum(_f(b.get('v')) for _,b in pm);pmh=max([_f(b.get('h')) for _,b in pm] or [0]);pml=min([_f(b.get('l'),1e99) for _,b in pm] or [0]);pv=sum(_f(b.get('v'))*_f(b.get('vw'),_f(b.get('c'))) for _,b in pm);pmvwap=pv/pmv if pmv else 0;firstpm=_f(pm[0][1].get('o')) if pm else 0;gap=(firstpm/prev-1)*100 if firstpm and prev else 0;hist=[]
   try:
@@ -68,14 +75,11 @@ try:
    ny=ZoneInfo('America/New_York');cur=now.astimezone(ny);curmin=cur.hour*60+cur.minute
    for d,arr in byday.items():
     if d==today:continue
-    v=0
-    for t,b in arr:
-     z=t.astimezone(ny);m=z.hour*60+z.minute
-     if 240<=m<=curmin:v+=_f(b.get('v'))
+    v=sum(_f(b.get('v')) for t,b in arr if 240<=t.astimezone(ny).hour*60+t.astimezone(ny).minute<=curmin)
     if v>0:hist.append(v)
   except:pass
-  baseline=(sum(hist[-7:])/len(hist[-7:])) if hist else 0;todaycum=sum(_f(b.get('v')) for _,b in todays);rvol=todaycum/baseline if baseline else 0;price=_f(r.get('price'));distv=(price/pmvwap-1)*100 if pmvwap else 0;disth=(price/pmh-1)*100 if pmh else 0
-  r.update({'premarket_volume':round(pmv),'premarket_high':round(pmh,4) if pmh else None,'premarket_low':round(pml,4) if pml else None,'premarket_vwap':round(pmvwap,4) if pmvwap else None,'premarket_gap_pct':round(gap,2) if firstpm else None,'rvol':round(rvol,2) if rvol else None,'rvol_baseline_sessions':min(len(hist),7),'distance_from_pm_vwap_pct':round(distv,2) if pmvwap else None,'distance_from_pm_high_pct':round(disth,2) if pmh else None});return r
+  baseline=(sum(hist[-5:])/len(hist[-5:])) if hist else 0;todaycum=sum(_f(b.get('v')) for _,b in todays);rvol=todaycum/baseline if baseline else 0;price=_f(r.get('price'));distv=(price/pmvwap-1)*100 if pmvwap else 0;disth=(price/pmh-1)*100 if pmh else 0
+  r.update({'premarket_volume':round(pmv),'premarket_high':round(pmh,4) if pmh else None,'premarket_low':round(pml,4) if pml else None,'premarket_vwap':round(pmvwap,4) if pmvwap else None,'premarket_gap_pct':round(gap,2) if firstpm else None,'rvol':round(rvol,2) if rvol else None,'distance_from_pm_vwap_pct':round(distv,2) if pmvwap else None,'distance_from_pm_high_pct':round(disth,2) if pmh else None});return r
  def _stage(r):
   ch=_f(r.get('change_pct'));rv=_f(r.get('rvol'));dv=_f(r.get('distance_from_pm_vwap_pct'));dh=_f(r.get('distance_from_pm_high_pct'));pmv=_f(r.get('premarket_volume'))
   if ch>=12 or dv>8 or dh>5:return 'already_extended'
@@ -84,9 +88,9 @@ try:
   return 'watch'
  def _rank(r):
   ch=_f(r.get('change_pct'));gap=_f(r.get('premarket_gap_pct'));rv=_f(r.get('rvol'));pmv=_f(r.get('premarket_volume'));dv=_f(r.get('distance_from_pm_vwap_pct'));dh=_f(r.get('distance_from_pm_high_pct'));stage=_stage(r)
-  participation=min(max(rv-1,0),9)*4+min(pmv/100000,15);gap_signal=min(max(gap,0),7)*1.5;structure=(5 if -4<=dv<=4 else 0)+(6 if -10<=dh<=0 else 0);stage_adj={'pre_breakout':14,'early_breakout':5,'watch':0,'already_extended':-28}[stage];extension=max(ch-6,0)*3.2+max(gap-10,0)*2
-  score=30+participation+gap_signal+structure+stage_adj-extension
-  return score,stage,{'rvol':rv,'premarket_volume':pmv,'premarket_gap_pct':gap,'distance_from_pm_vwap_pct':dv,'distance_from_pm_high_pct':dh,'breakout_stage':stage,'extension_risk':round(extension,2),'forward_rank':round(score,2),'experimental':True}
+  participation=min(max(rv-1,0),9)*4+min(pmv/100000,15);structure=(5 if -4<=dv<=4 else 0)+(6 if -10<=dh<=0 else 0);stage_adj={'pre_breakout':14,'early_breakout':5,'watch':0,'already_extended':-28}[stage];extension=max(ch-6,0)*3.2+max(gap-10,0)*2
+  score=30+participation+min(max(gap,0),7)*1.5+structure+stage_adj-extension
+  return score,stage
  async def _scanner(top:int=10,candidates:int=40):
   generated=datetime.now(timezone.utc);scan_id=f"{generated.strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}";wanted=10 if top==10 else max(3,min(top,20))
   if not(ALPACA_KEY and ALPACA_SECRET):payload={'results':[],'error':'alpaca_not_configured'}
@@ -96,27 +100,25 @@ try:
     if sn.get(a['ticker']):
      r=_basic(a,sn[a['ticker']])
      if r:pool.append(r)
-   pool.sort(key=lambda x:_f(x.get('dollar_volume')),reverse=True);pool=pool[:300];sem=asyncio.Semaphore(10);enriched=[]
+   # Cheap full-market pass first; deep bars only for a bounded shortlist.
+   pool.sort(key=_quick_rank,reverse=True);shortlist=pool[:max(30,min(int(candidates or 40),60))]
+   sem=asyncio.Semaphore(20);enriched=[]
    async def one(r):
     async with sem:enriched.append(_features(r,await _bars(r['ticker'])))
-   await asyncio.gather(*(one(r) for r in pool))
+   await asyncio.gather(*(one(r) for r in shortlist))
    extended=[];forward=[]
    for r in enriched:
-    rank,stage,m=_rank(r);r.update({'score':max(0,min(100,round(rank))),'forward_rank':round(rank,2),'gate_metrics':m,'breakout_stage':stage,'candidate_type':'prediction' if stage!='already_extended' else 'learning_observation','prediction_status':stage,'strategy_version':STRATEGY_VERSION,'scan_id':scan_id,'generated_at':generated.isoformat(),'universe_mode':UNIVERSE_MODE})
+    rank,stage=_rank(r);r.update({'score':max(0,min(100,round(rank))),'forward_rank':round(rank,2),'breakout_stage':stage,'candidate_type':'prediction' if stage!='already_extended' else 'learning_observation','prediction_status':stage,'strategy_version':STRATEGY_VERSION,'scan_id':scan_id,'generated_at':generated.isoformat(),'universe_mode':UNIVERSE_MODE})
     (extended if stage=='already_extended' else forward).append(r)
-   forward.sort(key=lambda x:x.get('forward_rank',-999),reverse=True);extended.sort(key=lambda x:x.get('forward_rank',-999),reverse=True)
-   # Forward predictions only. Extended movers are never allowed to backfill Top 10.
-   sel=forward[:wanted]
-   payload={'results':sel,'extended_observations':extended[:20],'feed':ALPACA_FEED,'data_source':'Alpaca','assets_scanned':len(assets),'enriched_candidates':len(enriched),'forward_candidate_count':len(forward),'extended_observation_count':len(extended),'requested_top':wanted,'complete_top10':len(sel)>=wanted,'ranking_status':'forward_only','full_market':True,'note_he':'v6.3.2: העשירייה כוללת רק מועמדות forward. מניות שכבר התארכו נשמרות למחקר בלבד ולעולם אינן משלימות את Top 10.'}
-  payload.update({'strategy_version':STRATEGY_VERSION,'scan_id':scan_id,'generated_at':generated.isoformat(),'server_timestamp':generated.isoformat(),'universe_mode':UNIVERSE_MODE,'universe_alignment':UNIVERSE_MODE,'candidate_semantics':'forward_predictions_only_extended_separate','cache_policy':'no-store'})
+   forward.sort(key=lambda x:x.get('forward_rank',-999),reverse=True);extended.sort(key=lambda x:x.get('forward_rank',-999),reverse=True);sel=forward[:wanted]
+   payload={'results':sel,'extended_observations':extended[:20],'feed':ALPACA_FEED,'data_source':'Alpaca','assets_scanned':len(assets),'snapshot_candidates':len(pool),'deep_candidates':len(shortlist),'enriched_candidates':len(enriched),'forward_candidate_count':len(forward),'extended_observation_count':len(extended),'requested_top':wanted,'complete_top10':len(sel)>=wanted,'ranking_status':'snapshot_first_forward_only','full_market':True,'note_he':'v6.4: סריקת snapshot מהירה על השוק, ניתוח bars עמוק רק ל-shortlist, ו-Top 10 forward בלבד.'}
+  payload.update({'strategy_version':STRATEGY_VERSION,'scan_id':scan_id,'generated_at':generated.isoformat(),'server_timestamp':generated.isoformat(),'universe_mode':UNIVERSE_MODE,'candidate_semantics':'snapshot_first_forward_predictions','cache_policy':'no-store'})
   return JSONResponse(payload,headers={'Cache-Control':'no-store, no-cache, must-revalidate, max-age=0','Pragma':'no-cache','Expires':'0','X-Scanner-Version':STRATEGY_VERSION,'X-Scan-Id':scan_id})
-
  if _day_route:
-  app.router.routes.remove(_day_route)
-  app.add_api_route('/api/scanner/day',_scanner,methods=['GET'],name='scanner_day_v632')
-  SCANNER_UNIVERSE_ALIGNMENT={'installed':True,'route_rebound':True,'mode':UNIVERSE_MODE,'strategy_version':STRATEGY_VERSION,'target_count':10,'ui_untouched':True,'historical_universe_untouched':True,'experimental':True,'cache_policy':'no-store','stage_classification':True,'extended_backfill':False}
- else:SCANNER_UNIVERSE_ALIGNMENT={'installed':False,'route_rebound':False,'error':'day_route_missing'}
-except Exception as e:SCANNER_UNIVERSE_ALIGNMENT={'installed':False,'route_rebound':False,'error':f'{type(e).__name__}: {e}'}
+  app.router.routes.remove(_day_route);app.add_api_route('/api/scanner/day',_scanner,methods=['GET'],name='scanner_day_v64')
+  SCANNER_UNIVERSE_ALIGNMENT={'installed':True,'route_rebound':True,'mode':UNIVERSE_MODE,'strategy_version':STRATEGY_VERSION,'target_count':10,'snapshot_first':True,'deep_candidate_cap':60,'extended_backfill':False}
+ else:SCANNER_UNIVERSE_ALIGNMENT={'installed':False,'error':'day_route_missing'}
+except Exception as e:SCANNER_UNIVERSE_ALIGNMENT={'installed':False,'error':f'{type(e).__name__}: {e}'}
 try:
  import sys
  _core=sys.modules[__name__]
@@ -124,7 +126,7 @@ try:
  from missed_movers_learning import install_missed_movers_learning
  from learning_comparison import install_learning_comparison
  install_signal_journal(app,_core);install_missed_movers_learning(app,_core);install_learning_comparison(app,_core)
- LEARNING_ENGINE_STATUS={'installed':True,'strategy_version':STRATEGY_VERSION,'stable_base':'1b8068c52a5f7ba5ab6ee455999330b102dbc90a','universe_alignment':SCANNER_UNIVERSE_ALIGNMENT,'feature_comparison':True}
+ LEARNING_ENGINE_STATUS={'installed':True,'strategy_version':STRATEGY_VERSION,'universe_alignment':SCANNER_UNIVERSE_ALIGNMENT,'feature_comparison':True}
 except Exception as e:LEARNING_ENGINE_STATUS={'installed':False,'error':f'{type(e).__name__}: {e}','universe_alignment':SCANNER_UNIVERSE_ALIGNMENT}
 @app.get('/api/learning/status')
 async def learning_status():return LEARNING_ENGINE_STATUS
