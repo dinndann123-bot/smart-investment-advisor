@@ -10,8 +10,9 @@ function normalize(x,i,scanId){
  let change=firstNum(x.change_pct,x.change_percent,x.changePercent,x.percent_change,x.pct_change,x.change);
  if(change===null&&price!==null&&prev>0)change=(price/prev-1)*100;
  // Keep raw model score for ranking/audit, but never expose it as an empirical success probability.
- const rawScore=firstNum(x.score,x.strategy_score);
- const fit=rawScore===null?null:Math.max(0,Math.min(99,Math.round(50+49*Math.tanh((rawScore-65)/28))));
+ const rawScore=firstNum(x.raw_strategy_score,x.forward_rank,x.strategy_score,x.score);
+ const serverFit=firstNum(x.strategy_fit_score);
+ const fit=serverFit!==null?Math.max(0,Math.min(99,Math.round(serverFit))):(rawScore===null?null:Math.max(0,Math.min(99,Math.round(50+49*Math.tanh((rawScore-65)/28)))));
  return{...x,ticker:String(x.ticker||'').trim().toUpperCase(),price,change,change_pct:change,scanner_rank:i+1,canonical_scan_id:scanId,raw_strategy_score:rawScore,strategy_fit_score:fit,score_display:fit===null?'—':`${fit}/100 התאמה`,success_rate:null,success_rate_status:'pending_forward_validation'};
 }
 function validate(j){
