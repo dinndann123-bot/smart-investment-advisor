@@ -60,7 +60,11 @@ try:
         si=_html.find(start);ei=_html.find(end,si)
         if si>=0 and ei>=0:
             _html=_html[:si]+_new+_html[ei+len(end):];patched=True
-    if patched:
+    _bootstrap_tag='<script src="/static/canonical_bootstrap.js?v=20260919-1905"></script>'
+    _bootstrap_added=False
+    if _bootstrap_tag not in _html and '</body>' in _html:
+        _html=_html.replace('</body>',_bootstrap_tag+'</body>',1);_bootstrap_added=True
+    if patched or _bootstrap_added:
         _index_path.write_text(_html,encoding='utf-8');print('SCANNER_UI_EXPLICIT_START=true',flush=True)
     else:
         print('SCANNER_UI_EXPLICIT_START=pattern_missing',flush=True)
