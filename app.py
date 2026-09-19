@@ -2,6 +2,7 @@
 from app_v66 import *
 from scanner_async_v67 import install_async_scanner, STRATEGY_VERSION as ASYNC_STRATEGY_VERSION
 from pathlib import Path
+from fastapi.responses import FileResponse
 
 try:
     _index_path = Path(__file__).with_name('index.html')
@@ -70,6 +71,15 @@ try:
         print('SCANNER_UI_EXPLICIT_START=pattern_missing',flush=True)
 except Exception as _ui_patch_error:
     print(f'SCANNER_UI_EXPLICIT_START_ERROR={type(_ui_patch_error).__name__}: {_ui_patch_error}',flush=True)
+
+# The inherited root endpoint captured an older HTML string during import.
+# Rebind it to the patched file so the installed PWA always receives the
+# canonical scanner/learning bootstrap from the current deployment.
+_old_root=next((r for r in app.routes if getattr(r,'path',None)=='/' and 'GET' in getattr(r,'methods',set())),None)
+if _old_root is not None:app.router.routes.remove(_old_root)
+@app.get('/',include_in_schema=False)
+async def production_root():
+    return FileResponse(Path(__file__).with_name('index.html'),media_type='text/html',headers={'Cache-Control':'no-store, max-age=0'})
 
 _v66_day_route=next((r for r in app.routes if getattr(r,'path',None)=='/api/scanner/day' and 'GET' in getattr(r,'methods',set())),None)
 if _v66_day_route is None:raise RuntimeError('full-market day scanner route not found')
