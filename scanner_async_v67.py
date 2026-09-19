@@ -6,13 +6,13 @@ from datetime import datetime, timezone
 
 from fastapi.responses import JSONResponse
 
-STRATEGY_VERSION = "strategy-learning-v6.8.2-auto-5m-refresh"
+STRATEGY_VERSION = "strategy-learning-v6.8.3-auto-1m-refresh"
 SCAN_TIMEOUT_SEC = 75
-AUTO_SCAN_INTERVAL_SEC = 300
+AUTO_SCAN_INTERVAL_SEC = 60
 
 
 def install_async_scanner(app, scanner_engine):
-    """Wrap scanner with manual refresh, single-flight protection, cache and automatic 5-minute rescans."""
+    """Wrap scanner with manual refresh, single-flight protection, cache and automatic one-minute rescans."""
     state = {"status":"idle","job_id":None,"started_at":None,"finished_at":None,"result":None,"error":None,"duration_sec":None,"auto_scan_enabled":True,"auto_scan_interval_sec":AUTO_SCAN_INTERVAL_SEC,"auto_task_started":False}
     lock = asyncio.Lock()
 
@@ -43,24 +43,26 @@ def install_async_scanner(app, scanner_engine):
     async def auto_scan_loop():
         state["auto_task_started"]=True
         print(f"SCANNER_AUTO_LOOP_STARTED interval={AUTO_SCAN_INTERVAL_SEC}s",flush=True)
-        # Run once shortly after startup, then every five minutes.
         await asyncio.sleep(2)
         while True:
             try:
+                cycle_started=time.monotonic()
                 if state.get("status") != "running":
                     new_job(10,40)
-                await asyncio.sleep(AUTO_SCAN_INTERVAL_SEC)
+                elapsed=time.monotonic()-cycle_started
+                await asyncio.sleep(max(1,AUTO_SCAN_INTERVAL_SEC-elapsed))
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
                 print(f"SCANNER_AUTO_LOOP_ERROR={type(exc).__name__}: {exc}",flush=True)
-                await asyncio.sleep(30)
+                await asyncio.sleep(10)
 
     async def start_auto_scanner():
         if not state.get("auto_task_started"):
             asyncio.create_task(auto_scan_loop())
 
-    app.add_event_handler("startup", start_auto_scanner)
+    # FastAPI/Starlette compatibility: register startup on the router.
+    app.router.add_event_handler("startup", start_auto_scanner)
 
     async def day(top:int=10,candidates:int=40,refresh:int=0):
         cached=state.get("result") or {};running=state.get("status")=="running";started_job=None
