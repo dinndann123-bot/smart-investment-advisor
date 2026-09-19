@@ -9,10 +9,16 @@ try:
  from datetime import datetime,timezone
  from collections import deque
  from fastapi.responses import JSONResponse
+ import learning_store
  STRATEGY_VERSION='strategy-learning-v6.6.7-forward-validation'
  _route=next((r for r in app.routes if getattr(r,'path',None)=='/api/scanner/day' and 'GET' in getattr(r,'methods',set())),None)
  _base_scanner=scanner_v666
- _signal_journal=deque(maxlen=3000)
+ try:
+  _signal_journal=deque(learning_store.load(3000),maxlen=3000)
+  print(f'LEARNING_STORE_LOADED backend={learning_store.backend()} signals={len(_signal_journal)}',flush=True)
+ except Exception as _store_load_error:
+  _signal_journal=deque(maxlen=3000)
+  print(f'LEARNING_STORE_LOAD_ERROR {type(_store_load_error).__name__}',flush=True)
  _horizons=(1,3,5,10,15)
  def _selection_profile(x):
   rv=f(x.get('rvol'));burst=f(x.get('minute_volume_burst'));rp=f(x.get('current_range_position'));used=f(x.get('intraday_move_used_pct'));gap=f(x.get('snapshot_gap_pct'));chg=f(x.get('change_pct'));vol=f(x.get('day_volume'));base=f(x.get('historical_baseline_volume'))
@@ -45,6 +51,8 @@ try:
    p=px.get(rec['ticker'])
    if p:
     rec[f'p{m}m']=round(p,4);rec[f'ret{m}m_pct']=round((p/rec['signal_price']-1)*100,3)
+    try:learning_store.upsert(rec)
+    except Exception as _store_update_error:print(f'LEARNING_STORE_UPDATE_ERROR {type(_store_update_error).__name__}',flush=True)
  async def scanner_v667(top:int=10,candidates:int=40):
   response=await _base_scanner(top=top,candidates=candidates)
   try:
@@ -84,6 +92,8 @@ try:
     sp=f(x.get('price'))
     if sp<=0:continue
     _signal_journal.append({'scan_id':p.get('scan_id'),'ticker':x.get('ticker'),'rank':rank_i,'stage':x.get('breakout_stage'),'score':x.get('score'),'signal_price':round(sp,4),'signal_time':p.get('generated_at'),'epoch':now,'rvol':x.get('rvol'),'move_used_pct':x.get('intraday_move_used_pct'),'range_position':x.get('current_range_position'),'gap_pct':x.get('snapshot_gap_pct'),'change_pct':x.get('change_pct'),'minute_volume_burst':x.get('minute_volume_burst'),'day_volume':x.get('day_volume'),'criteria':profile['criteria'],'selection_reasons':profile['selection_reasons'],'data_feed':x.get('data_feed'),'market_timestamp':x.get('market_timestamp')})
+    try:learning_store.upsert(_signal_journal[-1])
+    except Exception as _store_write_error:print(f'LEARNING_STORE_WRITE_ERROR {type(_store_write_error).__name__}',flush=True)
    await _evaluate_due();p['strategy_version']=STRATEGY_VERSION;p['forward_validation']={'enabled':True,'horizons_minutes':list(_horizons),'journal_size':len(_signal_journal)};response.body=json.dumps(p,separators=(',',':')).encode();response.headers['content-length']=str(len(response.body));response.headers['X-Scanner-Version']=STRATEGY_VERSION
    print(f'SCANNER_V667_JOURNAL scan_id={p.get("scan_id")} added={len(p.get("results") or [])} journal={len(_signal_journal)}',flush=True)
   except Exception as e:print(f'SCANNER_V667_JOURNAL_ERROR {type(e).__name__}: {e}',flush=True)
@@ -122,7 +132,7 @@ try:
   recent=[]
   for r in reversed(rows[-50:]):
    m,v=_latest_return(r);recent.append({'date':str(r.get('signal_time') or '')[:10],'symbol':r.get('ticker'),'score':r.get('score'),'gap_pct':r.get('gap_pct'),'rvol_open':r.get('rvol'),'hit1':v is not None and v>=1,'hit2':v is not None and v>=2,'stopped':v is not None and v<=-1,'close_return_pct':v,'result_r':v,'horizon_minutes':m,'scan_id':r.get('scan_id'),'selection_reasons':r.get('selection_reasons'),'criteria':r.get('criteria')})
-  return {'has_data':bool(rows),'source':'live_forward_journal','strategy_version':STRATEGY_VERSION,'created_at':datetime.now(timezone.utc).isoformat(),'run_id':rows[-1].get('scan_id') if rows else None,'months':0,'signals':len(rows),'evaluated':len(evaluated),'pending':len(rows)-len(evaluated),'correct_target1':target1,'success_rate_pct':round(100*positive/len(evaluated),1) if evaluated else None,'target1_rate_pct':round(100*target1/len(evaluated),1) if evaluated else None,'target2_rate_pct':round(100*target2/len(evaluated),1) if evaluated else None,'expectancy_r':round(sum(v for _,_,v in evaluated)/len(evaluated),3) if evaluated else None,'universe_size':len({r.get('ticker') for r in rows}),'recall_pct':None,'false_negatives':None,'feature_learning':learned,'recent_signals':recent,'horizons_minutes':list(_horizons),'definitions':{'success_rate':'תשואה חיובית באופק האחרון שנמדד','target1':'+1%','target2':'+2%','stop':'-1%','score':'התאמה לשיטה, לא הסתברות הצלחה'}}
+  return {'has_data':bool(rows),'source':'live_forward_journal','storage':learning_store.status(),'strategy_version':STRATEGY_VERSION,'created_at':datetime.now(timezone.utc).isoformat(),'run_id':rows[-1].get('scan_id') if rows else None,'months':0,'signals':len(rows),'evaluated':len(evaluated),'pending':len(rows)-len(evaluated),'correct_target1':target1,'success_rate_pct':round(100*positive/len(evaluated),1) if evaluated else None,'target1_rate_pct':round(100*target1/len(evaluated),1) if evaluated else None,'target2_rate_pct':round(100*target2/len(evaluated),1) if evaluated else None,'expectancy_r':round(sum(v for _,_,v in evaluated)/len(evaluated),3) if evaluated else None,'universe_size':len({r.get('ticker') for r in rows}),'recall_pct':None,'false_negatives':None,'feature_learning':learned,'recent_signals':recent,'horizons_minutes':list(_horizons),'definitions':{'success_rate':'תשואה חיובית באופק האחרון שנמדד','target1':'+1%','target2':'+2%','stop':'-1%','score':'התאמה לשיטה, לא הסתברות הצלחה'}}
  for _path in ('/api/learning/summary','/api/learning/stock/{symbol}'):
   for _r in list(app.routes):
    if getattr(_r,'path',None)==_path:app.router.routes.remove(_r)
@@ -131,5 +141,7 @@ try:
  @app.get('/api/learning/stock/{symbol}')
  async def live_stock_learning(symbol:str):
   p=_learning_payload(symbol,200);p['rows']=p.pop('recent_signals');return p
+ @app.get('/api/learning/storage-status')
+ async def learning_storage_status():return learning_store.status()
  print('SCANNER_V667_INSTALLED forward_validation=1,3,5,10,15m',flush=True)
 except Exception as e:print(f'SCANNER_V667_INSTALL_ERROR {type(e).__name__}: {e}',flush=True)
