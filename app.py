@@ -3,22 +3,54 @@ from app_v66 import *
 from scanner_async_v67 import install_async_scanner, STRATEGY_VERSION as ASYNC_STRATEGY_VERSION
 from pathlib import Path
 
-# Frontend compatibility fix: the existing "Scan now" button already calls
-# refreshDayScanner(true), but the old JS ignored that flag. Patch only the
-# request URL at startup so a manual click explicitly asks v6.7 for a fresh job.
-# Automatic/page loads continue to read the current cached result normally.
+# Frontend compatibility fix for the existing "סרוק עכשיו" flow.
+# A manual scan must force refresh=1 and then wait for the v6.7 background job
+# to finish before replacing the visible Top 10. Automatic/page loads keep using
+# the latest cached result and remain fast.
 try:
     _index_path = Path(__file__).with_name('index.html')
     _html = _index_path.read_text(encoding='utf-8')
-    _old = 'const r=await fetch("/api/scanner/day?top=10&candidates=40");'
-    _new = 'const r=await fetch("/api/scanner/day?top=10&candidates=40"+(manual?"&refresh=1":""),{cache:"no-store"});'
-    if _old in _html:
-        _index_path.write_text(_html.replace(_old, _new, 1), encoding='utf-8')
-        print('SCANNER_UI_MANUAL_REFRESH_PATCH=true', flush=True)
+
+    _old_plain = '''const r=await fetch("/api/scanner/day?top=10&candidates=40");
+   const j=await r.json();'''
+    _old_refresh_only = '''const r=await fetch("/api/scanner/day?top=10&candidates=40"+(manual?"&refresh=1":""),{cache:"no-store"});
+   const j=await r.json();'''
+    _new = '''let r=await fetch("/api/scanner/day?top=10&candidates=40"+(manual?"&refresh=1":""),{cache:"no-store"});
+   let j=await r.json();
+   if(manual && (r.status===202 || j.refresh_running || j.scanner_job?.status==="running")){
+     const requestedJobId=j.scanner_job?.job_id||null;
+     const started=Date.now();
+     while(Date.now()-started<120000){
+       await new Promise(resolve=>setTimeout(resolve,1500));
+       const sr=await fetch("/api/scanner/day/status",{cache:"no-store"});
+       const sj=await sr.json();
+       const job=sj.scanner_job||{};
+       if(job.status==="error")throw new Error(job.error||"Scanner job failed");
+       if(job.status==="complete" && (!requestedJobId || job.job_id===requestedJobId)){
+         if(sj.result && Array.isArray(sj.result.results) && sj.result.results.length){
+           j=sj.result;
+           r=sr;
+           break;
+         }
+       }
+     }
+     if(!Array.isArray(j.results) || !j.results.length || j.refresh_running){
+       throw new Error("הסריקה לא הסתיימה בזמן. נסה שוב בעוד רגע.");
+     }
+   }'''
+
+    if _old_plain in _html:
+        _index_path.write_text(_html.replace(_old_plain, _new, 1), encoding='utf-8')
+        print('SCANNER_UI_ASYNC_POLL_PATCH=true_from_plain', flush=True)
+    elif _old_refresh_only in _html:
+        _index_path.write_text(_html.replace(_old_refresh_only, _new, 1), encoding='utf-8')
+        print('SCANNER_UI_ASYNC_POLL_PATCH=true_from_refresh_only', flush=True)
+    elif '/api/scanner/day/status' in _html and 'requestedJobId' in _html:
+        print('SCANNER_UI_ASYNC_POLL_PATCH=already_present', flush=True)
     else:
-        print('SCANNER_UI_MANUAL_REFRESH_PATCH=not_needed_or_pattern_missing', flush=True)
+        print('SCANNER_UI_ASYNC_POLL_PATCH=pattern_missing', flush=True)
 except Exception as _ui_patch_error:
-    print(f'SCANNER_UI_MANUAL_REFRESH_PATCH_ERROR={type(_ui_patch_error).__name__}: {_ui_patch_error}', flush=True)
+    print(f'SCANNER_UI_ASYNC_POLL_PATCH_ERROR={type(_ui_patch_error).__name__}: {_ui_patch_error}', flush=True)
 
 _v66_day_route = next((r for r in app.routes if getattr(r, 'path', None) == '/api/scanner/day' and 'GET' in getattr(r, 'methods', set())), None)
 if _v66_day_route is None:
@@ -40,4 +72,5 @@ async def scanner_async_status():
         'live_market_source': 'Alpaca',
         'cache_scope': 'last-scanner-result-only',
         'manual_refresh_ui_patch': True,
+        'manual_refresh_polling': True,
     }
