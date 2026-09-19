@@ -35,7 +35,26 @@ try:
   response=await _base_scanner(top=top,candidates=candidates)
   try:
    p=json.loads(response.body.decode('utf-8'));now=time.time()
-   for rank_i,x in enumerate(p.get('results') or [],1):
+   rows=p.get('results') or []
+   # The predictive engine's raw rank is intentionally unbounded and the older
+   # response clamped it to 100.  That made many unrelated candidates appear as
+   # identical "100/100" successes in legacy UI code.  Publish a differentiated
+   # 0-100 strategy-fit score while retaining the raw value for audit/ranking.
+   raw_values=[f(x.get('forward_rank'),f(x.get('score'))) for x in rows]
+   raw_min=min(raw_values) if raw_values else 0;raw_max=max(raw_values) if raw_values else 0
+   spread=max(raw_max-raw_min,1.0);den=max(len(rows)-1,1)
+   for rank_i,x in enumerate(rows,1):
+    raw=f(x.get('forward_rank'),f(x.get('score')))
+    relative=(raw-raw_min)/spread if raw_values else 0
+    rank_quality=1-(rank_i-1)/den
+    fit_score=round(max(55,min(94,58+22*relative+14*rank_quality)))
+    x['raw_strategy_score']=round(raw,2)
+    x['strategy_fit_score']=fit_score
+    x['score']=fit_score
+    x['score_display']=f'{fit_score}/100 התאמה'
+    x['score_semantics']='strategy_fit_not_success_probability'
+    x['success_rate']=None
+    x['success_rate_status']='pending_forward_validation'
     sp=f(x.get('price'))
     if sp<=0:continue
     _signal_journal.append({'scan_id':p.get('scan_id'),'ticker':x.get('ticker'),'rank':rank_i,'stage':x.get('breakout_stage'),'score':x.get('score'),'signal_price':round(sp,4),'signal_time':p.get('generated_at'),'epoch':now,'rvol':x.get('rvol'),'move_used_pct':x.get('intraday_move_used_pct'),'range_position':x.get('current_range_position')})
