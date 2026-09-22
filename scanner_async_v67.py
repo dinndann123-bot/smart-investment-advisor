@@ -19,7 +19,7 @@ def install_async_scanner(app, scanner_engine):
 
     def public_state():
         result=state.get("result") or {}
-        return {"status":state.get("status"),"job_id":state.get("job_id"),"started_at":state.get("started_at"),"finished_at":state.get("finished_at"),"duration_sec":state.get("duration_sec"),"error":state.get("error"),"has_cached_result":bool(result.get("results")),"cached_count":len(result.get("results") or []),"strategy_version":STRATEGY_VERSION,"timeout_sec":SCAN_TIMEOUT_SEC,"auto_scan_enabled":True,"auto_scan_interval_sec":AUTO_SCAN_INTERVAL_SEC,"min_deep_candidates":MIN_DEEP_CANDIDATES,"auto_task_started":state.get("auto_task_started",False)}
+        return {"status":state.get("status"),"job_id":state.get("job_id"),"started_at":state.get("started_at"),"finished_at":state.get("finished_at"),"duration_sec":state.get("duration_sec"),"error":state.get("error"),"has_cached_result":bool(result.get("results")),"cached_count":len(result.get("results") or []),"strategy_version":STRATEGY_VERSION,"timeout_sec":SCAN_TIMEOUT_SEC,"auto_scan_enabled":True,"auto_scan_interval_sec":state.get('effective_auto_scan_interval_sec',AUTO_SCAN_INTERVAL_SEC),"min_deep_candidates":MIN_DEEP_CANDIDATES,"auto_task_started":state.get("auto_task_started",False)}
 
     async def run_scan(job_id,top,candidates):
         async with lock:
@@ -51,7 +51,15 @@ def install_async_scanner(app, scanner_engine):
                 cycle_started=time.monotonic()
                 if state.get("status") != "running":new_job(10,MIN_DEEP_CANDIDATES)
                 elapsed=time.monotonic()-cycle_started
-                await asyncio.sleep(max(1,AUTO_SCAN_INTERVAL_SEC-elapsed))
+                result=state.get('result') or {}
+                sample=result.get('diagnostic_sample') or []
+                # The free IEX feed can return yesterday's snapshots throughout
+                # premarket. Avoid exhausting its quota on identical empty scans.
+                stale_only=bool(sample) and not result.get('results') and all(
+                    x.get('data_freshness_status')=='previous_session_snapshot' for x in sample)
+                interval=300 if stale_only else AUTO_SCAN_INTERVAL_SEC
+                state['effective_auto_scan_interval_sec']=interval
+                await asyncio.sleep(max(1,interval-elapsed))
             except asyncio.CancelledError:raise
             except Exception as exc:
                 print(f"SCANNER_AUTO_LOOP_ERROR={type(exc).__name__}: {exc}",flush=True);await asyncio.sleep(10)
