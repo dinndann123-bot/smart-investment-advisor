@@ -247,3 +247,7 @@ async def premarket_research_watch():
             'eligible_with_trades':len(rows),'iex_feed_status':iex_status},headers={'Cache-Control':'no-store'})
     except (httpx.HTTPError,ValueError,KeyError):
         return JSONResponse({**base,'status':'feed_unavailable','results':[]},headers={'Cache-Control':'no-store'})
+
+# EXPLOSION_LEARNING_V1
+from explosion_learning import install_explosion_learning
+install_explosion_learning(app)
