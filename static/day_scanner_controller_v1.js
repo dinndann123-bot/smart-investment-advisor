@@ -27,7 +27,16 @@ async function scanDay({force=false}={}){
  if(active&&!force)return active;const my=++seq;state.status='loading';state.error=null;state.integrity=false;emit();
  active=(async()=>{try{
   const r=await fetch(`${ENDPOINT}&t=${Date.now()}`,{cache:'no-store',headers:{Accept:'application/json'}});if(!r.ok)throw new Error(`HTTP ${r.status}`);
-  const j=await r.json(),err=validate(j);if(err)throw new Error(`scanner integrity: ${err}`);
+  const j=await r.json();
+  if(Array.isArray(j.results)&&j.results.length===0&&j.scan_id){
+    if(my!==seq)return [];
+    window.dayData=[];state.status='waiting';state.error=null;state.scanId=j.scan_id;
+    state.generatedAt=j.generated_at||null;state.count=0;state.integrity=false;
+    window.__V5_DAY_SCAN_PAYLOAD__=j;
+    emit({reason:'אין עדיין עשר בחירות עם נתוני פרה־מרקט מאומתים',payload:j});
+    return [];
+  }
+  const err=validate(j);if(err)throw new Error(`scanner integrity: ${err}`);
   const rows=j.results.map((x,i)=>normalize(x,i,j.scan_id));if(my!==seq)return rows;window.dayData=rows;
   state.status='success';state.error=null;state.scanId=j.scan_id;state.generatedAt=j.generated_at||j.server_timestamp||new Date().toISOString();state.count=10;state.integrity=true;window.__V5_DAY_SCAN_PAYLOAD__=j;
   emit({payload:j,canonical_symbols:rows.map(x=>x.ticker),display_semantics:'strategy_fit_not_success_probability'});console.info('DAY_TOP10_INTEGRITY_OK',j.scan_id,rows.map(x=>x.ticker).join(','));return rows;
