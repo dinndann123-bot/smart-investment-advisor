@@ -40,7 +40,7 @@ try:
     patched=False
     for old in (_old_refresh,_old_plain):
         if old in _html:_html=_html.replace(old,_new,1);patched=True;break
-    _bootstrap_tag='<script src="/static/canonical_bootstrap.js?v=20260922-1133"></script>'
+    _bootstrap_tag='<script src="/static/canonical_bootstrap.js?v=20260922-1230"></script>'
     if _bootstrap_tag not in _html and '</body>' in _html:_html=_html.replace('</body>',_bootstrap_tag+'</body>',1);patched=True
     if patched:_index_path.write_text(_html,encoding='utf-8')
 except Exception as _ui_patch_error:print(f'SCANNER_UI_PATCH_ERROR={type(_ui_patch_error).__name__}: {_ui_patch_error}',flush=True)
@@ -137,3 +137,39 @@ async def compare_premarket_feeds(symbol: str = ''):
             'iex_error':iex_error, 'sip_error':sip_error})
     return JSONResponse({**base, 'status':'rate_limited' if iex_error == 'HTTP 429' or sip_error == 'HTTP 429' else ('compared' if all(x['matched_at'] for x in comparisons) else 'partial'),
         'comparison':comparisons},headers={'Cache-Control':'no-store'})
+
+@app.get('/api/premarket/bars/{symbol}')
+async def premarket_bars(symbol: str):
+    import httpx
+    from datetime import datetime, timedelta, timezone
+    from zoneinfo import ZoneInfo
+    from fastapi.responses import JSONResponse
+    symbol = symbol.strip().upper()
+    if not (1 <= len(symbol) <= 8 and all(c.isalpha() or c == '.' for c in symbol)):
+        return JSONResponse({'status':'invalid_symbol'},status_code=400)
+    now = datetime.now(timezone.utc)
+    local = now.astimezone(ZoneInfo('America/New_York'))
+    start = local.replace(hour=4, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+    end = now - timedelta(minutes=16)
+    if local.weekday() >= 5 or end <= start or local.hour >= 9 and (local.hour > 9 or local.minute >= 30):
+        return JSONResponse({'status':'outside_premarket','bars':[]},headers={'Cache-Control':'no-store'})
+    if not (ALPACA_KEY and ALPACA_SECRET):
+        return JSONResponse({'status':'feed_unavailable','bars':[]},headers={'Cache-Control':'no-store'})
+    try:
+        async with httpx.AsyncClient(timeout=18) as client:
+            response = await client.get(f'https://data.alpaca.markets/v2/stocks/{symbol}/bars',
+                headers={'APCA-API-KEY-ID':ALPACA_KEY,'APCA-API-SECRET-KEY':ALPACA_SECRET},
+                params={'timeframe':'1Min','start':start.isoformat(),'end':end.isoformat(),
+                        'feed':'sip','limit':1000,'sort':'asc'})
+        if response.status_code != 200:
+            return JSONResponse({'status':'rate_limited' if response.status_code == 429 else 'feed_unavailable',
+                'http_status':response.status_code,'bars':[]},headers={'Cache-Control':'no-store'})
+        raw = response.json().get('bars',[])
+        bars = [{'d':b['t'],'o':b.get('o'),'h':b.get('h'),'l':b.get('l'),
+                 'v':b['c'],'volume':b.get('v')} for b in raw if b.get('t') and b.get('c') is not None]
+        return JSONResponse({'status':'delayed' if bars else 'no_trades','symbol':symbol,
+            'provider':'Alpaca SIP · מושהה 15 דקות','delay_minutes':15,
+            'freshness':{'state':'delayed','last_bar_at':bars[-1]['d'] if bars else None},
+            'quote':{'price':bars[-1]['v']} if bars else {},'bars':bars},headers={'Cache-Control':'no-store'})
+    except (httpx.HTTPError, ValueError, KeyError):
+        return JSONResponse({'status':'feed_unavailable','bars':[]},headers={'Cache-Control':'no-store'})
