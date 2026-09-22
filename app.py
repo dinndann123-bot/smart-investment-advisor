@@ -107,7 +107,13 @@ async def compare_premarket_feeds(symbol: str = ''):
                     headers=headers, params={'symbols':','.join(symbols),'timeframe':'1Min',
                     'start':start.isoformat(),'end':end.isoformat(),'feed':feed,'limit':10000,'sort':'asc'})
                 if response.status_code != 200:
-                    return {}, f'HTTP {response.status_code}'
+                    detail = ''
+                    if response.status_code == 400:
+                        try:
+                            detail = str(response.json().get('message', ''))[:160]
+                        except (ValueError, AttributeError):
+                            pass
+                    return {}, f'HTTP {response.status_code}' + (f': {detail}' if detail else '')
                 payload = response.json()
                 if payload.get('next_page_token'):
                     return {}, 'pagination_required'
