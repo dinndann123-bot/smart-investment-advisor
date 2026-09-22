@@ -99,25 +99,27 @@ async def compare_premarket_feeds(symbol: str = ''):
         return JSONResponse({**base, 'status': 'waiting_for_premarket', 'comparison': []}, headers={'Cache-Control':'no-store'})
     if not (ALPACA_KEY and ALPACA_SECRET):
         return JSONResponse({**base, 'status': 'feed_unavailable', 'comparison': [], 'reason': 'Market data credentials are missing.'}, headers={'Cache-Control':'no-store'})
-    semaphore = asyncio.Semaphore(4)
     headers = {'APCA-API-KEY-ID': ALPACA_KEY, 'APCA-API-SECRET-KEY': ALPACA_SECRET}
-    async with httpx.AsyncClient(timeout=18) as client:
-        async def read(symbol, feed):
-            async with semaphore:
-                try:
-                    response = await client.get(f'https://data.alpaca.markets/v2/stocks/{symbol}/bars',
-                        headers=headers, params={'timeframe':'1Min','start':start.isoformat(),
-                        'end':end.isoformat(),'feed':feed,'limit':1000,'sort':'asc'})
-                    if response.status_code != 200:
-                        return {}, f'HTTP {response.status_code}'
-                    return {b['t']:b for b in response.json().get('bars',[]) if b.get('t') and b.get('c') is not None}, None
-                except (httpx.HTTPError, ValueError, KeyError) as exc:
-                    return {}, type(exc).__name__
-        pairs = await asyncio.gather(*(read(s, feed) for s in symbols for feed in ('iex','delayed_sip')))
+    async with httpx.AsyncClient(timeout=25) as client:
+        async def read_many(feed):
+            try:
+                response = await client.get('https://data.alpaca.markets/v2/stocks/bars',
+                    headers=headers, params={'symbols':','.join(symbols),'timeframe':'1Min',
+                    'start':start.isoformat(),'end':end.isoformat(),'feed':feed,'limit':10000,'sort':'asc'})
+                if response.status_code != 200:
+                    return {}, f'HTTP {response.status_code}'
+                payload = response.json()
+                if payload.get('next_page_token'):
+                    return {}, 'pagination_required'
+                return {sym:{b['t']:b for b in rows if b.get('t') and b.get('c') is not None}
+                        for sym,rows in payload.get('bars',{}).items()}, None
+            except (httpx.HTTPError, ValueError, KeyError) as exc:
+                return {}, type(exc).__name__
+        (iex_all, iex_error), (sip_all, sip_error) = await asyncio.gather(read_many('iex'),read_many('delayed_sip'))
     comparisons = []
     for i, symbol in enumerate(symbols):
-        iex, iex_error = pairs[2*i]
-        sip, sip_error = pairs[2*i+1]
+        iex = iex_all.get(symbol, {})
+        sip = sip_all.get(symbol, {})
         shared = sorted(iex.keys() & sip.keys())
         t = shared[-1] if shared else None
         a, b = iex.get(t), sip.get(t)
@@ -127,5 +129,5 @@ async def compare_premarket_feeds(symbol: str = ''):
             'sip_close':b.get('c') if b else None,
             'difference_pct':round((a['c']/b['c']-1)*100,4) if a and b and b['c'] else None,
             'iex_error':iex_error, 'sip_error':sip_error})
-    return JSONResponse({**base, 'status':'compared' if all(x['matched_at'] for x in comparisons) else 'partial',
+    return JSONResponse({**base, 'status':'rate_limited' if iex_error == 'HTTP 429' or sip_error == 'HTTP 429' else ('compared' if all(x['matched_at'] for x in comparisons) else 'partial'),
         'comparison':comparisons},headers={'Cache-Control':'no-store'})
