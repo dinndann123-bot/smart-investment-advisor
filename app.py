@@ -1,5 +1,8 @@
-# v6.8.2 composition: verified full-market scanner + canonical Top-10 + scheduled learning checkpoints.
+# v6.8.3 composition: verified full-market scanner + session-aware PM data + canonical Top-10 + scheduled learning checkpoints.
 from app_v66 import *
+import app_v66 as _scanner_core
+from scanner_session_fix import install as _install_scanner_session_fix
+SCANNER_SESSION_DATA_FIX=_install_scanner_session_fix(_scanner_core)
 from scanner_async_v67 import install_async_scanner, STRATEGY_VERSION as ASYNC_STRATEGY_VERSION
 from pathlib import Path
 from fastapi.responses import FileResponse
@@ -52,11 +55,10 @@ if _v66_day_route is None:raise RuntimeError('full-market day scanner route not 
 _v66_scanner_engine=_v66_day_route.endpoint
 app.router.routes.remove(_v66_day_route)
 _async=install_async_scanner(app,_v66_scanner_engine)
-app.add_api_route('/api/scanner/day',_async['day'],methods=['GET'],name='scanner_day_v682')
-app.add_api_route('/api/scanner/day/start',_async['start'],methods=['POST'],name='scanner_day_start_v682')
-app.add_api_route('/api/scanner/day/status',_async['status'],methods=['GET'],name='scanner_day_status_v682')
+app.add_api_route('/api/scanner/day',_async['day'],methods=['GET'],name='scanner_day_v683')
+app.add_api_route('/api/scanner/day/start',_async['start'],methods=['POST'],name='scanner_day_start_v683')
+app.add_api_route('/api/scanner/day/status',_async['status'],methods=['GET'],name='scanner_day_status_v683')
 
-# Automatic point-in-time research snapshots. They do not change ranking weights.
 try:
  import learning_store
  from scheduled_learning import install_scheduled_learning
@@ -66,4 +68,4 @@ except Exception as _scheduled_error:
 
 @app.get('/api/scanner/async-status')
 async def scanner_async_status():
-    return {'installed':True,'strategy_version':ASYNC_STRATEGY_VERSION,'engine':'full-market-predictive-shortlist-progressive-top10','live_market_source':'Alpaca','cache_scope':'last-scanner-result-only','canonical_top10_contract':True,'scheduled_learning':SCHEDULED_LEARNING}
+    return {'installed':True,'strategy_version':ASYNC_STRATEGY_VERSION,'engine':'full-market-predictive-shortlist-progressive-top10','live_market_source':'Alpaca','cache_scope':'last-scanner-result-only','canonical_top10_contract':True,'scheduled_learning':SCHEDULED_LEARNING,'session_data_fix':SCANNER_SESSION_DATA_FIX}
