@@ -19,6 +19,11 @@ def install(core):
         row = previous_enrich(row, bars)
         now = datetime.now(timezone.utc).astimezone(NY)
         cur = now.hour * 60 + now.minute
+        try:
+            source_time = datetime.fromisoformat(str(row.get('market_timestamp')).replace('Z', '+00:00')).astimezone(NY)
+        except (TypeError, ValueError):
+            source_time = None
+        row['market_timestamp_current_day'] = bool(source_time and source_time.date() == now.date())
 
         if cur < 240:
             session = "overnight_closed"
@@ -70,6 +75,15 @@ def install(core):
         row["clock_baseline_volume"] = round(baseline) if baseline > 0 else None
         row["clock_live_volume"] = round(live_window_volume) if live_window_volume > 0 else None
         row["rvol_basis"] = "same_clock_5day" if baseline > 0 and live_window_volume > 0 else "snapshot_fallback"
+
+        if not row['market_timestamp_current_day'] and not today_window:
+            row['data_freshness_status'] = 'previous_session_snapshot'
+            row['rvol'] = None
+            row['rvol_raw'] = None
+            row['rvol_reliable'] = False
+            row['minute_volume_burst'] = None
+            row['today_bars_count'] = 0
+            return row
 
         if session == "overnight_closed":
             # Zero bars before 04:00 ET is expected, not a feed failure and not
