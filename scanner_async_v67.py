@@ -6,20 +6,45 @@ from datetime import datetime, timezone
 
 from fastapi.responses import JSONResponse
 
-STRATEGY_VERSION = "strategy-learning-v6.8.4-auto-1m-deep80"
+STRATEGY_VERSION = "strategy-learning-v6.8.5-session-aware"
 SCAN_TIMEOUT_SEC = 75
 AUTO_SCAN_INTERVAL_SEC = 60
 MIN_DEEP_CANDIDATES = 80
 
+NO_TRADE_STATES = {"no_premarket_sip_trades", "insufficient_clock_baseline"}
+STALE_STATES = {"previous_session_snapshot", "waiting_for_premarket"}
+DATA_FAILURE_STATES = {"market_data_error", "feed_error", "request_failed", "rate_limited"}
+
 
 def install_async_scanner(app, scanner_engine):
-    """Repeatable one-minute scanner with at least 80 deep candidates per cycle."""
+    """Repeatable scanner that preserves the distinction between no trades,
+    stale data and actual feed failures across premarket and regular sessions."""
     state = {"status":"idle","job_id":None,"started_at":None,"finished_at":None,"result":None,"error":None,"duration_sec":None,"auto_scan_enabled":True,"auto_scan_interval_sec":AUTO_SCAN_INTERVAL_SEC,"auto_task_started":False}
     lock = asyncio.Lock()
 
+    def classify_market_data(payload):
+        sample = payload.get("diagnostic_sample") or []
+        statuses = [x.get("data_freshness_status") for x in sample if x.get("data_freshness_status")]
+        sessions = [x.get("market_session") for x in sample if x.get("market_session")]
+        live_rows = sum(1 for x in sample if (x.get("todayBars") or x.get("today_bars_count") or 0) > 0 or x.get("market_timestamp_current_day") is True)
+        failures = sum(1 for s in statuses if s in DATA_FAILURE_STATES)
+        no_trades = sum(1 for s in statuses if s in NO_TRADE_STATES)
+        stale = sum(1 for s in statuses if s in STALE_STATES)
+        if failures:
+            quality = "feed_failure"
+        elif live_rows:
+            quality = "current_market_data"
+        elif statuses and no_trades == len(statuses):
+            quality = "no_session_trades"
+        elif statuses and stale == len(statuses):
+            quality = "stale_or_waiting"
+        else:
+            quality = "mixed_or_unknown"
+        return {"quality": quality, "sample_rows": len(sample), "live_rows": live_rows, "no_trade_rows": no_trades, "stale_rows": stale, "failure_rows": failures, "sessions": sorted(set(sessions))}
+
     def public_state():
         result=state.get("result") or {}
-        return {"status":state.get("status"),"job_id":state.get("job_id"),"started_at":state.get("started_at"),"finished_at":state.get("finished_at"),"duration_sec":state.get("duration_sec"),"error":state.get("error"),"has_cached_result":bool(result.get("results")),"cached_count":len(result.get("results") or []),"strategy_version":STRATEGY_VERSION,"timeout_sec":SCAN_TIMEOUT_SEC,"auto_scan_enabled":True,"auto_scan_interval_sec":state.get('effective_auto_scan_interval_sec',AUTO_SCAN_INTERVAL_SEC),"min_deep_candidates":MIN_DEEP_CANDIDATES,"auto_task_started":state.get("auto_task_started",False)}
+        return {"status":state.get("status"),"job_id":state.get("job_id"),"started_at":state.get("started_at"),"finished_at":state.get("finished_at"),"duration_sec":state.get("duration_sec"),"error":state.get("error"),"has_cached_result":bool(result.get("results")),"cached_count":len(result.get("results") or []),"strategy_version":STRATEGY_VERSION,"timeout_sec":SCAN_TIMEOUT_SEC,"auto_scan_enabled":True,"auto_scan_interval_sec":state.get('effective_auto_scan_interval_sec',AUTO_SCAN_INTERVAL_SEC),"min_deep_candidates":MIN_DEEP_CANDIDATES,"auto_task_started":state.get("auto_task_started",False),"market_data_health":state.get("market_data_health")}
 
     async def run_scan(job_id,top,candidates):
         async with lock:
@@ -29,18 +54,19 @@ def install_async_scanner(app, scanner_engine):
             try:
                 response=await asyncio.wait_for(scanner_engine(top=top,candidates=candidates),timeout=SCAN_TIMEOUT_SEC)
                 body=getattr(response,"body",b"{}");payload=json.loads(body.decode("utf-8")) if isinstance(body,(bytes,bytearray)) else {}
-                payload.update(async_strategy_version=STRATEGY_VERSION,job_id=job_id,job_status="complete",requested_deep_candidates=candidates)
-                state.update(status="complete",result=payload,finished_at=datetime.now(timezone.utc).isoformat(),duration_sec=round(time.monotonic()-started,2),error=None)
-                sample=payload.get('diagnostic_sample') or []
-                if sample and not payload.get('results') and all(x.get('data_freshness_status')=='previous_session_snapshot' for x in sample):
-                    state['effective_auto_scan_interval_sec']=300
-                else:
-                    state['effective_auto_scan_interval_sec']=AUTO_SCAN_INTERVAL_SEC
+                health=classify_market_data(payload)
+                payload.update(async_strategy_version=STRATEGY_VERSION,job_id=job_id,job_status="complete",requested_deep_candidates=candidates,market_data_health=health)
+                state.update(status="complete",result=payload,finished_at=datetime.now(timezone.utc).isoformat(),duration_sec=round(time.monotonic()-started,2),error=None,market_data_health=health)
+                # Slow down only for a true feed failure or a fully stale/waiting
+                # sample. A stock simply having no premarket trades is normal and
+                # must not be confused with a broken data connection.
+                state['effective_auto_scan_interval_sec'] = 300 if health['quality'] in {'feed_failure','stale_or_waiting'} and not payload.get('results') else AUTO_SCAN_INTERVAL_SEC
+                print(f"SCANNER_DATA_HEALTH job_id={job_id} quality={health['quality']} live={health['live_rows']} noTrades={health['no_trade_rows']} stale={health['stale_rows']} failures={health['failure_rows']} sessions={health['sessions']}",flush=True)
                 print(f"SCANNER_AUTO_JOB_DONE job_id={job_id} results={len(payload.get('results') or [])} deep={payload.get('deep_candidates')} duration={state['duration_sec']}",flush=True)
             except asyncio.TimeoutError:
-                state.update(status="error",error=f"TimeoutError: scanner exceeded {SCAN_TIMEOUT_SEC}s",finished_at=datetime.now(timezone.utc).isoformat(),duration_sec=round(time.monotonic()-started,2))
+                state.update(status="error",error=f"TimeoutError: scanner exceeded {SCAN_TIMEOUT_SEC}s",finished_at=datetime.now(timezone.utc).isoformat(),duration_sec=round(time.monotonic()-started,2),market_data_health={"quality":"scanner_timeout"})
             except Exception as exc:
-                state.update(status="error",error=f"{type(exc).__name__}: {exc}",finished_at=datetime.now(timezone.utc).isoformat(),duration_sec=round(time.monotonic()-started,2))
+                state.update(status="error",error=f"{type(exc).__name__}: {exc}",finished_at=datetime.now(timezone.utc).isoformat(),duration_sec=round(time.monotonic()-started,2),market_data_health={"quality":"scanner_error"})
 
     def new_job(top,candidates):
         job_id=f"scan-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:6]}"
@@ -56,14 +82,7 @@ def install_async_scanner(app, scanner_engine):
                 cycle_started=time.monotonic()
                 if state.get("status") != "running":new_job(10,MIN_DEEP_CANDIDATES)
                 elapsed=time.monotonic()-cycle_started
-                result=state.get('result') or {}
-                sample=result.get('diagnostic_sample') or []
-                # The free IEX feed can return yesterday's snapshots throughout
-                # premarket. Avoid exhausting its quota on identical empty scans.
-                stale_only=bool(sample) and not result.get('results') and all(
-                    x.get('data_freshness_status')=='previous_session_snapshot' for x in sample)
-                interval=300 if stale_only else AUTO_SCAN_INTERVAL_SEC
-                state['effective_auto_scan_interval_sec']=interval
+                interval=state.get('effective_auto_scan_interval_sec',AUTO_SCAN_INTERVAL_SEC)
                 await asyncio.sleep(max(1,interval-elapsed))
             except asyncio.CancelledError:raise
             except Exception as exc:
