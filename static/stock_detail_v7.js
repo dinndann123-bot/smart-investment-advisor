@@ -1,7 +1,7 @@
 (()=>{'use strict';
 const RANGE_MAP={'1D':'1D','1W':'1W','1M':'1M','3M':'3M','1Y':'1Y','5Y':'5Y'};
 const state={symbol:'',type:'long',stock:null,range:'1D',bars:[],bundle:null,abort:null};
-const $=id=>document.getElementById(id), n=v=>Number.isFinite(+v)?+v:null, money=v=>n(v)==null?'—':'$'+n(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:n(v)<10?3:2});
+const $=id=>document.getElementById(id), n=v=>v!=null&&v!==''&&Number.isFinite(+v)?+v:null, money=v=>n(v)==null?'—':'$'+n(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:n(v)<10?3:2});
 function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function findLocal(symbol,type){try{const a=type==='day'?(typeof dayData!=='undefined'?dayData:window.dayData):(typeof longData!=='undefined'?longData:window.longData);return Array.isArray(a)?a.find(x=>String(x.ticker).toUpperCase()===symbol):null}catch(e){return null}}
 function setText(id,v){const e=$(id);if(e)e.textContent=v??'—'}
