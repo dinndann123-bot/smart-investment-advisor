@@ -79,7 +79,8 @@ def _walk_forward(events,features):
     scored.sort(key=lambda x:x[0],reverse=True); top=scored[:max(10,int(len(scored)*.2))]
     return {"train":len(train),"test":len(test),"top_bucket":len(top),"base_hit10":round(sum(e["hit10"] for e in test)/len(test)*100,1),"top_hit10":round(sum(e["hit10"] for _,e in top)/len(top)*100,1),"top_hit20":round(sum(e["hit20"] for _,e in top)/len(top)*100,1),"top_hit30":round(sum(e["hit30"] for _,e in top)/len(top)*100,1),"model":model}
 
-async def install_explosion_learning(app,headers_fn=None,feed_fn=None):
+def install_explosion_learning(app,headers_fn=None,feed_fn=None):
+    """Install routes synchronously. Network work happens only inside async endpoints."""
     headers_fn=headers_fn or _default_headers; feed_fn=feed_fn or _default_feed
     install_market_search(app,headers_fn,feed_fn); install_long_strategy(app,headers_fn,feed_fn); install_signal_journal(app,headers_fn,feed_fn)
     @app.get("/api/strategy/explosions")
