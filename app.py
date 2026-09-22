@@ -40,7 +40,7 @@ try:
     patched=False
     for old in (_old_refresh,_old_plain):
         if old in _html:_html=_html.replace(old,_new,1);patched=True;break
-    _bootstrap_tag='<script src="/static/canonical_bootstrap.js?v=20260922-1305"></script>'
+    _bootstrap_tag='<script src="/static/canonical_bootstrap.js?v=20260922-1330"></script>'
     if _bootstrap_tag not in _html and '</body>' in _html:_html=_html.replace('</body>',_bootstrap_tag+'</body>',1);patched=True
     if patched:_index_path.write_text(_html,encoding='utf-8')
 except Exception as _ui_patch_error:print(f'SCANNER_UI_PATCH_ERROR={type(_ui_patch_error).__name__}: {_ui_patch_error}',flush=True)
@@ -173,3 +173,54 @@ async def premarket_bars(symbol: str):
             'quote':{'price':bars[-1]['v']} if bars else {},'bars':bars},headers={'Cache-Control':'no-store'})
     except (httpx.HTTPError, ValueError, KeyError):
         return JSONResponse({'status':'feed_unavailable','bars':[]},headers={'Cache-Control':'no-store'})
+
+@app.get('/api/premarket/watch')
+async def premarket_research_watch():
+    """Research-only shortlist: validate yesterday's watch symbols against today's delayed SIP trades."""
+    import httpx
+    from datetime import datetime, timedelta, timezone
+    from zoneinfo import ZoneInfo
+    from fastapi.responses import JSONResponse
+    scan = _async['state'].get('result') or {}
+    watch = {x['ticker']:x for x in (scan.get('watch_observations') or [])[:30] if x.get('ticker')}
+    now = datetime.now(timezone.utc)
+    ny = now.astimezone(ZoneInfo('America/New_York'))
+    start = ny.replace(hour=4,minute=0,second=0,microsecond=0).astimezone(timezone.utc)
+    end = now - timedelta(minutes=16)
+    base = {'scan_id':scan.get('scan_id'),'scan_at':scan.get('generated_at'),
+        'source':'Alpaca consolidated SIP','delay_minutes':15,'candidate_class':'research_observation',
+        'trade_signal':False,'verified_at':now.isoformat()}
+    if not watch or not (ALPACA_KEY and ALPACA_SECRET) or end <= start:
+        return JSONResponse({**base,'status':'no_eligible_source','results':[]},headers={'Cache-Control':'no-store'})
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            response = await client.get('https://data.alpaca.markets/v2/stocks/bars',
+                headers={'APCA-API-KEY-ID':ALPACA_KEY,'APCA-API-SECRET-KEY':ALPACA_SECRET},
+                params={'symbols':','.join(watch),'timeframe':'1Min','start':start.isoformat(),
+                        'end':end.isoformat(),'feed':'sip','limit':10000,'sort':'asc'})
+        if response.status_code != 200:
+            return JSONResponse({**base,'status':'rate_limited' if response.status_code==429 else 'feed_unavailable',
+                'results':[],'http_status':response.status_code},headers={'Cache-Control':'no-store'})
+        data = response.json()
+        if data.get('next_page_token'):
+            return JSONResponse({**base,'status':'pagination_required','results':[]},headers={'Cache-Control':'no-store'})
+        rows = []
+        for symbol,bars in data.get('bars',{}).items():
+            if symbol not in watch or not bars:continue
+            previous = watch[symbol]
+            last = bars[-1]
+            last_time = datetime.fromisoformat(last['t'].replace('Z','+00:00'))
+            if last_time.astimezone(ZoneInfo('America/New_York')).date()!=ny.date() or (now-last_time).total_seconds()>45*60:continue
+            volume = sum(int(b.get('v') or 0) for b in bars)
+            close = float(last['c'])
+            old_price = float(previous.get('price') or 0)
+            if close<=0 or old_price<=0 or volume<1000:continue
+            rows.append({'ticker':symbol,'previous_session_price':old_price,'premarket_price':close,
+                'premarket_change_pct':round((close/old_price-1)*100,2),'premarket_volume':volume,
+                'premarket_bars':len(bars),'last_trade_minute':last['t'],
+                'previous_session_snapshot_at':previous.get('market_timestamp')})
+        rows.sort(key=lambda x:(x['premarket_volume'],x['premarket_change_pct']),reverse=True)
+        return JSONResponse({**base,'status':'observed' if rows else 'no_recent_trades','results':rows[:10],
+            'eligible_with_trades':len(rows)},headers={'Cache-Control':'no-store'})
+    except (httpx.HTTPError,ValueError,KeyError):
+        return JSONResponse({**base,'status':'feed_unavailable','results':[]},headers={'Cache-Control':'no-store'})
