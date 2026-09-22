@@ -40,7 +40,7 @@ try:
     patched=False
     for old in (_old_refresh,_old_plain):
         if old in _html:_html=_html.replace(old,_new,1);patched=True;break
-    _bootstrap_tag='<script src="/static/canonical_bootstrap.js?v=20260919-1905"></script>'
+    _bootstrap_tag='<script src="/static/canonical_bootstrap.js?v=20260922-1133"></script>'
     if _bootstrap_tag not in _html and '</body>' in _html:_html=_html.replace('</body>',_bootstrap_tag+'</body>',1);patched=True
     if patched:_index_path.write_text(_html,encoding='utf-8')
 except Exception as _ui_patch_error:print(f'SCANNER_UI_PATCH_ERROR={type(_ui_patch_error).__name__}: {_ui_patch_error}',flush=True)
