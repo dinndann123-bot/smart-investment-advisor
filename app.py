@@ -121,7 +121,7 @@ async def compare_premarket_feeds(symbol: str = ''):
                         for sym,rows in payload.get('bars',{}).items()}, None
             except (httpx.HTTPError, ValueError, KeyError) as exc:
                 return {}, type(exc).__name__
-        (iex_all, iex_error), (sip_all, sip_error) = await asyncio.gather(read_many('iex'),read_many('delayed_sip'))
+        (iex_all, iex_error), (sip_all, sip_error) = await asyncio.gather(read_many('iex'),read_many('sip'))
     comparisons = []
     for i, symbol in enumerate(symbols):
         iex = iex_all.get(symbol, {})
