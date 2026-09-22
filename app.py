@@ -69,3 +69,58 @@ except Exception as _scheduled_error:
 @app.get('/api/scanner/async-status')
 async def scanner_async_status():
     return {'installed':True,'strategy_version':ASYNC_STRATEGY_VERSION,'engine':'full-market-predictive-shortlist-progressive-top10','live_market_source':'Alpaca','cache_scope':'last-scanner-result-only','canonical_top10_contract':True,'scheduled_learning':SCHEDULED_LEARNING,'session_data_fix':SCANNER_SESSION_DATA_FIX}
+
+@app.get('/api/premarket/compare')
+async def compare_premarket_feeds():
+    """Compare the current scan against consolidated SIP minute bars at equal timestamps."""
+    import asyncio
+    import httpx
+    from datetime import datetime, timedelta, timezone
+    from zoneinfo import ZoneInfo
+    from fastapi.responses import JSONResponse
+    scan = _async['state'].get('result') or {}
+    symbols = list(dict.fromkeys(str(x.get('ticker', '')).upper() for x in (scan.get('results') or [])[:10] if x.get('ticker')))
+    now = datetime.now(timezone.utc)
+    local = now.astimezone(ZoneInfo('America/New_York'))
+    start = local.replace(hour=4, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+    end = now - timedelta(minutes=16)
+    base = {'scan_id': scan.get('scan_id'), 'scan_at': scan.get('generated_at'),
+            'checked_at': now.isoformat(), 'symbols': symbols, 'source_a': 'IEX',
+            'source_b': '15-minute delayed consolidated SIP', 'delay_minutes': 15}
+    if len(symbols) != 10:
+        return JSONResponse({**base, 'status': 'insufficient_candidates', 'comparison': [],
+                             'reason': 'The latest scanner result does not contain ten candidates.'}, headers={'Cache-Control':'no-store'})
+    if end <= start:
+        return JSONResponse({**base, 'status': 'waiting_for_premarket', 'comparison': []}, headers={'Cache-Control':'no-store'})
+    if not (ALPACA_KEY and ALPACA_SECRET):
+        return JSONResponse({**base, 'status': 'feed_unavailable', 'comparison': [], 'reason': 'Market data credentials are missing.'}, headers={'Cache-Control':'no-store'})
+    semaphore = asyncio.Semaphore(4)
+    headers = {'APCA-API-KEY-ID': ALPACA_KEY, 'APCA-API-SECRET-KEY': ALPACA_SECRET}
+    async with httpx.AsyncClient(timeout=18) as client:
+        async def read(symbol, feed):
+            async with semaphore:
+                try:
+                    response = await client.get(f'https://data.alpaca.markets/v2/stocks/{symbol}/bars',
+                        headers=headers, params={'timeframe':'1Min','start':start.isoformat(),
+                        'end':end.isoformat(),'feed':feed,'limit':1000,'sort':'asc'})
+                    if response.status_code != 200:
+                        return {}, f'HTTP {response.status_code}'
+                    return {b['t']:b for b in response.json().get('bars',[]) if b.get('t') and b.get('c') is not None}, None
+                except (httpx.HTTPError, ValueError, KeyError) as exc:
+                    return {}, type(exc).__name__
+        pairs = await asyncio.gather(*(read(s, feed) for s in symbols for feed in ('iex','delayed_sip')))
+    comparisons = []
+    for i, symbol in enumerate(symbols):
+        iex, iex_error = pairs[2*i]
+        sip, sip_error = pairs[2*i+1]
+        shared = sorted(iex.keys() & sip.keys())
+        t = shared[-1] if shared else None
+        a, b = iex.get(t), sip.get(t)
+        comparisons.append({'ticker':symbol, 'iex_bars':len(iex), 'sip_bars':len(sip),
+            'iex_last_at':max(iex) if iex else None, 'sip_last_at':max(sip) if sip else None,
+            'matched_at':t, 'iex_close':a.get('c') if a else None,
+            'sip_close':b.get('c') if b else None,
+            'difference_pct':round((a['c']/b['c']-1)*100,4) if a and b and b['c'] else None,
+            'iex_error':iex_error, 'sip_error':sip_error})
+    return JSONResponse({**base, 'status':'compared' if all(x['matched_at'] for x in comparisons) else 'partial',
+        'comparison':comparisons},headers={'Cache-Control':'no-store'})
