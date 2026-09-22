@@ -5,13 +5,13 @@ from scanner_session_fix import install as _install_scanner_session_fix
 SCANNER_SESSION_DATA_FIX=_install_scanner_session_fix(_scanner_core)
 from scanner_core import install_local_scanner
 from scanner_async_v67 import install_async_scanner, STRATEGY_VERSION as ASYNC_STRATEGY_VERSION
+from chart_api_v7 import install_chart_api
 from pathlib import Path
 from fastapi.responses import FileResponse
 
 _local_scanner_engine=install_local_scanner(app)
+CHART_API_V7=install_chart_api(app)
 
-# Canonical production root. UI v7 reads scanner APIs directly and deliberately
-# has no embedded/fallback stock list.
 _old_root=next((r for r in app.routes if getattr(r,'path',None)=='/' and 'GET' in getattr(r,'methods',set())),None)
 if _old_root is not None:app.router.routes.remove(_old_root)
 @app.get('/',include_in_schema=False)
@@ -36,9 +36,8 @@ except Exception as _scheduled_error:
 
 @app.get('/api/scanner/async-status')
 async def scanner_async_status():
-    return {'installed':True,'strategy_version':ASYNC_STRATEGY_VERSION,'engine':'local-full-market-predictive-shortlist-progressive-top10','live_market_source':'Alpaca','cache_scope':'last-scanner-result-only','canonical_top10_contract':True,'canonical_ui':'ui_v7.html','ui_runtime_patches':False,'scheduled_learning':SCHEDULED_LEARNING,'session_data_fix':SCANNER_SESSION_DATA_FIX,'local_scanner_core':True}
+    return {'installed':True,'strategy_version':ASYNC_STRATEGY_VERSION,'engine':'local-full-market-predictive-shortlist-progressive-top10','live_market_source':'Alpaca','cache_scope':'last-scanner-result-only','canonical_top10_contract':True,'canonical_ui':'ui_v7.html','ui_runtime_patches':False,'canonical_chart_api':'/api/market/chart/{symbol}','scheduled_learning':SCHEDULED_LEARNING,'session_data_fix':SCANNER_SESSION_DATA_FIX,'local_scanner_core':True}
 
-# Compatibility endpoints only. They do not own or patch the canonical UI.
 try:
  from app_tail import install_app_tail
  install_app_tail(globals())
