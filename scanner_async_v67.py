@@ -31,6 +31,11 @@ def install_async_scanner(app, scanner_engine):
                 body=getattr(response,"body",b"{}");payload=json.loads(body.decode("utf-8")) if isinstance(body,(bytes,bytearray)) else {}
                 payload.update(async_strategy_version=STRATEGY_VERSION,job_id=job_id,job_status="complete",requested_deep_candidates=candidates)
                 state.update(status="complete",result=payload,finished_at=datetime.now(timezone.utc).isoformat(),duration_sec=round(time.monotonic()-started,2),error=None)
+                sample=payload.get('diagnostic_sample') or []
+                if sample and not payload.get('results') and all(x.get('data_freshness_status')=='previous_session_snapshot' for x in sample):
+                    state['effective_auto_scan_interval_sec']=300
+                else:
+                    state['effective_auto_scan_interval_sec']=AUTO_SCAN_INTERVAL_SEC
                 print(f"SCANNER_AUTO_JOB_DONE job_id={job_id} results={len(payload.get('results') or [])} deep={payload.get('deep_candidates')} duration={state['duration_sec']}",flush=True)
             except asyncio.TimeoutError:
                 state.update(status="error",error=f"TimeoutError: scanner exceeded {SCAN_TIMEOUT_SEC}s",finished_at=datetime.now(timezone.utc).isoformat(),duration_sec=round(time.monotonic()-started,2))
