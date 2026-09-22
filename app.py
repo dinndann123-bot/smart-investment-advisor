@@ -71,7 +71,7 @@ async def scanner_async_status():
     return {'installed':True,'strategy_version':ASYNC_STRATEGY_VERSION,'engine':'full-market-predictive-shortlist-progressive-top10','live_market_source':'Alpaca','cache_scope':'last-scanner-result-only','canonical_top10_contract':True,'scheduled_learning':SCHEDULED_LEARNING,'session_data_fix':SCANNER_SESSION_DATA_FIX}
 
 @app.get('/api/premarket/compare')
-async def compare_premarket_feeds():
+async def compare_premarket_feeds(symbol: str = ''):
     """Compare the current scan against consolidated SIP minute bars at equal timestamps."""
     import asyncio
     import httpx
@@ -80,6 +80,11 @@ async def compare_premarket_feeds():
     from fastapi.responses import JSONResponse
     scan = _async['state'].get('result') or {}
     symbols = list(dict.fromkeys(str(x.get('ticker', '')).upper() for x in (scan.get('results') or [])[:10] if x.get('ticker')))
+    if symbol:
+        symbol = symbol.strip().upper()
+        if not (1 <= len(symbol) <= 8 and all(c.isalpha() or c == '.' for c in symbol)):
+            return JSONResponse({'status':'invalid_symbol'},status_code=400)
+        symbols = [symbol]
     now = datetime.now(timezone.utc)
     local = now.astimezone(ZoneInfo('America/New_York'))
     start = local.replace(hour=4, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
@@ -87,7 +92,7 @@ async def compare_premarket_feeds():
     base = {'scan_id': scan.get('scan_id'), 'scan_at': scan.get('generated_at'),
             'checked_at': now.isoformat(), 'symbols': symbols, 'source_a': 'IEX',
             'source_b': '15-minute delayed consolidated SIP', 'delay_minutes': 15}
-    if len(symbols) != 10:
+    if len(symbols) != (1 if symbol else 10):
         return JSONResponse({**base, 'status': 'insufficient_candidates', 'comparison': [],
                              'reason': 'The latest scanner result does not contain ten candidates.'}, headers={'Cache-Control':'no-store'})
     if end <= start:
