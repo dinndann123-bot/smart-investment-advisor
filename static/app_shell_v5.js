@@ -1,5 +1,5 @@
 (()=>{'use strict';
-const VERSION='20260919-1736';
+const VERSION='20260922-1133';
 const loaded=new Map();
 function load(src){if(loaded.has(src))return loaded.get(src);const p=new Promise((resolve,reject)=>{const s=document.createElement('script');s.src=`${src}?v=${VERSION}`;s.defer=true;s.onload=resolve;s.onerror=()=>reject(new Error('טעינת רכיב נכשלה: '+src));document.head.appendChild(s)});loaded.set(src,p);return p}
 function idle(fn){if('requestIdleCallback'in window)requestIdleCallback(fn,{timeout:2500});else setTimeout(fn,900)}
