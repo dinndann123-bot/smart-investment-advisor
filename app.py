@@ -204,6 +204,21 @@ async def premarket_research_watch():
         data = response.json()
         if data.get('next_page_token'):
             return JSONResponse({**base,'status':'pagination_required','results':[]},headers={'Cache-Control':'no-store'})
+        iex = {}
+        iex_status = 'unavailable'
+        try:
+            async with httpx.AsyncClient(timeout=18) as client:
+                other = await client.get('https://data.alpaca.markets/v2/stocks/bars',
+                    headers={'APCA-API-KEY-ID':ALPACA_KEY,'APCA-API-SECRET-KEY':ALPACA_SECRET},
+                    params={'symbols':','.join(watch),'timeframe':'1Min','start':start.isoformat(),
+                            'end':end.isoformat(),'feed':'iex','limit':10000,'sort':'asc'})
+            if other.status_code==200 and not other.json().get('next_page_token'):
+                iex={s:{b['t']:b['c'] for b in bs if b.get('t') and b.get('c') is not None}
+                     for s,bs in other.json().get('bars',{}).items()}
+                iex_status='available'
+            elif other.status_code==429:iex_status='rate_limited'
+        except (httpx.HTTPError,ValueError,KeyError):
+            pass
         rows = []
         for symbol,bars in data.get('bars',{}).items():
             if symbol not in watch or not bars:continue
@@ -215,12 +230,20 @@ async def premarket_research_watch():
             close = float(last['c'])
             old_price = float(previous.get('price') or 0)
             if close<=0 or old_price<=0 or volume<1000:continue
-            rows.append({'ticker':symbol,'previous_session_price':old_price,'premarket_price':close,
+            shared = [b for b in bars if b['t'] in iex.get(symbol,{})]
+            matched = shared[-1] if shared else None
+            iex_close = iex[symbol][matched['t']] if matched else None
+            rows.append({'ticker':symbol,'previous_session_iex_last_price':old_price,'premarket_price':close,
                 'premarket_change_pct':round((close/old_price-1)*100,2),'premarket_volume':volume,
                 'premarket_bars':len(bars),'last_trade_minute':last['t'],
+                'iex_premarket_bars':len(iex.get(symbol,{})),
+                'matched_minute':matched['t'] if matched else None,
+                'iex_close_at_matched_minute':iex_close,
+                'sip_close_at_matched_minute':matched['c'] if matched else None,
+                'difference_pct_at_matched_minute':round((iex_close/matched['c']-1)*100,4) if matched and matched['c'] else None,
                 'previous_session_snapshot_at':previous.get('market_timestamp')})
         rows.sort(key=lambda x:(x['premarket_volume'],x['premarket_change_pct']),reverse=True)
         return JSONResponse({**base,'status':'observed' if rows else 'no_recent_trades','results':rows[:10],
-            'eligible_with_trades':len(rows)},headers={'Cache-Control':'no-store'})
+            'eligible_with_trades':len(rows),'iex_feed_status':iex_status},headers={'Cache-Control':'no-store'})
     except (httpx.HTTPError,ValueError,KeyError):
         return JSONResponse({**base,'status':'feed_unavailable','results':[]},headers={'Cache-Control':'no-store'})
