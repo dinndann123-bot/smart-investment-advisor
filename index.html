@@ -622,18 +622,9 @@ const longData=[
 {ticker:"MYRG",name:"MYR Group",domain:"myrgroup.com",score:73,risk:3,price:null,change:null,media:61,what:"חברת הנדסה וקבלנות לתשתיות הולכה והפצת חשמל.",why:"נהנית מהשקעות ברשת החשמל וממרכזי נתונים.",catalyst:"הרחבת רשת החשמל, data centers ופרויקטים גדולים.",riskText:"עסק מחזורי ותלוי בביצוע פרויקטים.",summary:"תשתיות חשמל יציבות יותר.",criteria:{"צמיחה":15,"שוק":17,"קטליזטור":14,"פיננסים":13,"תמחור":8,"מומנטום":6}}
 ];
 
-let dayData=[
-{ticker:"TNON",name:"Tenon Medical",domain:"tenonmed.com",score:91,risk:5,price:7.99,change:50.6,media:88,catalyst:"מומנטום חד בעקבות אירוע הון/חדשות.",volume:"22.3M",entry:7.60,stop:6.95,t1:8.80,t2:9.90},
-{ticker:"ACVA",name:"ACV Auctions",domain:"acvauctions.com",score:88,risk:4,price:10.44,change:44.5,media:82,catalyst:"תנועה חריגה עם מחזור גבוה.",volume:"25.4M",entry:10.10,stop:9.35,t1:11.25,t2:12.20},
-{ticker:"AENT",name:"Alliance Entertainment",domain:"aent.com",score:84,risk:5,price:7.45,change:33.7,media:76,catalyst:"מומנטום חד ומחזור מוגבר.",volume:"4.2M"},
-{ticker:"LBGJ",name:"Li Bang International",domain:"libang.com",score:81,risk:5,price:2.58,change:33.1,media:68,catalyst:"Low-float momentum.",volume:"3.6M"},
-{ticker:"INDP",name:"Indaptus Therapeutics",domain:"indaptusrx.com",score:80,risk:5,price:2.77,change:28.4,media:75,catalyst:"ביוטק ומומנטום חד.",volume:"גבוה"},
-{ticker:"CHPT",name:"ChargePoint",domain:"chargepoint.com",score:79,risk:4,price:9.06,change:18.2,media:84,catalyst:"דוחות ותנועה המשכית.",volume:"חריג"},
-{ticker:"IRD",name:"Opus Genetics",domain:"opusgtx.com",score:77,risk:5,price:6.04,change:22.1,media:73,catalyst:"קטליזטור ביוטק.",volume:"גבוה"},
-{ticker:"BNC",name:"BNC",domain:"bnc.com",score:75,risk:5,price:4.80,change:16.4,media:69,catalyst:"מומנטום/חדשות.",volume:"גבוה"},
-{ticker:"AOUT",name:"American Outdoor Brands",domain:"aob.com",score:73,risk:4,price:15.68,change:12.9,media:66,catalyst:"דוחות חזקים.",volume:"מוגבר"},
-{ticker:"KPLT",name:"Katapult Holdings",domain:"katapult.com",score:71,risk:5,price:9.43,change:11.7,media:64,catalyst:"מומנטום חודשי חזק.",volume:"מוגבר"}
-];
+// DAY is market-data only. Never seed the UI with a historical/demo list,
+// because a failed or closed-session scan must not look like a live signal.
+let dayData=[];
 
 const backtests=[
 {ticker:"APP",name:"AppLovin",score:92,actual:"+713% ב-2024",why:"צמיחת תוכנה חדה, EBITDA עולה וקטליזטור AI."},
@@ -936,14 +927,17 @@ async function loadLearningSummary(){
       empty.style.display="block";content.style.display="none";return;
     }
     empty.style.display="none";content.style.display="block";
-    document.getElementById("learnSuccess").textContent=j.success_rate_pct.toFixed(1)+"%";
-    document.getElementById("learnCorrect").textContent=`${j.correct_target1}/${j.signals}`;
+    const pct=v=>Number.isFinite(+v)?(+v).toFixed(1)+"%":"—";
+    const dec=(v,suffix="")=>Number.isFinite(+v)?(+v).toFixed(2)+suffix:"—";
+    const ready=j.validation?.ready===true;
+    document.getElementById("learnSuccess").textContent=ready?pct(j.success_rate_pct):"ממתין למדגם";
+    document.getElementById("learnCorrect").textContent=`${j.evaluated||0}/${j.signals||0}`;
     document.getElementById("learnSignals").textContent=j.signals;
     document.getElementById("learnUniverse").textContent=j.universe_size;
-    document.getElementById("learnT2").textContent=j.target2_rate_pct.toFixed(1)+"%";
-    document.getElementById("learnRecall").textContent=j.recall_pct.toFixed(1)+"%";
-    document.getElementById("learnExpectancy").textContent=j.expectancy_r.toFixed(2)+"R";
-    document.getElementById("learnMissed").textContent=j.false_negatives;
+    document.getElementById("learnT2").textContent=pct(j.target2_rate_pct);
+    document.getElementById("learnRecall").textContent=pct(j.recall_pct);
+    document.getElementById("learnExpectancy").textContent=ready?dec(j.expectancy_r,"R"):"—";
+    document.getElementById("learnMissed").textContent=j.false_negatives??j.missed_measurement_windows??"—";
 
     document.getElementById("learningBuckets").innerHTML=(j.buckets||[]).map(x=>`<tr>
       <td><b>${x.bucket}</b></td><td>${x.signals}</td>
@@ -966,14 +960,14 @@ async function loadLearningSummary(){
     if(fb)fb.innerHTML=fl.map(x=>`<tr>
       <td><b>${featureNames[x.feature]||x.feature}</b></td>
       <td>${x.signals}</td>
-      <td class="${x.success_pct>=50?'positive':'negative'}">${x.success_pct.toFixed(1)}%</td>
-      <td class="${x.avg_r>=0?'positive':'negative'}">${x.avg_r.toFixed(2)}R</td>
-      <td class="${x.avg_return_pct>=0?'positive':'negative'}">${x.avg_return_pct>=0?'+':''}${x.avg_return_pct.toFixed(2)}%</td>
+      <td class="${x.success_pct>=50?'positive':'negative'}">${pct(x.success_pct)}</td>
+      <td class="${x.avg_r>=0?'positive':'negative'}">${dec(x.avg_r,'R')}</td>
+      <td class="${x.avg_return_pct>=0?'positive':'negative'}">${Number.isFinite(+x.avg_return_pct)&&+x.avg_return_pct>=0?'+':''}${pct(x.avg_return_pct)}</td>
     </tr>`).join("");
     const fn=document.getElementById("featureLearningNote");
     if(fn&&fl.length){
-      const useful=fl.filter(x=>x.signals>=10).sort((a,b)=>b.avg_r-a.avg_r);
-      if(useful.length)fn.textContent=`המאפיין החזק כרגע: ${featureNames[useful[0].feature]||useful[0].feature} · ${useful[0].success_pct.toFixed(1)}% הצלחה · ${useful[0].avg_r.toFixed(2)}R. נדרש מדגם מספיק גדול לפני שינוי משקל.`;
+      const useful=fl.filter(x=>x.signals>=10&&Number.isFinite(+x.avg_return_pct)).sort((a,b)=>b.avg_return_pct-a.avg_return_pct);
+      if(useful.length)fn.textContent=`המאפיין החזק כרגע: ${featureNames[useful[0].feature]||useful[0].feature} · ${pct(useful[0].success_pct)} הצלחה · ${pct(useful[0].avg_return_pct)} תשואה ממוצעת. נדרש מדגם מספיק גדול לפני שינוי משקל.`;
     }
 
 document.getElementById("learningSignalsTable").innerHTML=(j.recent_signals||[]).map(x=>{
@@ -988,9 +982,9 @@ document.getElementById("learningSignalsTable").innerHTML=(j.recent_signals||[])
       </tr>`;
     }).join("");
 
-    const when=new Date(j.created_at).toLocaleString("he-IL");
+    const when=j.created_at?new Date(j.created_at).toLocaleString("he-IL"):"כעת";
     document.getElementById("learningNote").textContent=
-      `הרצה #${j.run_id} · ${j.months} חודשים · עודכנה ${when}. “הצלחה” במסך זה = Target 1 של 1.5R הושג לפני ה-Stop. הנתון אינו תחזית עתידית אלא ביצוע היסטורי של השיטה.`;
+      `${ready?'מדגם אימות פעיל':'איסוף מדגם — אין שינוי משקלים'} · ${j.evaluated||0}/${j.validation?.minimum_samples||50} תוצאות · עודכן ${when}. המדידה היא forward בלבד ואינה הבטחת תשואה.`;
   }catch(e){
     empty.style.display="block";content.style.display="none";
     empty.textContent="לא ניתן לטעון כרגע את נתוני הלמידה.";
@@ -1026,22 +1020,27 @@ async function refreshDayScanner(manual=false){
    const r=await fetch("/api/scanner/day?top=10&candidates=40");
    const j=await r.json();
    if(!r.ok)throw new Error(j.detail||"Scanner error");
-   if(Array.isArray(j.results)&&j.results.length){
+   const rows=Array.isArray(j.results)?j.results:[];
+   const unique=new Set(rows.map(x=>x&&x.ticker).filter(Boolean));
+   const coherent=rows.length===10&&unique.size===10&&j.scan_id&&rows.every(x=>!x.scan_id||x.scan_id===j.scan_id);
+   if(coherent){
      dayData=j.results.map(x=>({
        ...x,
        name:x.name||x.ticker,
        summary:`RVOL ${Number.isFinite(x.rvol)?x.rvol.toFixed(2)+"×":"—"} · ${x.news_count||0} חדשות`
      }));
      renderTables();renderHome();loadLivePerformance(false);
-   }else if(st){
-     st.textContent="הסריקה הסתיימה ללא נתונים — בדוק חיבור נתונים";
-     st.className="live-badge live-error";
+   }else{
+     dayData=[];renderTables();renderHome();
+     if(st)st.textContent=rows.length?"הסריקה נפסלה: נתונים לא עקביים":"אין אותות עדכניים בחלון המסחר הנוכחי";
+     if(st)st.title=`scan_id: ${j.scan_id||'—'} · rows: ${rows.length} · ${j.market_data_health?.quality||'unknown'}`;
+     if(st)st.className="live-badge live-error";
    }
-   const mode=j.full_market?"סריקת שוק מלאה":"סריקת גיבוי";
-   if(st){
-     st.textContent=`${mode} · מקור ${j.feed||"—"} · ${new Date(j.generated_at).toLocaleTimeString("he-IL")}`;
-     st.className="live-badge "+(j.full_market?"live-on":"live-delayed");
-     st.title=j.screener_error||"";
+   if(coherent&&st){
+     const delayed=Number(j.data_delay_minutes||0)>0?` · עיכוב ${j.data_delay_minutes} דק׳`:'';
+     st.textContent=`מסונכרן 10/10 · ${j.feed||"—"}${delayed} · ${new Date(j.generated_at).toLocaleTimeString("he-IL")}`;
+     st.className="live-badge live-on";
+     st.title=`scan_id: ${j.scan_id} · strategy: ${j.strategy_version} · source: ${j.data_source||'—'}`;
    }
  }catch(e){
    if(st){st.textContent="שגיאת סריקה";st.className="live-badge live-error";st.title=e.message}
