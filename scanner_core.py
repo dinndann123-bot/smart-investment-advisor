@@ -98,7 +98,7 @@ def install_local_scanner(app):
   if not r.get('rvol_reliable'):return 'watch'
   ch=f(r.get('change_pct'));rv=f(r.get('rvol'));used=f(r.get('intraday_move_used_pct'),50);rp=f(r.get('current_range_position'),.5);burst=f(r.get('minute_volume_burst'));gap=f(r.get('snapshot_gap_pct'))
   if ch>=10 or gap>=12 or (ch>=6 and used>=94):return 'already_extended'
-  if rv>=1.15 and .55<=rp<=.90 and used<90 and ch<7:return 'pre_breakout'
+  if rv>=1.15 and .55<=rp<=.90 and used<90 and -3<=ch<7:return 'pre_breakout'
   if .5<=ch<8 and rv>=1.2 and .65<=rp<=.94 and used<92 and (burst>=1.0 or burst==0):return 'early_breakout'
   return 'watch'
  def rank(r):
