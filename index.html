@@ -1028,8 +1028,21 @@ async function loadLearningSummary(){
   try{
     const r=await fetch("/api/learning/summary");
     const j=await r.json();
-    if(!r.ok||!j.has_data){
+    if(!r.ok){
       empty.style.display="block";content.style.display="none";return;
+    }
+    if(!j.has_data){
+      empty.style.display="block";
+      empty.textContent="מערכת הלמידה פעילה. המדידות החדשות של יום, שבוע וחודש יתמלאו לאחר קליטת האותות ובמועדי הבדיקה המתאימים.";
+      content.style.display="block";
+      const stocks=document.getElementById("learningStocksTable");
+      if(stocks)stocks.innerHTML='<tr><td colspan="7" class="empty">ממתין לאותות חדשים: אחוזי יום, שבוע וחודש וזמני העלייה והירידה יוצגו כאן לאחר המדידה.</td></tr>';
+      document.getElementById("learnSuccess").textContent="ממתין למדגם";
+      document.getElementById("learnCorrect").textContent=`0/${j.signals||0}`;
+      document.getElementById("learnSignals").textContent=j.signals||0;
+      document.getElementById("learnUniverse").textContent=j.universe_size||0;
+      document.getElementById("learningNote").textContent=`איסוף מדגם חדש — אין שינוי במשקלי השיטה לפני ${j.validation?.minimum_samples||50} תוצאות תקפות.`;
+      return;
     }
     empty.style.display="none";content.style.display="block";
     const pct=v=>Number.isFinite(+v)?(+v).toFixed(1)+"%":"—";
@@ -1104,7 +1117,7 @@ function renderHome(){
  const renderTop=(arr,target,page)=>document.getElementById(target).innerHTML=arr.slice(0,5).map((s,i)=>`
   <div class="top-card" onclick="openDetail('${page}','${s.ticker}')"><div class="rank">${i+1}</div>${logoHtml(s)}
   <div class="grow"><b>${s.ticker} · ${s.name}</b><div class="small">${s.summary||s.catalyst||""}</div></div>
-  <div><div class="score ${scoreClass(s.score)}">${s.score}/100</div><div class="small">${s.price?money(s.price):""}</div></div></div>`).join("");
+  <div><div class="score ${scoreClass(s.score)}" title="${page==='day'?'אחוז התאמה לקריטריונים של השיטה — לא אחוז הצלחה':'ציון התאמה לשיטה מתוך 100'}">${s.score}${page==='day'?'%':'/100'}</div><div class="small">${s.price?money(s.price):""}</div></div></div>`).join("");
  renderTop(longData,"homeLong","long");renderTop(dayData,"homeDay","day");
 }
 
