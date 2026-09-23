@@ -34,6 +34,16 @@ body{margin:0;background:radial-gradient(circle at 50% -10%,#17303c 0,#071017 30
 @media(max-width:900px){.cards{grid-template-columns:repeat(2,1fr)}}@media(max-width:560px){.cards{grid-template-columns:1fr}}
 .home-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
 @media(max-width:900px){.home-grid{grid-template-columns:1fr}}
+.market-index-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0 0 16px}
+.market-index-card{min-width:0;padding:14px;background:linear-gradient(150deg,#0d2029,#071219 70%);border-color:#2c3d3f;cursor:pointer;transition:.2s ease}
+.market-index-card:hover{transform:translateY(-2px);border-color:#9b7832;box-shadow:0 16px 38px rgba(0,0,0,.42)}
+.market-index-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px}
+.market-index-name b{display:block;color:#f2ce76;font-size:14px}.market-index-name small{color:var(--muted);font-size:10px}
+.market-index-value{text-align:left;direction:ltr}.market-index-value b{display:block;font-size:19px}.market-index-value span{font-size:11px}
+.market-index-chart{height:92px!important;min-height:92px!important;border:0;background:transparent;border-radius:8px}
+.market-index-meta{display:flex;justify-content:space-between;gap:8px;color:var(--muted);font-size:9px;margin-top:6px}
+@media(max-width:980px){.market-index-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:520px){.market-index-grid{grid-template-columns:1fr 1fr;gap:8px}.market-index-card{padding:10px}.market-index-chart{height:72px!important;min-height:72px!important}.market-index-value b{font-size:16px}}
 .table-wrap{overflow:auto;border-radius:16px;border:1px solid var(--line);background:#08151c}
 table{width:100%;border-collapse:collapse;min-width:1050px}
 th,td{padding:12px 10px;border-bottom:1px solid var(--line);text-align:right;vertical-align:middle;font-size:13px}
@@ -183,6 +193,24 @@ button:focus-visible,.btn:focus-visible,input:focus-visible,select:focus-visible
 
     <section id="page-home" class="page active">
       <div class="section-head"><div><h2>תמונת מצב</h2><p>הדברים החשובים בלבד — בלי עומס.</p></div></div>
+      <div class="market-index-grid" id="marketIndexGrid">
+        <article class="card market-index-card" data-index-symbol="SPY">
+          <div class="market-index-head"><div class="market-index-name"><b>S&amp;P 500</b><small>SPY · מדד מוביל</small></div><div class="market-index-value"><b id="idx-SPY-price">—</b><span id="idx-SPY-change">—</span></div></div>
+          <canvas class="market-index-chart" id="idx-SPY-chart" aria-label="גרף יומי S&P 500"></canvas><div class="market-index-meta"><span id="idx-SPY-source">טוען מקור…</span><span id="idx-SPY-time">—</span></div>
+        </article>
+        <article class="card market-index-card" data-index-symbol="QQQ">
+          <div class="market-index-head"><div class="market-index-name"><b>NASDAQ‑100</b><small>QQQ · מדד טכנולוגיה</small></div><div class="market-index-value"><b id="idx-QQQ-price">—</b><span id="idx-QQQ-change">—</span></div></div>
+          <canvas class="market-index-chart" id="idx-QQQ-chart" aria-label="גרף יומי NASDAQ 100"></canvas><div class="market-index-meta"><span id="idx-QQQ-source">טוען מקור…</span><span id="idx-QQQ-time">—</span></div>
+        </article>
+        <article class="card market-index-card" data-index-symbol="DIA">
+          <div class="market-index-head"><div class="market-index-name"><b>Dow Jones</b><small>DIA · 30 החברות הגדולות</small></div><div class="market-index-value"><b id="idx-DIA-price">—</b><span id="idx-DIA-change">—</span></div></div>
+          <canvas class="market-index-chart" id="idx-DIA-chart" aria-label="גרף יומי Dow Jones"></canvas><div class="market-index-meta"><span id="idx-DIA-source">טוען מקור…</span><span id="idx-DIA-time">—</span></div>
+        </article>
+        <article class="card market-index-card" data-index-symbol="VIXY">
+          <div class="market-index-head"><div class="market-index-name"><b>VIX</b><small>VIXY · מדד תנודתיות</small></div><div class="market-index-value"><b id="idx-VIXY-price">—</b><span id="idx-VIXY-change">—</span></div></div>
+          <canvas class="market-index-chart" id="idx-VIXY-chart" aria-label="גרף יומי VIX"></canvas><div class="market-index-meta"><span id="idx-VIXY-source">טוען מקור…</span><span id="idx-VIXY-time">—</span></div>
+        </article>
+      </div>
       <div class="cards">
         <div class="card metric"><b id="homeLongCount">10</b><span>מניות מובילות להשקעה</span></div>
         <div class="card metric"><b id="homeDayCount">10</b><span>מועמדות למסחר יומי</span></div>
@@ -625,6 +653,12 @@ const longData=[
 // DAY is market-data only. Never seed the UI with a historical/demo list,
 // because a failed or closed-session scan must not look like a live signal.
 let dayData=[];
+const marketIndexes=[
+ {ticker:"SPY",name:"S&P 500",score:null,risk:2,media:null,what:"קרן סל העוקבת אחר מדד S&P 500.",why:"מדד ייחוס מרכזי להשקעה ארוכת טווח.",catalyst:"מגמת השוק הרחב בארה״ב.",riskText:"חשיפה לתנודתיות השוק האמריקאי."},
+ {ticker:"QQQ",name:"NASDAQ-100",score:null,risk:3,media:null,what:"קרן סל העוקבת אחר NASDAQ-100.",why:"חשיפה לחברות הצמיחה והטכנולוגיה הגדולות.",catalyst:"צמיחה, ריבית וביצועי מגזר הטכנולוגיה.",riskText:"ריכוז גבוה יחסית בחברות טכנולוגיה."},
+ {ticker:"DIA",name:"Dow Jones",score:null,risk:2,media:null,what:"קרן סל העוקבת אחר Dow Jones Industrial Average.",why:"חשיפה לחברות אמריקאיות גדולות ומבוססות.",catalyst:"מחזור העסקים ורווחיות החברות הגדולות.",riskText:"המדד כולל 30 חברות בלבד."},
+ {ticker:"VIXY",name:"VIX",score:null,risk:5,media:null,what:"מכשיר סחיר העוקב אחר חוזי תנודתיות VIX.",why:"מדד לחץ ותנודתיות — כלי בקרה, לא השקעת ליבה רגילה.",catalyst:"עלייה חדה באי־ודאות בשוק.",riskText:"שחיקת חוזים ותנודתיות גבוהה; אינו מתאים להחזקה ארוכה רגילה."}
+];
 
 const backtests=[
 {ticker:"APP",name:"AppLovin",score:92,actual:"+713% ב-2024",why:"צמיחת תוכנה חדה, EBITDA עולה וקטליזטור AI."},
@@ -1099,6 +1133,26 @@ async function getBundle(symbol,r="1M"){
  if(selected&&selected.ticker===symbol)setFreshnessBadge(j.freshness);
  return j;
 }
+async function loadMarketIndexes(){
+ await Promise.all(marketIndexes.map(async item=>{
+  const symbol=item.ticker;
+  try{
+   const bundle=await getBundle(symbol,"1D"),q=bundle.quote||{};
+   const bars=(bundle.bars||[]).map(b=>({d:b.d||b.t,o:+b.o,h:+b.h,l:+b.l,v:+(b.v??b.c),volume:+(b.volume||0)})).filter(b=>Number.isFinite(b.v));
+   const price=Number(q.price??q.latest_price??bars.at(-1)?.v);
+   const previous=Number(q.previous_close??q.prev_close);
+   const change=Number.isFinite(+q.change)?+q.change:Number.isFinite(price)&&Number.isFinite(previous)&&previous?((price/previous-1)*100):bars.length>1?((bars.at(-1).v/bars[0].v-1)*100):null;
+   item.price=price;item.change=change;
+   const priceEl=document.getElementById(`idx-${symbol}-price`),changeEl=document.getElementById(`idx-${symbol}-change`);
+   if(priceEl)priceEl.textContent=money(price);
+   if(changeEl){changeEl.textContent=Number.isFinite(change)?`${change>=0?'+':''}${change.toFixed(2)}%`:'—';changeEl.className=Number.isFinite(change)?(change>=0?'positive':'negative'):''}
+   draw(`idx-${symbol}-chart`,bars,null,{compact:true,lineColor:Number.isFinite(change)&&change<0?'#ff6472':'#dcb352'});
+   const source=document.getElementById(`idx-${symbol}-source`),time=document.getElementById(`idx-${symbol}-time`);
+   if(source)source.textContent=`${bundle.provider||'מקור שוק'} · ${bundle.freshness?.state||'—'}`;
+   if(time)time.textContent=bars.length?fmtMarketTimestamp(bars.at(-1).d):'—';
+  }catch(e){const source=document.getElementById(`idx-${symbol}-source`);if(source)source.textContent='הנתון אינו זמין כרגע';draw(`idx-${symbol}-chart`,null,null,{compact:true})}
+ }));
+}
 async function getQuote(symbol){
  const j=await getBundle(symbol,"1M");
  if(j.quote&&Number.isFinite(+j.quote.price))return {price:+j.quote.price,change:Number.isFinite(+j.quote.change)?+j.quote.change:0,date:j.quote.date,provider:j.provider};
@@ -1116,27 +1170,49 @@ async function getNews(symbol){
  const j=await getBundle(symbol,"1M");
  return (j.news||[]).map(x=>({title:x.title||x.headline,source:x.source||"",url:x.url||"",time_published:x.published_at||""}));
 }
-function draw(canvas,pts,buy=null){
+function draw(canvas,pts,markers=null,options={}){
  const c=document.getElementById(canvas); if(!c)return;
  const rect=c.getBoundingClientRect();
  const cssW=Math.max(320,Math.round(rect.width||c.clientWidth||900));
- const cssH=300;
+ const compact=!!options.compact;
+ const cssH=compact?Math.max(70,Math.round(rect.height||90)):300;
  const dpr=Math.min(window.devicePixelRatio||1,2);
  c.width=Math.round(cssW*dpr); c.height=Math.round(cssH*dpr);
  c.style.height=cssH+"px";
  const x=c.getContext("2d"); x.setTransform(dpr,0,0,dpr,0,0);
- x.clearRect(0,0,cssW,cssH);x.fillStyle="#061219";x.fillRect(0,0,cssW,cssH);
- if(!pts||pts.length<2){x.fillStyle="#8fa2aa";x.font="16px Arial";x.textAlign="center";x.fillText("אין כרגע נתוני גרף זמינים",cssW/2,cssH/2);return}
+ x.clearRect(0,0,cssW,cssH);
+ if(!compact){x.fillStyle="#061219";x.fillRect(0,0,cssW,cssH)}
+ if(!pts||pts.length<2){x.fillStyle="#8fa2aa";x.font=(compact?"10px":"16px")+" Arial";x.textAlign="center";x.fillText("אין נתונים",cssW/2,cssH/2);return}
  const clean=pts.filter(p=>Number.isFinite(+p.v));
  if(clean.length<2){x.fillStyle="#8fa2aa";x.font="16px Arial";x.textAlign="center";x.fillText("אין מספיק נתוני מחיר",cssW/2,cssH/2);return}
- const vs=clean.map(p=>+p.v),mn=Math.min(...vs),mx=Math.max(...vs),p=38;
- x.strokeStyle="#19313c";x.lineWidth=1;
- for(let i=1;i<5;i++){let y=p+(cssH-2*p)*i/5;x.beginPath();x.moveTo(p,y);x.lineTo(cssW-p,y);x.stroke()}
- x.fillStyle="#91a2aa";x.font="11px Arial";x.textAlign="left";
- x.fillText("$"+mx.toFixed(mx<10?2:1),5,p+4);x.fillText("$"+mn.toFixed(mn<10?2:1),5,cssH-p);
- x.strokeStyle="#e0b454";x.lineWidth=2.5;x.beginPath();
- clean.forEach((o,i)=>{let xx=p+(cssW-2*p)*i/(clean.length-1),yy=cssH-p-(o.v-mn)/(mx-mn||1)*(cssH-2*p);i?x.lineTo(xx,yy):x.moveTo(xx,yy)});x.stroke();
- if(buy&&buy>=mn&&buy<=mx){let y=cssH-p-(buy-mn)/(mx-mn||1)*(cssH-2*p);x.setLineDash([6,5]);x.strokeStyle="#28d39b";x.beginPath();x.moveTo(p,y);x.lineTo(cssW-p,y);x.stroke();x.setLineDash([])}
+ const markerList=typeof markers==='number'?[{key:'entry',label:'כניסה',value:markers,color:'#2ee6a6'}]:[
+  {key:'entry',label:'כניסה',value:markers?.entry,color:'#2ee6a6'},
+  {key:'stop',label:'STOP',value:markers?.stop,color:'#ff6472'},
+  {key:'t1',label:'יעד 1',value:markers?.t1,color:'#55b8ff'},
+  {key:'t2',label:'יעד 2',value:markers?.t2,color:'#d9ae4f'}
+ ].filter(m=>Number.isFinite(+m.value));
+ const vs=clean.map(o=>+o.v).concat(markerList.map(m=>+m.value));
+ let mn=Math.min(...vs),mx=Math.max(...vs);const padRange=(mx-mn||Math.max(mx*.01,.01))*.08;mn-=padRange;mx+=padRange;
+ const left=compact?2:54,right=compact?2:18,top=compact?4:20,bottom=compact?5:42;
+ const volumeH=compact?0:46,plotBottom=cssH-bottom-volumeH,plotH=Math.max(20,plotBottom-top);
+ const px=i=>left+(cssW-left-right)*i/(clean.length-1);
+ const py=v=>top+(mx-v)/(mx-mn||1)*plotH;
+ if(!compact){
+  x.strokeStyle="#17303b";x.lineWidth=1;x.font="10px Arial";x.fillStyle="#8fa2aa";x.textAlign="left";
+  for(let i=0;i<=4;i++){const y=top+plotH*i/4;x.beginPath();x.moveTo(left,y);x.lineTo(cssW-right,y);x.stroke();const val=mx-(mx-mn)*i/4;x.fillText("$"+val.toFixed(val<10?2:1),5,y+3)}
+  const maxVol=Math.max(...clean.map(o=>Number(o.volume)||0),1);
+  clean.forEach((o,i)=>{const h=(Number(o.volume)||0)/maxVol*(volumeH-8);x.fillStyle="rgba(132,157,168,.20)";x.fillRect(px(i)-1.5,cssH-bottom-h,3,h)});
+  const ticks=[0,Math.floor((clean.length-1)/2),clean.length-1];x.textAlign="center";x.fillStyle="#7f939c";
+  ticks.forEach(i=>{const raw=clean[i]?.d;if(!raw)return;const d=new Date(raw);const label=Number.isNaN(d.getTime())?String(raw).slice(5,16):new Intl.DateTimeFormat('he-IL',{timeZone:'Asia/Jerusalem',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).format(d);x.fillText(label,px(i),cssH-8)});
+ }
+ const lineColor=options.lineColor||"#e2b657";
+ const area=x.createLinearGradient(0,top,0,plotBottom);area.addColorStop(0,"rgba(226,182,87,.30)");area.addColorStop(1,"rgba(226,182,87,0)");
+ x.beginPath();clean.forEach((o,i)=>{const xx=px(i),yy=py(+o.v);i?x.lineTo(xx,yy):x.moveTo(xx,yy)});x.lineTo(px(clean.length-1),plotBottom);x.lineTo(px(0),plotBottom);x.closePath();x.fillStyle=area;x.fill();
+ x.strokeStyle=lineColor;x.lineWidth=compact?2:2.4;x.lineJoin="round";x.lineCap="round";x.beginPath();clean.forEach((o,i)=>{const xx=px(i),yy=py(+o.v);i?x.lineTo(xx,yy):x.moveTo(xx,yy)});x.stroke();
+ if(!compact){
+  markerList.forEach((m,idx)=>{const y=py(+m.value);x.save();x.setLineDash([7,5]);x.strokeStyle=m.color;x.lineWidth=1.2;x.beginPath();x.moveTo(left,y);x.lineTo(cssW-right,y);x.stroke();x.setLineDash([]);const label=`${m.label}  $${(+m.value).toFixed((+m.value)<10?2:1)}`;x.font="bold 10px Arial";const w=x.measureText(label).width+12;const lx=Math.max(left,cssW-right-w);x.fillStyle="rgba(4,13,18,.92)";x.fillRect(lx,y-11,w,17);x.strokeStyle=m.color;x.strokeRect(lx,y-11,w,17);x.fillStyle=m.color;x.textAlign="center";x.fillText(label,lx+w/2,y+1);x.restore()});
+  const last=clean[clean.length-1],lx=px(clean.length-1),ly=py(+last.v);x.fillStyle=lineColor;x.beginPath();x.arc(lx,ly,4,0,Math.PI*2);x.fill();
+ }
 }
 
 
@@ -1204,8 +1280,8 @@ async function applyחיBar(bar){
    const i=merged.findIndex(x=>x.d===b.d); if(i>=0)merged[i]=b; else merged.push(b);
  }
  merged.sort((a,b)=>a.d.localeCompare(b.d));
- draw("detailChart",merged.slice(-180));
  const plan=await buildTechnicalPlan(selected.ticker,bar.v,lastListPage);
+ draw("detailChart",merged.slice(-180),plan);
  showPlan(plan,bar.v,lastListPage);
  if(lastListPage==="day"){
    const sig=calculateEntrySignal(plan,bar.v,selected);
@@ -1309,12 +1385,12 @@ async function toggleחי(){
   liveTick();clearInterval(liveTimer);liveTimer=setInterval(liveTick,liveRefreshSec*1000);
 }
 async function openDetail(type,ticker){
- lastListPage=type;selected=(type==="long"?longData:dayData).find(x=>x.ticker===ticker);
+ lastListPage=type;selected=(type==="long"?longData:dayData).find(x=>x.ticker===ticker)||marketIndexes.find(x=>x.ticker===ticker);
  if(!selected){alert("לא הצלחתי לזהות את המניה שנבחרה. רענן את הסריקה ונסה שוב.");return}
  go("detail");
  document.getElementById("detailLogo").innerHTML=logoHtml(selected);document.getElementById("dName").textContent=selected.name;document.getElementById("dTicker").textContent=selected.ticker;
  document.getElementById("dPrice").textContent=selected.price?money(selected.price):"—";document.getElementById("dChange").textContent=selected.change!=null?(selected.change>=0?"+":"")+selected.change+"%":"—";
- document.getElementById("dScore").textContent=selected.score+"/100";document.getElementById("dMedia").textContent=(selected.media||"—")+(selected.media?"/100":"");document.getElementById("dRisk").textContent=riskLabel(selected.risk);
+ document.getElementById("dScore").textContent=Number.isFinite(+selected.score)?selected.score+"/100":"מדד";document.getElementById("dMedia").textContent=(selected.media||"—")+(selected.media?"/100":"");document.getElementById("dRisk").textContent=riskLabel(selected.risk);
  document.getElementById("dWhat").textContent=selected.what||"מועמדת למסחר יומי; המידע המלא נטען מהסריקה והחדשות.";
  document.getElementById("dWhy").textContent=selected.why||selected.catalyst;document.getElementById("dCatalyst").textContent=selected.catalyst||"—";document.getElementById("dRiskText").textContent=selected.riskText||"תנודתיות גבוהה במסחר יומי.";
  showPlan(null,selected.price,type); loadFiveYearProfile(selected.ticker); loadStockLearning(selected.ticker);
@@ -1557,13 +1633,14 @@ async function loadDetailחי(){
  }
  if(Number.isFinite(price))document.getElementById("dPrice").textContent=money(price);
  if(Number.isFinite(change))document.getElementById("dChange").innerHTML=`<span class="${change>=0?'positive':'negative'}">${change>=0?'+':''}${change.toFixed(2)}%</span>`;
- if(pts.length){draw("detailChart",pts);renderSessionStats(pts);setFreshnessBadge(bundle?.freshness);if(chartNote&&!chartNote.textContent.includes("כגיבוי"))chartNote.textContent=`מקור: ${bundle?.provider||"שרת"} · ${pts.length} נקודות מחיר · טווח ${detailRange}`;}
- else {draw("detailChart",null);if(chartNote&&!chartNote.textContent.includes("לא ניתן"))chartNote.textContent="אין כרגע נתוני גרף מהספקים. האפליקציה ניסתה Alpaca, Alpha Vantage ומקור גיבוי ציבורי.";}
+ if(pts.length){renderSessionStats(pts);setFreshnessBadge(bundle?.freshness);if(chartNote&&!chartNote.textContent.includes("כגיבוי"))chartNote.textContent=`מקור: ${bundle?.provider||"שרת"} · ${pts.length} נקודות מחיר · טווח ${detailRange}`;}
+ else if(chartNote&&!chartNote.textContent.includes("לא ניתן"))chartNote.textContent="אין כרגע נתוני גרף מהספקים. האפליקציה ניסתה Alpaca, Alpha Vantage ומקור גיבוי ציבורי.";
  let plan=null;
  if(Number.isFinite(price)){
    try{plan=await buildTechnicalPlan(selected.ticker,price,lastListPage)}catch(e){}
    if(!plan&&pts.length)plan=calcPlanFromSeries(pts,price,lastListPage);
  }
+ draw("detailChart",pts.length?pts:null,plan);
  showPlan(plan,price,lastListPage);
  const sig=lastListPage==="day"?calculateEntrySignal(plan,price,selected):{state:"wait",text:"טווח פעולה להשקעה"};
  if(lastListPage==="day")recordTechnicalSignal(sig,plan,price,selected);
@@ -1765,8 +1842,9 @@ function saveOcrRows(){let n=0;document.querySelectorAll("#ocrRows tr").forEach(
 if(location.protocol==='file:'){
   document.body.innerHTML='<div style="max-width:760px;margin:80px auto;font-family:Arial;direction:rtl;padding:24px"><h1>האפליקציה נפתחה בצורה לא נכונה</h1><p>אין לפתוח את index.html ישירות. יש להפעיל את השרת ואז להיכנס דרך http://127.0.0.1:8000 כדי שהגרפים, הנתונים והעדכונים החיים יעבדו.</p></div>';
 }else{
-  initializeVisibleClocks();renderHome();renderTables();renderBacktests();renderWeekly();setחיBadge();checkBackendStatus();updateScannerButton();startAutoScanner();loadLearningSummary();refreshHealth();loadLivePerformance(false);syncMarketClock();startDataWatchdog();
-  setInterval(updateClockUI,1000);setInterval(syncMarketClock,60000);setInterval(refreshHealth,300000);setInterval(()=>loadLivePerformance(true),300000);
+  initializeVisibleClocks();renderHome();renderTables();renderBacktests();renderWeekly();setחיBadge();checkBackendStatus();updateScannerButton();startAutoScanner();loadLearningSummary();refreshHealth();loadLivePerformance(false);syncMarketClock();startDataWatchdog();loadMarketIndexes();
+  document.querySelectorAll('[data-index-symbol]').forEach(card=>card.addEventListener('click',()=>openDetail('long',card.dataset.indexSymbol)));
+  setInterval(updateClockUI,1000);setInterval(syncMarketClock,60000);setInterval(refreshHealth,300000);setInterval(()=>loadLivePerformance(true),300000);setInterval(loadMarketIndexes,60000);
 }
 
 
