@@ -380,7 +380,7 @@ img,svg,canvas{max-width:100%;height:auto}
           <button class="btn btn-secondary" onclick="refreshDayScanner(true)">סרוק עכשיו</button>
         </div>
       </div>
-      <div class="table-wrap"><table><thead><tr><th>#</th><th>חברה</th><th>מחיר</th><th>Gap / שינוי</th><th>ציון</th><th>סיכון</th><th>אות כניסה</th><th>קטליזטור</th><th>RVOL</th><th>מחזור</th><th>גרף</th><th>פעולה</th></tr></thead><tbody id="dayTable"></tbody></table></div>
+      <div class="table-wrap"><table><thead><tr><th>#</th><th>חברה</th><th>מחיר</th><th>Gap / שינוי</th><th>התאמה לשיטה</th><th>סיכון</th><th>אות כניסה</th><th>קטליזטור</th><th>RVOL</th><th>מחזור</th><th>גרף</th><th>פעולה</th></tr></thead><tbody id="dayTable"></tbody></table></div>
     </section>
 
     <section id="page-detail" class="page">
@@ -1179,7 +1179,7 @@ function renderTables(){
  <tr class="stock-row" onclick="openDetail('day','${s.ticker}')">
  <td>${i+1}</td><td><div class="company">${logoHtml(s)}<div><b>${s.ticker}</b><div class="small">${s.name||s.ticker}</div></div></div></td>
  <td>${money(s.price)}</td><td>${Number.isFinite(s.change)?`<span class="${s.change>=0?'positive':'negative'}">${s.change>=0?'+':''}${s.change.toFixed(1)}%</span>`:"—"}</td>
- <td><span class="score ${scoreClass(s.score)}">${s.score}/100</span></td><td><span class="badge">${riskLabel(s.risk)}</span></td>
+ <td><span class="score ${scoreClass(s.score)}" title="אחוז התאמה לקריטריונים של השיטה — לא אחוז הצלחה">${s.score}%</span></td><td><span class="badge">${riskLabel(s.risk)}</span></td>
  <td id="sig-${s.ticker}">${signalHtml(baseSignal(s))}</td>
  <td title="${(s.catalyst||"").replace(/"/g,"'")}">${(s.catalyst||"").slice(0,90)}</td>
  <td>${Number.isFinite(s.rvol)?s.rvol.toFixed(2)+"×":"—"}</td>
