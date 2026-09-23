@@ -1390,7 +1390,7 @@ async function openDetail(type,ticker){
  go("detail");
  document.getElementById("detailLogo").innerHTML=logoHtml(selected);document.getElementById("dName").textContent=selected.name;document.getElementById("dTicker").textContent=selected.ticker;
  document.getElementById("dPrice").textContent=selected.price?money(selected.price):"—";document.getElementById("dChange").textContent=selected.change!=null?(selected.change>=0?"+":"")+selected.change+"%":"—";
- document.getElementById("dScore").textContent=Number.isFinite(+selected.score)?selected.score+"/100":"מדד";document.getElementById("dMedia").textContent=(selected.media||"—")+(selected.media?"/100":"");document.getElementById("dRisk").textContent=riskLabel(selected.risk);
+ document.getElementById("dScore").textContent=selected.score!=null&&Number.isFinite(+selected.score)?selected.score+"/100":"מדד";document.getElementById("dMedia").textContent=(selected.media||"—")+(selected.media?"/100":"");document.getElementById("dRisk").textContent=riskLabel(selected.risk);
  document.getElementById("dWhat").textContent=selected.what||"מועמדת למסחר יומי; המידע המלא נטען מהסריקה והחדשות.";
  document.getElementById("dWhy").textContent=selected.why||selected.catalyst;document.getElementById("dCatalyst").textContent=selected.catalyst||"—";document.getElementById("dRiskText").textContent=selected.riskText||"תנודתיות גבוהה במסחר יומי.";
  showPlan(null,selected.price,type); loadFiveYearProfile(selected.ticker); loadStockLearning(selected.ticker);
