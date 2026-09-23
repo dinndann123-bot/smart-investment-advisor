@@ -1,4 +1,7 @@
-# v7 composition: stable scanner core + one canonical frontend, no runtime UI patches.
+# Recovery composition: keep the stable scanner/chart APIs, but serve the last
+# complete application shell.  The experimental v7 document only implemented
+# the home screen, so making it canonical removed navigation, portfolio,
+# long-term views and the mature chart/data lifecycle.
 from app_v66 import *
 import app_v66 as _scanner_core
 from scanner_session_fix import install as _install_scanner_session_fix
@@ -16,7 +19,14 @@ _old_root=next((r for r in app.routes if getattr(r,'path',None)=='/' and 'GET' i
 if _old_root is not None:app.router.routes.remove(_old_root)
 @app.get('/',include_in_schema=False)
 async def production_root():
-    return FileResponse(Path(__file__).with_name('ui_v7.html'),media_type='text/html',headers={'Cache-Control':'no-store, max-age=0'})
+    return FileResponse(
+        Path(__file__).with_name('index.html'),
+        media_type='text/html',
+        headers={
+            'Cache-Control':'no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma':'no-cache',
+        },
+    )
 
 _v66_day_route=next((r for r in app.routes if getattr(r,'path',None)=='/api/scanner/day' and 'GET' in getattr(r,'methods',set())),None)
 if _v66_day_route is None:raise RuntimeError('local full-market day scanner route not found')
@@ -36,7 +46,7 @@ except Exception as _scheduled_error:
 
 @app.get('/api/scanner/async-status')
 async def scanner_async_status():
-    return {'installed':True,'strategy_version':ASYNC_STRATEGY_VERSION,'engine':'local-full-market-predictive-shortlist-progressive-top10','live_market_source':'Alpaca','cache_scope':'last-scanner-result-only','canonical_top10_contract':True,'canonical_ui':'ui_v7.html','ui_runtime_patches':False,'canonical_chart_api':'/api/market/chart/{symbol}','scheduled_learning':SCHEDULED_LEARNING,'session_data_fix':SCANNER_SESSION_DATA_FIX,'local_scanner_core':True}
+    return {'installed':True,'strategy_version':ASYNC_STRATEGY_VERSION,'engine':'local-full-market-predictive-shortlist-progressive-top10','live_market_source':'Alpaca','cache_scope':'last-scanner-result-only','canonical_top10_contract':True,'canonical_ui':'index.html','ui_recovery':'complete-navigation-and-data-shell','canonical_chart_api':'/api/market/chart/{symbol}','scheduled_learning':SCHEDULED_LEARNING,'session_data_fix':SCANNER_SESSION_DATA_FIX,'local_scanner_core':True}
 
 try:
  from app_tail import install_app_tail
