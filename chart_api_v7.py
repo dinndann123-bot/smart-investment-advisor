@@ -25,16 +25,20 @@ def install_chart_api(app):
   symbol=symbol.upper().strip(); range=range.upper().strip()
   if not re.fullmatch(r'[A-Z]{1,5}',symbol):raise HTTPException(400,'invalid symbol')
   if range not in RANGES:raise HTTPException(400,'invalid range')
-  tf,delta,limit=RANGES[range]; now=datetime.now(timezone.utc)
-  # SIP history on Basic must end outside the latest 15 minute embargo.
-  end=now-timedelta(minutes=16); start=end-delta
-  params={'timeframe':tf,'start':start.isoformat().replace('+00:00','Z'),'end':end.isoformat().replace('+00:00','Z'),'adjustment':'split','feed':'sip','limit':limit,'sort':'asc'}
+  tf,delta,limit=RANGES[range]; now=datetime.now(timezone.utc);ny=now.astimezone(NY);minute=ny.hour*60+ny.minute
+  regular=570<=minute<960
+  configured=(os.getenv('ALPACA_FEED') or 'iex').strip().lower()
+  live_feed='sip' if configured=='sip' else 'iex'
+  feed=live_feed if regular and range=='1D' else 'sip'
+  delayed_minutes=0 if regular and range=='1D' else 16
+  end=now-timedelta(minutes=delayed_minutes); start=end-delta
+  params={'timeframe':tf,'start':start.isoformat().replace('+00:00','Z'),'end':end.isoformat().replace('+00:00','Z'),'adjustment':'split','feed':feed,'limit':limit,'sort':'asc'}
   url=f'https://data.alpaca.markets/v2/stocks/{symbol}/bars'
   async with httpx.AsyncClient(timeout=20) as c:r=await c.get(url,headers=headers,params=params)
   if r.status_code>=400:raise HTTPException(r.status_code,detail={'provider':'Alpaca','message':r.text[:300]})
   bars=(r.json() or {}).get('bars') or []
   points=[{'t':b.get('t'),'o':b.get('o'),'h':b.get('h'),'l':b.get('l'),'c':b.get('c'),'v':b.get('v')} for b in bars]
-  return {'symbol':symbol,'range':range,'timeframe':tf,'points':points,'count':len(points),'source':'Alpaca','feed':'sip','delayed_minutes':16,'generated_at':now.isoformat(),'last_bar_at':points[-1]['t'] if points else None,'cache_policy':'no-store'}
+  return {'symbol':symbol,'range':range,'timeframe':tf,'points':points,'count':len(points),'source':'Alpaca','feed':feed,'session':'regular' if regular else 'extended','delayed_minutes':delayed_minutes,'generated_at':now.isoformat(),'last_bar_at':points[-1]['t'] if points else None,'cache_policy':'no-store'}
  @app.get('/api/premarket/bars/{symbol}')
  async def premarket_bars(symbol:str):
   symbol=symbol.upper().strip()
