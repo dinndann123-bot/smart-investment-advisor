@@ -55,7 +55,16 @@ def install_async_scanner(app, scanner_engine):
                 response=await asyncio.wait_for(scanner_engine(top=top,candidates=candidates),timeout=SCAN_TIMEOUT_SEC)
                 body=getattr(response,"body",b"{}");payload=json.loads(body.decode("utf-8")) if isinstance(body,(bytes,bytearray)) else {}
                 health=classify_market_data(payload)
-                payload.update(async_strategy_version=STRATEGY_VERSION,job_id=job_id,job_status="complete",requested_deep_candidates=candidates,market_data_health=health)
+                engine_version=payload.get("strategy_version")
+                payload.update(
+                    strategy_version=STRATEGY_VERSION,
+                    engine_strategy_version=engine_version,
+                    async_strategy_version=STRATEGY_VERSION,
+                    job_id=job_id,
+                    job_status="complete",
+                    requested_deep_candidates=candidates,
+                    market_data_health=health,
+                )
                 state.update(status="complete",result=payload,finished_at=datetime.now(timezone.utc).isoformat(),duration_sec=round(time.monotonic()-started,2),error=None,market_data_health=health)
                 # Slow down only for a true feed failure or a fully stale/waiting
                 # sample. A stock simply having no premarket trades is normal and
