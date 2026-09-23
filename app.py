@@ -40,7 +40,7 @@ app.add_api_route('/api/scanner/day/status',_async['status'],methods=['GET'],nam
 try:
  import learning_store
  from scheduled_learning import install_scheduled_learning
- SCHEDULED_LEARNING=install_scheduled_learning(app,_v66_scanner_engine,learning_store,ASYNC_STRATEGY_VERSION)
+ SCHEDULED_LEARNING=install_scheduled_learning(app,_v66_scanner_engine,learning_store,ASYNC_STRATEGY_VERSION,price_fetcher=getattr(_scanner_core,'_future_prices',None))
 except Exception as _scheduled_error:
  SCHEDULED_LEARNING={'installed':False,'error':f'{type(_scheduled_error).__name__}: {_scheduled_error}'}
 
