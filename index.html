@@ -717,6 +717,28 @@ let autoScanTimer=null;
 let scannerRefreshSec=30;
 let scannerBusy=false;
 let backendInfo={alpaca_configured:false,alpha_vantage_configured:false,alpaca_feed:"iex"};
+const heText=s=>String(s??"").replace(/[&<>'"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
+function providerHe(value){
+ const s=String(value||"");
+ const k=s.toLowerCase();
+ if(k.includes("delayed_sip")||k.includes("delayed sip"))return "נתוני SIP מושהים";
+ if(k.includes("alpaca")&&k.includes("sip"))return "נתוני SIP בזמן אמת";
+ if(k.includes("alpaca")&&k.includes("iex"))return "נתוני IEX בזמן אמת";
+ if(k.includes("alpha vantage"))return "נתוני סגירה — Alpha Vantage";
+ if(k==="sip")return "SIP בזמן אמת";
+ if(k==="iex")return "IEX בזמן אמת";
+ return s||"מקור שוק";
+}
+async function headlinesInHebrew(news,symbol){
+ const originals=(news||[]).map(n=>n.title||n.headline||"");
+ if(!originals.length)return [];
+ try{
+  const r=await fetch("/api/translate/headlines",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({symbol,headlines:originals})});
+  const j=await r.json();
+  if(r.ok&&Array.isArray(j.translations))return j.translations;
+ }catch(_e){}
+ return originals.map(()=>`עדכון חדשות בנוגע למניית ${symbol}`);
+}
 let holdings=JSON.parse(localStorage.getItem("explosive_holdings")||"[]");
 let selected=null,lastListPage="long",detailRange="1D",portfolioSymbol=null,portfolioRange="1M";
 const cache={};
@@ -942,7 +964,7 @@ async function refreshHealth(){
       data.textContent=s.alpaca_configured?"מחובר":"גיבוי";
       data.className=s.alpaca_configured?"positive":"";
     }
-    if(feed)feed.textContent=s.alpaca_configured?`Alpaca ${String(s.alpaca_feed||"").toUpperCase()}`:(s.alpha_vantage_configured?"Alpha Vantage":"ציבורי");
+    if(feed)feed.textContent=s.alpaca_configured?providerHe(`Alpaca ${String(s.alpaca_feed||"").toUpperCase()}`):(s.alpha_vantage_configured?"נתוני סגירה — Alpha Vantage":"מקור ציבורי");
     document.getElementById("healthStrategy").textContent=h.status_he||"לא ידוע";
     document.getElementById("healthAge").textContent=h.has_data?`${h.backtest_age_days} ימים`:"אין בדיקה";
     document.getElementById("healthRecentHit").textContent=h.has_data&&h.recent?`${h.recent.hit1.toFixed(1)}%`:"—";
@@ -1105,7 +1127,7 @@ async function refreshDayScanner(manual=false){
    }
    if(coherent&&st){
      const delayed=Number(j.data_delay_minutes||0)>0?` · עיכוב ${j.data_delay_minutes} דק׳`:'';
-     st.textContent=`מסונכרן 10/10 · ${j.feed||"—"}${delayed} · ${new Date(j.generated_at).toLocaleTimeString("he-IL")}`;
+     st.textContent=`מסונכרן 10/10 · ${providerHe(j.feed)}${delayed} · ${new Date(j.generated_at).toLocaleTimeString("he-IL")}`;
      st.className="live-badge live-on";
      st.title=`scan_id: ${j.scan_id} · strategy: ${j.strategy_version} · source: ${j.data_source||'—'}`;
    }
@@ -1181,7 +1203,7 @@ async function loadMarketIndexes(){
    if(changeEl){changeEl.textContent=Number.isFinite(change)?`${change>=0?'+':''}${change.toFixed(2)}%`:'—';changeEl.className=Number.isFinite(change)?(change>=0?'positive':'negative'):''}
    draw(`idx-${symbol}-chart`,bars,null,{compact:true,lineColor:Number.isFinite(change)&&change<0?'#ff6472':'#dcb352'});
    const source=document.getElementById(`idx-${symbol}-source`),time=document.getElementById(`idx-${symbol}-time`);
-   if(source)source.textContent=`${bundle.provider||'מקור שוק'} · ${bundle.freshness?.state||'—'}`;
+   if(source)source.textContent=`${providerHe(bundle.provider)} · ${bundle.freshness?.state_he||bundle.freshness?.state||'—'}`;
    if(time)time.textContent=bars.length?fmtMarketTimestamp(bars.at(-1).d):'—';
   }catch(e){const source=document.getElementById(`idx-${symbol}-source`);if(source)source.textContent='הנתון אינו זמין כרגע';draw(`idx-${symbol}-chart`,null,null,{compact:true})}
  }));
@@ -1666,7 +1688,7 @@ async function loadDetailחי(){
  }
  if(Number.isFinite(price))document.getElementById("dPrice").textContent=money(price);
  if(Number.isFinite(change))document.getElementById("dChange").innerHTML=`<span class="${change>=0?'positive':'negative'}">${change>=0?'+':''}${change.toFixed(2)}%</span>`;
- if(pts.length){renderSessionStats(pts);setFreshnessBadge(bundle?.freshness);if(chartNote&&!chartNote.textContent.includes("כגיבוי"))chartNote.textContent=`מקור: ${bundle?.provider||"שרת"} · ${pts.length} נקודות מחיר · טווח ${detailRange}`;}
+ if(pts.length){renderSessionStats(pts);setFreshnessBadge(bundle?.freshness);if(chartNote&&!chartNote.textContent.includes("כגיבוי"))chartNote.textContent=`מקור: ${providerHe(bundle?.provider)} · ${pts.length} נקודות מחיר · טווח ${detailRange}`;}
  else if(chartNote&&!chartNote.textContent.includes("לא ניתן"))chartNote.textContent="אין כרגע נתוני גרף מהספקים. האפליקציה ניסתה Alpaca, Alpha Vantage ומקור גיבוי ציבורי.";
  let plan=null;
  if(Number.isFinite(price)){
@@ -1679,10 +1701,13 @@ async function loadDetailחי(){
  if(lastListPage==="day")recordTechnicalSignal(sig,plan,price,selected);
  const sigEl=document.getElementById("entrySignal");if(sigEl)sigEl.outerHTML=signalHtml(sig).replace('<span class="signal','<span id="entrySignal" class="signal');
  const cell=document.getElementById("sig-"+selected.ticker);if(cell)cell.innerHTML=signalHtml(sig);
- const provider=bundle?.provider||"נתוני טבלה";setProviderBadge(provider,provider.includes("Alpaca")?"live-on":provider.includes("Alpha")?"live-delayed":"live-eod");
+ const provider=bundle?.provider||"נתוני טבלה";setProviderBadge(providerHe(provider),provider.includes("Alpaca")?"live-on":provider.includes("Alpha")?"live-delayed":"live-eod");
  const upd=document.getElementById("lastחיUpdate");if(upd)upd.textContent="עדכון אחרון: "+new Date().toLocaleTimeString("he-IL");
  if(newsEl){
-   newsEl.innerHTML=news.length?news.map(n=>`<div class="news"><b>${n.title||n.headline||"ללא כותרת"}</b><span>${n.source||""}</span></div>`).join(""):'<div class="note">אין כרגע חדשות זמינות למניה. שאר הנתונים ממשיכים לפעול.</div>';
+   if(news.length){
+     const translated=await headlinesInHebrew(news,selected.ticker);
+     newsEl.innerHTML=news.map((n,i)=>`<div class="news"><b>${heText(translated[i]||"עדכון חדשות בנוגע למניה")}</b><span>${heText(n.source||"")}</span></div>`).join("");
+   }else newsEl.innerHTML='<div class="note">אין כרגע חדשות זמינות למניה. שאר הנתונים ממשיכים לפעול.</div>';
  }
 }
 document.querySelectorAll("#page-detail .ranges button").forEach(b=>b.onclick=async()=>{document.querySelectorAll("#page-detail .ranges button").forEach(x=>x.classList.remove("active"));b.classList.add("active");detailRange=b.dataset.r;await loadDetailחי()});
@@ -1779,7 +1804,7 @@ async function loadPremarket(){
    <td><span class="score ${scoreClass(x.score)}">${x.score}/100</span></td>
    <td>${money(x.pm_high)}</td><td>${money(x.pm_low)}</td><td>${formatVolume(x.pm_volume)}</td>
    <td>${x.news_count}</td><td>${x.catalyst||"—"}</td></tr>`).join("");
-  st.textContent=`עודכן ${new Date(j.generated_at).toLocaleTimeString("he-IL")} · מקור: ${j.source} · Feed: ${j.feed}`;
+  st.textContent=`עודכן ${new Date(j.generated_at).toLocaleTimeString("he-IL")} · מקור: ${providerHe(j.source)} · ערוץ נתונים: ${providerHe(j.feed)}`;
  }catch(e){st.textContent="שגיאת Premarket: "+e.message}
 }
 
@@ -1829,7 +1854,7 @@ async function saveAlpacaSetup(){
     if(!r.ok)throw new Error(j.detail||"שמירת החיבור נכשלה");
     document.getElementById("alpacaApiKeyInput").value="";
     document.getElementById("alpacaSecretInput").value="";
-    alpacaSetupMessage(`✅ ${j.message} Feed: ${String(j.alpaca_feed||feed).toUpperCase()}`,"health-good");
+    alpacaSetupMessage(`✅ ${j.message} · ערוץ נתונים: ${providerHe(j.alpaca_feed||feed)}`,"health-good");
     await checkBackendStatus();await syncMarketClock();await refreshHealth();
     if(selected){try{await startTrueחי()}catch(e){}}
   }catch(e){alpacaSetupMessage("❌ "+e.message,"health-bad")}
@@ -1852,7 +1877,7 @@ async function checkBackendStatus(){
     const av=j.alpha_vantage_configured?"Alpha Vantage מחובר":"Alpha Vantage לא מוגדר";
     const badge=document.getElementById("alpacaSetupBadge");if(badge){badge.textContent=j.alpaca_configured?"מחובר":"לא מחובר";badge.className="live-badge "+(j.alpaca_configured?"live-on":"live-eod");}
     const fs=document.getElementById("alpacaFeedSelect");if(fs&&j.alpaca_feed)fs.value=j.alpaca_feed;
-    if(el)el.textContent=`${live} · ${av} · Feed: ${j.alpaca_feed||"iex"}`;
+    if(el)el.textContent=`${live} · ${av} · ערוץ נתונים: ${providerHe(j.alpaca_feed||"iex")}`;
     alpacaFeed=j.alpaca_feed||"iex";
     document.getElementById("apiStatus").textContent=`שרת פעיל · ${live} · ${av}`;
     return j;
