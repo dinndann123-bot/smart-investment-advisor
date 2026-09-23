@@ -20,7 +20,11 @@ def install_local_scanner(app):
   if 570<=m<960:return 'regular'
   if 960<=m<1200:return 'afterhours'
   return 'closed'
- def scan_feed(now):return 'delayed_sip' if session(now) in {'premarket','afterhours'} else regular_feed
+ def scan_feed(now):
+  # Extended hours use consolidated delayed SIP on the Basic plan. At the
+  # regular-session boundary switch deterministically to a live-capable feed.
+  if session(now) in {'premarket','afterhours'}:return 'delayed_sip'
+  return 'sip' if regular_feed=='sip' else 'iex'
  def bars_feed(snapshot_feed):return 'sip' if snapshot_feed=='delayed_sip' else snapshot_feed
  def fresh(ts,now):
   z=parse_ts(ts);return bool(z and z.date()==now.date())
