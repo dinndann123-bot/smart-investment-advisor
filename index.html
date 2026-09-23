@@ -340,6 +340,14 @@ img,svg,canvas{max-width:100%;height:auto}
   </table>
 </div>
 <div class="note" id="featureLearningNote" style="margin-top:8px">הטבלה משתמשת רק בפרופיל שהיה קיים לפני יום האות.</div>
+<h3 style="margin-top:16px">הצלחת השיטה לכל מניה לפי זמן</h3>
+<div class="table-wrap">
+  <table class="compact-table">
+    <thead><tr><th>מניה</th><th>אותות</th><th>יום</th><th>שבוע</th><th>חודש</th><th>זמן ממוצע לעלייה</th><th>זמן ממוצע לירידה</th></tr></thead>
+    <tbody id="learningStocksTable"></tbody>
+  </table>
+</div>
+<div class="note" style="margin-top:8px">הצלחה = תשואה חיובית ביחס למחיר האות. הזמן נמדד מהאות עד לשיא ולשפל שנצפו. נדרש מדגם של 50 תוצאות לפני שינוי משקלי השיטה.</div>
 <h3 style="margin-top:16px">מניות שהשיטה סימנה</h3>
     <div class="table-wrap">
       <table>
@@ -487,11 +495,11 @@ img,svg,canvas{max-width:100%;height:auto}
             <div class="section-head"><div><h2>איך השיטה למדה מהמניה הזאת?</h2><p>תוצאות היסטוריות של האותות עבור הסימול הזה בבדיקה האחרונה.</p></div><span class="live-badge" id="stockLearningStatus">—</span></div>
             <div class="cards">
               <div class="card metric"><b id="slSignals">—</b><span>אותות היסטוריים</span></div>
-              <div class="card metric"><b id="slSuccess">—</b><span>הצלחה ליעד 1</span></div>
-              <div class="card metric"><b id="slTarget2">—</b><span>הצלחה ליעד 2</span></div>
-              <div class="card metric"><b id="slAvgR">—</b><span>תוצאה ממוצעת</span></div>
+              <div class="card metric"><b id="slSuccess">—</b><span>הצלחה ביום</span></div>
+              <div class="card metric"><b id="slTarget2">—</b><span>הצלחה בשבוע</span></div>
+              <div class="card metric"><b id="slAvgR">—</b><span>הצלחה בחודש</span></div>
             </div>
-            <div class="table-wrap" style="margin-top:12px"><table class="compact-table"><thead><tr><th>תאריך</th><th>ציון</th><th>פער פתיחה</th><th>מחזור יחסי</th><th>תוצאה</th><th>R</th></tr></thead><tbody id="stockLearningBody"></tbody></table></div>
+            <div class="table-wrap" style="margin-top:12px"><table class="compact-table"><thead><tr><th>תאריך</th><th>ציון</th><th>יום</th><th>שבוע</th><th>חודש</th><th>זמן לעלייה</th><th>זמן לירידה</th></tr></thead><tbody id="stockLearningBody"></tbody></table></div>
           </section>
         </div>
 
@@ -729,6 +737,15 @@ function providerHe(value){
  if(k==="iex")return "IEX בזמן אמת";
  return s||"מקור שוק";
 }
+function returnHe(v){return Number.isFinite(+v)?`${+v>=0?'+':''}${(+v).toFixed(2)}%`:"ממתין"}
+function durationHe(minutes){
+ if(!Number.isFinite(+minutes))return "ממתין";
+ const m=Math.max(0,Math.round(+minutes));
+ if(m<60)return `${m} דק׳`;
+ if(m<1440)return `${Math.floor(m/60)} ש׳ ${m%60} דק׳`;
+ return `${Math.floor(m/1440)} ימים ${Math.round((m%1440)/60)} ש׳`;
+}
+function periodStatHe(x){return x&&Number.isFinite(+x.success_pct)?`${(+x.success_pct).toFixed(1)}% (${x.samples})`:"ממתין"}
 async function headlinesInHebrew(news,symbol){
  const originals=(news||[]).map(n=>n.title||n.headline||"");
  if(!originals.length)return [];
@@ -833,20 +850,19 @@ async function loadStockLearning(symbol){
     const j=await r.json();
     if(!r.ok||!j.has_data){
       if(st)st.textContent="אין מספיק נתוני עבר";
-      document.getElementById("stockLearningBody").innerHTML='<tr><td colspan="6" class="empty">אין עדיין מספיק אירועים היסטוריים למניה הזו.</td></tr>';
+      document.getElementById("stockLearningBody").innerHTML='<tr><td colspan="7" class="empty">אין עדיין מספיק אירועים שנמדדו למניה הזו.</td></tr>';
       return;
     }
-    st.textContent=`בדיקה אחרונה: ${j.months} חודשים`;
+    const pp=j.profile||{};const rate=k=>Number.isFinite(+pp[k]?.success_pct)?(+pp[k].success_pct).toFixed(1)+"%":"ממתין";
+    st.textContent=`יום ${rate('day')} · שבוע ${rate('week')} · חודש ${rate('month')}`;
     document.getElementById("slSignals").textContent=j.signals;
-    document.getElementById("slSuccess").textContent=j.success_rate_pct==null?"—":j.success_rate_pct.toFixed(1)+"%";
-    document.getElementById("slTarget2").textContent=j.target2_rate_pct==null?"—":j.target2_rate_pct.toFixed(1)+"%";
-    document.getElementById("slAvgR").textContent=j.avg_r==null?"—":j.avg_r.toFixed(2)+"R";
+    document.getElementById("slSuccess").textContent=rate('day');
+    document.getElementById("slTarget2").textContent=rate('week');
+    document.getElementById("slAvgR").textContent=rate('month');
     document.getElementById("stockLearningBody").innerHTML=(j.rows||[]).map(x=>`<tr>
       <td>${x.date}</td><td>${Number(x.score||0).toFixed(0)}/100</td>
-      <td>${Number.isFinite(+x.gap_pct)?(+x.gap_pct).toFixed(1)+"%":"—"}</td>
-      <td>${Number.isFinite(+x.rvol_open)?(+x.rvol_open).toFixed(2)+"×":"—"}</td>
-      <td>${x.hit1?"✅ הצליח":x.stopped?"❌ עצירת הפסד":"—"}</td>
-      <td>${Number.isFinite(+x.result_r)?(+x.result_r).toFixed(2)+"R":"—"}</td></tr>`).join("");
+      <td>${returnHe(x.day_return_pct)}</td><td>${returnHe(x.week_return_pct)}</td><td>${returnHe(x.month_return_pct)}</td>
+      <td>${durationHe(x.minutes_to_peak)}</td><td>${durationHe(x.minutes_to_trough)}</td></tr>`).join("");
   }catch(e){if(st)st.textContent="לא זמין כרגע"}
 }
 function renderRecentWeek(bars){
@@ -1019,6 +1035,8 @@ async function loadLearningSummary(){
     const pct=v=>Number.isFinite(+v)?(+v).toFixed(1)+"%":"—";
     const dec=(v,suffix="")=>Number.isFinite(+v)?(+v).toFixed(2)+suffix:"—";
     const ready=j.validation?.ready===true;
+    const stocks=document.getElementById("learningStocksTable");
+    if(stocks)stocks.innerHTML=(j.stock_performance||[]).map(x=>`<tr><td><b>${heText(x.symbol)}</b></td><td>${x.signals}</td><td>${periodStatHe(x.day)}</td><td>${periodStatHe(x.week)}</td><td>${periodStatHe(x.month)}</td><td>${durationHe(x.median_minutes_to_peak)}</td><td>${durationHe(x.median_minutes_to_trough)}</td></tr>`).join("")||'<tr><td colspan="7" class="empty">המדידה התחילה; תוצאות יום, שבוע וחודש יתמלאו במועדים המתאימים.</td></tr>';
     document.getElementById("learnSuccess").textContent=ready?pct(j.success_rate_pct):"ממתין למדגם";
     document.getElementById("learnCorrect").textContent=`${j.evaluated||0}/${j.signals||0}`;
     document.getElementById("learnSignals").textContent=j.signals;
