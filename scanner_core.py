@@ -4,7 +4,7 @@ from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 import httpx
 from fastapi.responses import JSONResponse
-NY=ZoneInfo('America/New_York'); STRATEGY_VERSION='strategy-learning-v6.7.1-delayed-snapshot-historical-sip'
+NY=ZoneInfo('America/New_York'); STRATEGY_VERSION='strategy-learning-v6.8.5-premarket-top10-quality-tiers'
 def install_local_scanner(app):
  key=(os.getenv('ALPACA_API_KEY') or os.getenv('ALPACA_KEY') or '').strip(); secret=(os.getenv('ALPACA_SECRET_KEY') or os.getenv('ALPACA_SECRET') or '').strip(); regular_feed=(os.getenv('ALPACA_FEED') or 'iex').strip()
  def f(v,d=0.0):
@@ -123,7 +123,20 @@ def install_local_scanner(app):
     if len(pred)>=wanted:break
   diag=sorted(en,key=lambda x:(f(x.get('rvol_raw')),-f(x.get('bars_count'))),reverse=True)[:10]
   for d in diag[:5]:print(f"MARKET_DATA_DIAG {d.get('ticker')} snapshot_feed={d.get('data_feed')} bars_feed={d.get('bars_feed')} bars={d.get('bars_count')} err={d.get('bars_error')} today={d.get('today_bars_count')} hist={d.get('historical_days_with_volume')} livevol={d.get('session_live_volume')} baseline={d.get('historical_baseline_volume')} rvol={d.get('rvol_raw')} reliable={d.get('rvol_reliable')} px={d.get('price')} ts={d.get('market_timestamp')}",flush=True)
-  sel=pred[:wanted];payload={'results':sel,'watch_observations':sorted(watch,key=lambda x:x['forward_rank'],reverse=True)[:30],'extended_observations':ext[:30],'diagnostic_sample':diag,'assets_scanned':len(aa),'snapshots_received':len(ss),'stale_snapshots_filtered':stale,'fresh_market_pool':len(pool),'deep_candidates':len(en),'forward_candidate_count':len(pred),'requested_top':wanted,'complete_top10':len(sel)>=wanted,'strategy_version':STRATEGY_VERSION,'scan_id':sid,'generated_at':ts.isoformat(),'session':sess,'data_source':'Alpaca','feed':feed,'bars_feed':bf,'data_delay_minutes':15 if feed=='delayed_sip' else 0,'ranking_status':'session-aware-predictive','candidate_semantics':'prebreakout_or_earlybreakout_only','cache_policy':'no-store','quality_guard':{'fresh_snapshot_required':True,'batched_bars':True,'delayed_sip_snapshots':feed=='delayed_sip','historical_sip_bars':bf=='sip','historical_sip_safety_minutes':16,'rvol_cap':25,'minimum_baseline_volume':1000,'unreliable_rvol_excluded_from_predictive':True,'same_effective_clock_baseline':True}}
+  # The product contract is always ten auditable rows.  Strong predictive
+  # candidates remain first; when fewer than ten pass the strict gate, fill
+  # the remaining ranks with the best non-extended watch candidates.  Those
+  # rows are explicitly marked as lower-confidence observations so the UI and
+  # learning journal never present them as equally strong signals.
+  predictive=pred[:wanted]
+  fallback=sorted(watch,key=lambda x:x['forward_rank'],reverse=True)[:max(0,wanted-len(predictive))]
+  for x in predictive:
+   x['quality_tier']='predictive';x['is_predictive_signal']=True
+  for x in fallback:
+   x['candidate_type']='watch_candidate';x['quality_tier']='watch_fallback';x['is_predictive_signal']=False
+  sel=predictive+fallback
+  for rank,x in enumerate(sel,1):x['rank']=rank
+  payload={'results':sel,'watch_observations':sorted(watch,key=lambda x:x['forward_rank'],reverse=True)[:30],'extended_observations':ext[:30],'diagnostic_sample':diag,'assets_scanned':len(aa),'snapshots_received':len(ss),'stale_snapshots_filtered':stale,'fresh_market_pool':len(pool),'deep_candidates':len(en),'forward_candidate_count':len(pred),'predictive_top10_count':len(predictive),'watch_fallback_count':len(fallback),'requested_top':wanted,'complete_top10':len(sel)>=wanted,'strategy_version':STRATEGY_VERSION,'scan_id':sid,'generated_at':ts.isoformat(),'session':sess,'data_source':'Alpaca','feed':feed,'bars_feed':bf,'data_delay_minutes':15 if feed=='delayed_sip' else 0,'ranking_status':'session-aware-quality-tiered-top10','candidate_semantics':'predictive-first-then-explicit-watch-fallback;already-extended-excluded','cache_policy':'no-store','quality_guard':{'fresh_snapshot_required':True,'batched_bars':True,'delayed_sip_snapshots':feed=='delayed_sip','historical_sip_bars':bf=='sip','historical_sip_safety_minutes':16,'rvol_cap':25,'minimum_baseline_volume':1000,'unreliable_rvol_excluded_from_predictive':True,'watch_fallbacks_explicitly_labeled':True,'same_effective_clock_baseline':True}}
   print(f'LOCAL_SCANNER_DONE scan_id={sid} session={sess} snapshot_feed={feed} bars_feed={bf} assets={len(aa)} snaps={len(ss)} fresh={len(pool)} stale_filtered={stale} results={len(sel)} predictive={len(pred)} complete={payload["complete_top10"]}',flush=True);return JSONResponse(payload,headers={'Cache-Control':'no-store','X-Scanner-Version':STRATEGY_VERSION,'X-Scan-Id':sid,'X-Market-Feed':feed,'X-Bars-Feed':bf})
  old=next((r for r in app.routes if getattr(r,'path',None)=='/api/scanner/day' and 'GET' in getattr(r,'methods',set())),None)
  if old:app.router.routes.remove(old)
