@@ -10,10 +10,55 @@ from scanner_core import install_local_scanner
 from scanner_async_v67 import install_async_scanner, STRATEGY_VERSION as ASYNC_STRATEGY_VERSION
 from chart_api_v7 import install_chart_api
 from pathlib import Path
+from fastapi import Request
 from fastapi.responses import FileResponse
+import asyncio
+import re
+import httpx
 
 _local_scanner_engine=install_local_scanner(app)
 CHART_API_V7=install_chart_api(app)
+
+# News providers return English headlines.  Translation is presentation-only:
+# market data and scanner decisions always continue to use the original payload.
+_headline_translation_cache={}
+_hebrew_re=re.compile(r'[\u0590-\u05ff]')
+
+async def _translate_headline_to_hebrew(client,text,symbol):
+    clean=' '.join(str(text or '').split())[:500]
+    if not clean:return 'ללא כותרת'
+    if _hebrew_re.search(clean):return clean
+    cached=_headline_translation_cache.get(clean)
+    if cached:return cached
+    translated=''
+    try:
+        response=await client.get(
+            'https://api.mymemory.translated.net/get',
+            params={'q':clean,'langpair':'en|he'},
+            timeout=8.0,
+        )
+        if response.is_success:
+            candidate=str((response.json().get('responseData') or {}).get('translatedText') or '').strip()
+            if _hebrew_re.search(candidate):translated=candidate
+    except Exception:
+        pass
+    if not translated:
+        translated=f'עדכון חדשות בנוגע למניית {symbol}' if symbol else 'עדכון חדשות בנוגע למניה'
+    if len(_headline_translation_cache)>=2000:
+        _headline_translation_cache.pop(next(iter(_headline_translation_cache)))
+    _headline_translation_cache[clean]=translated
+    return translated
+
+@app.post('/api/translate/headlines')
+async def translate_news_headlines(request:Request):
+    try:payload=await request.json()
+    except Exception:payload={}
+    symbol=re.sub(r'[^A-Z0-9.\-]','',str(payload.get('symbol') or '').upper())[:12]
+    headlines=payload.get('headlines') if isinstance(payload.get('headlines'),list) else []
+    headlines=headlines[:20]
+    async with httpx.AsyncClient(headers={'User-Agent':'SmartInvestmentAdvisor/1.0'}) as client:
+        translated=await asyncio.gather(*[_translate_headline_to_hebrew(client,x,symbol) for x in headlines])
+    return {'translations':translated,'language':'he','originals_preserved':True}
 
 _old_root=next((r for r in app.routes if getattr(r,'path',None)=='/' and 'GET' in getattr(r,'methods',set())),None)
 if _old_root is not None:app.router.routes.remove(_old_root)
