@@ -16,7 +16,7 @@ body{margin:0;background:radial-gradient(circle at 50% -10%,#17303c 0,#071017 30
 .app{min-height:100vh}
 .hero{background:linear-gradient(120deg,rgba(8,20,27,.98),rgba(16,31,38,.97) 58%,rgba(53,43,19,.94));color:var(--ink);padding:24px;border-bottom:1px solid rgba(216,169,67,.35);box-shadow:0 16px 45px rgba(0,0,0,.28)}
 .hero-inner{max-width:1400px;margin:auto;display:flex;justify-content:space-between;gap:20px;align-items:flex-end;flex-wrap:wrap}
-.hero h1{font-size:30px;margin:0 0 4px;font-weight:900;letter-spacing:.3px;color:#f7d787}.brand-title{display:flex;align-items:center;gap:12px}.brand-logo{width:56px;height:56px;border-radius:16px;object-fit:contain;background:#0e1e26;border:1px solid rgba(216,169,67,.6);padding:5px;box-shadow:0 0 28px rgba(216,169,67,.12)}.header-back{display:none;border:1px solid rgba(216,169,67,.45);background:#111d21;color:#f3cc72;border-radius:12px;width:44px;height:44px;font-size:26px;cursor:pointer}
+.hero h1{font-size:30px;margin:0 0 4px;font-weight:900;letter-spacing:.3px;color:#f7d787}.brand-title{display:flex;align-items:center;gap:12px}.brand-logo{width:56px;height:56px;border-radius:16px;object-fit:contain;background:#0e1e26;border:1px solid rgba(216,169,67,.6);padding:5px;box-shadow:0 0 28px rgba(216,169,67,.12)}.brand-lockup-main{display:block;width:min(420px,72vw);height:82px;object-fit:contain;object-position:right center}.header-back{display:none;border:1px solid rgba(216,169,67,.45);background:#111d21;color:#f3cc72;border-radius:12px;width:44px;height:44px;font-size:26px;cursor:pointer}
 .hero p{margin:0;color:#a8b8bf;font-size:13px;letter-spacing:.15px}
 .hero-actions{display:flex;gap:10px;flex-wrap:wrap}
 .btn{border:0;border-radius:12px;padding:10px 14px;font-weight:700;cursor:pointer}
@@ -149,6 +149,31 @@ button:focus-visible,.btn:focus-visible,input:focus-visible,select:focus-visible
 @media(max-width:900px){.session-kpis{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:560px){.session-kpis{grid-template-columns:repeat(2,1fr)}}
 
+/* Canonical mobile geometry: no child may widen the viewport. */
+html,body,.app,.shell,.page{width:100%;max-width:100%;overflow-x:hidden}
+.shell,.page,.detail,.detail-wide,.card,.detail-section,.info-grid,.kpis,.session-kpis,.trade-plan,.tech-grid,.position-box{min-width:0;max-width:100%}
+img,svg,canvas{max-width:100%;height:auto}
+#page-detail .detail{grid-template-columns:minmax(0,1.35fr) minmax(0,.65fr)}
+#page-detail #detailOverview{overflow:hidden}
+#page-detail #detailChartSection{width:100%;max-width:100%;overflow:hidden;margin-top:12px}
+#page-detail #detailChart{display:block;width:100%!important;max-width:100%!important;height:clamp(220px,48vw,360px)!important;min-height:0!important}
+@media(max-width:960px){#page-detail .detail{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:760px){
+ .brand-lockup-main{width:min(300px,76vw);height:62px}
+ .hero-inner{width:100%;min-width:0}.brand-title{min-width:0}
+ #page-detail{padding-inline:0!important}
+ #page-detail .detail{width:100%;max-width:100%;margin-top:8px!important;gap:10px}
+ #page-detail .card{width:100%;max-width:100%;min-width:0;padding:10px;overflow:hidden}
+ #page-detail .detail-hero{align-items:flex-start}
+ #page-detail .ranges{width:100%;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}
+ #page-detail .ranges button{min-width:0;padding:7px 4px}
+ #page-detail .live-strip{width:100%;min-width:0;overflow-wrap:anywhere}
+ #page-detail .kpis,#page-detail .session-kpis,#page-detail .trade-plan,#page-detail .tech-grid,#page-detail .position-box,#page-detail .info-grid{grid-template-columns:repeat(2,minmax(0,1fr));width:100%}
+ #page-detail .kpi,#page-detail .session-kpi,#page-detail .plan-card,#page-detail .tech,#page-detail .position-card,#page-detail .info{min-width:0;overflow-wrap:anywhere}
+ #page-detail #detailChart{height:250px!important}
+}
+@media(max-width:390px){#page-detail #detailChart{height:225px!important}.brand-lockup-main{width:min(260px,74vw)}}
+
 </style>
 <link rel="manifest" href="/manifest.webmanifest">
 <meta name="theme-color" content="#061017">
@@ -165,7 +190,7 @@ button:focus-visible,.btn:focus-visible,input:focus-visible,select:focus-visible
     <div class="hero-inner">
       <button class="header-back" id="headerBackBtn" onclick="goBackPage()" aria-label="חזרה למסך הקודם">‹</button>
       <div>
-        <div class="brand-title"><img class="brand-logo" src="/static/icons/icon-192.png" alt="לוגו השור"><h1>SMART INVESTMENT ADVISOR</h1></div>
+        <div class="brand-title"><img class="brand-lockup-main" src="/static/brand_lockup.svg?v=4" alt="Smart Investment Advisor — לוגו השור"></div>
         <p>DATA · STRATEGY · RESULTS — סינון, דירוג ומעקב לפי השיטה שלנו</p>
         <div class="statusbar" id="apiStatus">נתוני שוק: ממתין לחיבור API</div>
       </div>
@@ -375,6 +400,8 @@ button:focus-visible,.btn:focus-visible,input:focus-visible,select:focus-visible
   <span id="entrySignal" class="signal signal-wait"><span class="signal-dot"></span>ממתין לנתונים</span>
   <button class="btn btn-secondary" id="toggleחיBtn" onclick="toggleחי()">הפעל חי</button>
 </div>
+<div class="detail-section" id="detailChartSection"><div class="mini-head"><h3>גרף מחיר</h3><span class="small">בחר טווח זמן מעל הגרף</span></div><canvas id="detailChart" width="1100" height="300"></canvas>
+          <div class="small" id="chartNote"></div></div>
 <div class="kpis">
             <div class="kpi"><b id="dPrice">—</b><span>מחיר</span></div>
             <div class="kpi"><b id="dChange">—</b><span>שינוי</span></div>
@@ -409,8 +436,6 @@ button:focus-visible,.btn:focus-visible,input:focus-visible,select:focus-visible
   <div class="position-card"><b>מיקום נוכחי בטווח</b><div id="rangePosition" class="note">—</div></div>
   <div class="position-card"><b>תמיכה / התנגדות</b><div id="srLevels" class="note">—</div></div>
 </div>
-<div class="detail-section" id="detailChartSection"><div class="mini-head"><h3>גרף מחיר</h3><span class="small">בחר טווח זמן מעל הגרף</span></div><canvas id="detailChart" width="1100" height="300"></canvas>
-          <div class="small" id="chartNote"></div></div>
           <div class="info-grid" style="margin-top:12px">
             <div class="info"><h4>מה החברה עושה?</h4><p id="dWhat"></p></div>
             <div class="info"><h4>למה היא מובילה אצלנו?</h4><p id="dWhy"></p></div>
@@ -687,9 +712,9 @@ let alpacaKey="backend";
 let alpacaSecret="backend";
 let alpacaFeed="iex";
 let alpacaWS=null,alpacaAuthed=false,liveBars=[],lastTradePrice=null;
-let autoScanEnabled=localStorage.getItem("auto_day_scanner")==="1";
+let autoScanEnabled=localStorage.getItem("auto_day_scanner")!=="0";
 let autoScanTimer=null;
-let scannerRefreshSec=60;
+let scannerRefreshSec=30;
 let scannerBusy=false;
 let backendInfo={alpaca_configured:false,alpha_vantage_configured:false,alpaca_feed:"iex"};
 let holdings=JSON.parse(localStorage.getItem("explosive_holdings")||"[]");
@@ -708,6 +733,7 @@ function money(x){return Number.isFinite(x)?"$"+x.toFixed(2):"—"}
 let serverClockOffsetMs=0;
 let marketClockData=null;
 let marketClockSyncedAt=0;
+let lastMarketSession=null;
 
 function fmtClock(date,tz){
   return new Intl.DateTimeFormat("he-IL",{timeZone:tz,hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}).format(date);
@@ -749,7 +775,9 @@ async function syncMarketClock(){
     const t1=Date.now();
     const serverMs=new Date(j.server_utc).getTime();
     serverClockOffsetMs=serverMs-(t0+t1)/2;
-    marketClockData=j;marketClockSyncedAt=Date.now();
+    const nextSession=j.market?.session||null;
+    const enteredRegular=lastMarketSession&&lastMarketSession!=="regular"&&nextSession==="regular";
+    marketClockData=j;marketClockSyncedAt=Date.now();lastMarketSession=nextSession;
     const st=document.getElementById("marketState");
     if(st){
       st.textContent=j.market?.session_he||"לא ידוע";
@@ -762,6 +790,11 @@ async function syncMarketClock(){
     }
     const sync=document.getElementById("clockSync");
     if(sync)sync.textContent=j.market?.source==="alpaca_clock"?"Alpaca + זמן שרת":"זמן שרת";
+    if(enteredRegular){
+      Object.keys(cache).forEach(k=>delete cache[k]);
+      refreshDayScanner(true);
+      if(selected){loadDetailחי();if(alpacaReady()&&!liveEnabled)startTrueחי().catch(()=>{});}
+    }
     updateClockUI();
   }catch(e){
     const sync=document.getElementById("clockSync");if(sync)sync.textContent="זמן מכשיר"; updateClockUI(); const st=document.getElementById("marketState");if(st)st.textContent="סטטוס שוק לא זמין";
