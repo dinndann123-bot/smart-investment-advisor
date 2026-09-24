@@ -85,6 +85,24 @@ def install_local_scanner(app):
     token=body.get('next_page_token');pages+=1
     if not token:break
   return out
+ async def recent_news(symbols,now):
+  if not symbols:return {}
+  start=now.replace(hour=0,minute=0,second=0,microsecond=0).astimezone(timezone.utc)
+  params={'symbols':','.join(symbols),'start':start.isoformat().replace('+00:00','Z'),'limit':50,'sort':'desc','include_content':'false'}
+  try:
+   async with httpx.AsyncClient(timeout=12) as c:r=await c.get('https://data.alpaca.markets/v1beta1/news',headers=hdr(),params=params)
+   if r.status_code>=400:return {}
+   items=(r.json() or {}).get('news') or []
+  except Exception:return {}
+  out={}
+  for item in items:
+   published=parse_ts(item.get('created_at') or item.get('updated_at'))
+   age=max(0,(now-published).total_seconds()/60) if published else None
+   for symbol in item.get('symbols') or []:
+    symbol=str(symbol).upper()
+    if symbol not in symbols or symbol in out:continue
+    out[symbol]={'catalyst_present':True,'catalyst_age_minutes':round(age,1) if age is not None else None,'catalyst_headline':item.get('headline'),'catalyst_source':item.get('source')}
+  return out
  def enrich(r,bar_result):
   bs,bar_error=bar_result;now=datetime.now(timezone.utc).astimezone(NY);by={}
   for b in bs:
@@ -140,6 +158,9 @@ def install_local_scanner(app):
   for x in fallback:
    x['candidate_type']='watch_candidate';x['quality_tier']='watch_fallback';x['is_predictive_signal']=False
   sel=predictive+fallback
+  news=await recent_news([x['ticker'] for x in sel],now)
+  for x in sel:
+   x.update(news.get(x['ticker']) or {'catalyst_present':False,'catalyst_age_minutes':None,'catalyst_headline':None,'catalyst_source':None})
   for position,x in enumerate(sel,1):x['rank']=position
   payload={'results':sel,'watch_observations':sorted(watch,key=lambda x:x['forward_rank'],reverse=True)[:30],'extended_observations':ext[:30],'diagnostic_sample':diag,'assets_scanned':len(aa),'snapshots_received':len(ss),'stale_snapshots_filtered':stale,'fresh_market_pool':len(pool),'deep_candidates':len(en),'forward_candidate_count':len(pred),'predictive_top10_count':len(predictive),'watch_fallback_count':len(fallback),'requested_top':wanted,'complete_top10':len(sel)>=wanted,'strategy_version':STRATEGY_VERSION,'scan_id':sid,'generated_at':ts.isoformat(),'session':sess,'data_source':'Alpaca','feed':feed,'bars_feed':bf,'data_delay_minutes':15 if feed=='delayed_sip' else 0,'ranking_status':'session-aware-quality-tiered-top10','candidate_semantics':'predictive-first-then-explicit-watch-fallback;already-extended-excluded','cache_policy':'no-store','quality_guard':{'fresh_snapshot_required':True,'batched_bars':True,'delayed_sip_snapshots':feed=='delayed_sip','historical_sip_bars':bf=='sip','historical_sip_safety_minutes':16,'rvol_cap':25,'minimum_baseline_volume':1000,'unreliable_rvol_excluded_from_predictive':True,'watch_fallbacks_explicitly_labeled':True,'same_effective_clock_baseline':True}}
   print(f'LOCAL_SCANNER_DONE scan_id={sid} session={sess} snapshot_feed={feed} bars_feed={bf} assets={len(aa)} snaps={len(ss)} fresh={len(pool)} stale_filtered={stale} results={len(sel)} predictive={len(pred)} complete={payload["complete_top10"]}',flush=True);return JSONResponse(payload,headers={'Cache-Control':'no-store','X-Scanner-Version':STRATEGY_VERSION,'X-Scan-Id':sid,'X-Market-Feed':feed,'X-Bars-Feed':bf})
