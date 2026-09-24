@@ -36,11 +36,12 @@ class ScheduledLearningTests(unittest.TestCase):
         profile=_shadow_profile({
             'rvol':3.2,'rvol_reliable':True,'minute_volume_burst':2.1,
             'day_volume':100000,'historical_baseline_volume':20000,
+            'dollar_volume':2500000,'spread_bps':24,'price':25,
             'intraday_move_used_pct':75,'current_range_position':.72,
             'snapshot_gap_pct':2,'change_pct':3,
             'breakout_stage':'early_breakout',
         })
-        self.assertEqual(profile['version'],'shadow-opportunity-entry-v2')
+        self.assertEqual(profile['version'],'shadow-opportunity-entry-v3')
         self.assertEqual(profile['opportunity_score'],100)
         self.assertEqual(profile['entry_risk_score'],0)
         self.assertTrue(profile['research_eligible'])
@@ -50,6 +51,7 @@ class ScheduledLearningTests(unittest.TestCase):
         profile=_shadow_profile({
             'rvol':20,'rvol_reliable':True,'minute_volume_burst':12,
             'day_volume':1000000,'historical_baseline_volume':10000,
+            'dollar_volume':10000000,'spread_bps':20,'price':10,
             'intraday_move_used_pct':97,'current_range_position':.99,
             'snapshot_gap_pct':30,'change_pct':55,
             'breakout_stage':'already_extended',
@@ -58,6 +60,20 @@ class ScheduledLearningTests(unittest.TestCase):
         self.assertFalse(profile['entry_window_ok'])
         self.assertFalse(profile['research_eligible'])
         self.assertIn('momentum_extreme',profile['entry_veto_reasons'])
+
+    def test_shadow_rejects_untradable_spread_and_low_dollar_volume(self):
+        profile=_shadow_profile({
+            'rvol':4,'rvol_reliable':True,'minute_volume_burst':3,
+            'day_volume':20000,'historical_baseline_volume':5000,
+            'dollar_volume':400000,'spread_bps':180,'price':20,
+            'intraday_move_used_pct':70,'current_range_position':.7,
+            'snapshot_gap_pct':2,'change_pct':3,
+            'breakout_stage':'early_breakout',
+        })
+        self.assertFalse(profile['opportunity_detected'])
+        self.assertFalse(profile['entry_window_ok'])
+        self.assertFalse(profile['research_eligible'])
+        self.assertIn('wide_or_unknown_spread',profile['entry_veto_reasons'])
 
 
 if __name__=='__main__':
