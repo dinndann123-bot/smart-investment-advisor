@@ -10,8 +10,8 @@ import httpx
 NY=ZoneInfo('America/New_York')
 
 # Research checkpoints, deliberately separated so we can compare what the
-# strategy knew before the open with what it knew after the first five minutes.
-CHECKPOINTS={(8,0):'08:00_pre_market',(9,25):'09:25_pre_open',(9,35):'09:35_post_open'}
+# strategy knew before the open with a completed 09:30-09:45 opening window.
+CHECKPOINTS={(8,0):'08:00_pre_market',(9,25):'09:25_pre_open',(9,45):'09:45_post_open'}
 CHECKPOINT_GRACE_MINUTES=3
 HORIZONS=(1,3,5,10,15)
 PERIODS={'day':24*60*60,'week':7*24*60*60,'month':30*24*60*60}
@@ -74,7 +74,27 @@ def _shadow_profile(row):
     }
     opportunity_score=round(100*sum(opportunity_checks.values())/len(opportunity_checks))
     entry_risk_score=round(100*sum(risk_flags.values())/len(risk_flags))
-    return {'version':'shadow-opportunity-entry-v1','opportunity_score':opportunity_score,'entry_risk_score':entry_risk_score,'opportunity_checks':opportunity_checks,'entry_risk_flags':risk_flags,'research_eligible':opportunity_score>=67 and entry_risk_score<=40,'production_effect':False}
+    # A high-volume anomaly is useful evidence that a stock deserves attention,
+    # but it is not permission to enter after an exhausted or extreme move.
+    # v1 averaged those hazards and could therefore label a +50%/+100% move as
+    # research-eligible. v2 preserves the observation and explicitly vetoes entry.
+    entry_veto_reasons=[key for key,value in risk_flags.items() if value]
+    opportunity_detected=opportunity_score>=67
+    entry_window_ok=not entry_veto_reasons
+    stage_confirmed=row.get('breakout_stage') in {'pre_breakout','early_breakout'}
+    return {
+        'version':'shadow-opportunity-entry-v2',
+        'opportunity_score':opportunity_score,
+        'entry_risk_score':entry_risk_score,
+        'opportunity_checks':opportunity_checks,
+        'entry_risk_flags':risk_flags,
+        'opportunity_detected':opportunity_detected,
+        'entry_window_ok':entry_window_ok,
+        'entry_veto_reasons':entry_veto_reasons,
+        'stage_confirmed':stage_confirmed,
+        'research_eligible':opportunity_detected and entry_window_ok and stage_confirmed,
+        'production_effect':False,
+    }
 
 
 def _checkpoint_due(ny, captured_labels):
@@ -251,7 +271,7 @@ def install_scheduled_learning(app, scanner_engine, learning_store, strategy_ver
             stock_performance.append(item)
         stock_performance.sort(key=lambda x:(x['signals'],x['day']['success_pct'] if x['day']['success_pct'] is not None else -1),reverse=True)
         missed=sum(sum(bool(r.get(f'missed{m}m')) for m in HORIZONS) for r in rows)
-        return {'has_data':bool(rows),'source':'scheduled_point_in_time_forward_validation','storage':learning_store.status(),'strategy_version':strategy_version,'signals':len(rows),'evaluated':n,'pending':len(rows)-n,'missed_measurement_windows':missed,'success_rate_pct':round(100*sum(v>0 for _,_,v in evaluated)/n,1) if n else None,'target1_rate_pct':round(100*sum(v>=1 for _,_,v in evaluated)/n,1) if n else None,'target2_rate_pct':round(100*sum(v>=2 for _,_,v in evaluated)/n,1) if n else None,'expectancy_r':round(sum(v for _,_,v in evaluated)/n,3) if n else None,'cohorts':{'predictive':cohort(predictive),'watch_fallback':cohort(fallback),'shadow_entry_eligible':cohort(shadow_eligible),'shadow_other':cohort(shadow_other)},'shadow_research':{'version':'shadow-opportunity-entry-v1','production_effect':False,'hypothesis':'Separate unusual-volume opportunity from entry-extension risk before changing production weights.'},'universe_size':len({r.get('ticker') for r in rows}),'feature_learning':features,'recent_signals':recent,'stock_performance':stock_performance,'horizons_minutes':list(HORIZONS),'periods':PERIOD_LABELS,'checkpoint_health':{'captured':state.get('last_capture'),'missed':state.get('missed_checkpoints'),'grace_minutes':CHECKPOINT_GRACE_MINUTES},'validation':{'ready':ready,'minimum_samples':MIN_VALIDATION_SAMPLES,'chronological_point_in_time':True,'measurement_grace_seconds':MEASUREMENT_GRACE_SECONDS,'weights_changed':False,'production_weights_unchanged':True,'legacy_records_excluded':len(all_rows)-len(rows)},'definitions':{'score':'התאמה לשיטה, לא הסתברות הצלחה','success_rate':'תשואה חיובית באופק הנמדד','target1':'עלייה של 1% לפחות','target2':'עלייה של 2% לפחות','day':'מחיר סגירה רשמי של יום המסחר','timing':'זמן מהאות עד לשיא ולשפל שנצפו במהלך חלון המסחר'}}
+        return {'has_data':bool(rows),'source':'scheduled_point_in_time_forward_validation','storage':learning_store.status(),'strategy_version':strategy_version,'signals':len(rows),'evaluated':n,'pending':len(rows)-n,'missed_measurement_windows':missed,'success_rate_pct':round(100*sum(v>0 for _,_,v in evaluated)/n,1) if n else None,'target1_rate_pct':round(100*sum(v>=1 for _,_,v in evaluated)/n,1) if n else None,'target2_rate_pct':round(100*sum(v>=2 for _,_,v in evaluated)/n,1) if n else None,'expectancy_r':round(sum(v for _,_,v in evaluated)/n,3) if n else None,'cohorts':{'predictive':cohort(predictive),'watch_fallback':cohort(fallback),'shadow_entry_eligible':cohort(shadow_eligible),'shadow_other':cohort(shadow_other)},'shadow_research':{'version':'shadow-opportunity-entry-v2','production_effect':False,'hypothesis':'Separate unusual-volume opportunity from entry-extension risk; extreme conditions remain observable but explicitly veto entry.'},'universe_size':len({r.get('ticker') for r in rows}),'feature_learning':features,'recent_signals':recent,'stock_performance':stock_performance,'horizons_minutes':list(HORIZONS),'periods':PERIOD_LABELS,'checkpoint_health':{'captured':state.get('last_capture'),'missed':state.get('missed_checkpoints'),'grace_minutes':CHECKPOINT_GRACE_MINUTES},'validation':{'ready':ready,'minimum_samples':MIN_VALIDATION_SAMPLES,'chronological_point_in_time':True,'measurement_grace_seconds':MEASUREMENT_GRACE_SECONDS,'weights_changed':False,'production_weights_unchanged':True,'legacy_records_excluded':len(all_rows)-len(rows)},'definitions':{'score':'התאמה לשיטה, לא הסתברות הצלחה','success_rate':'תשואה חיובית באופק הנמדד','target1':'עלייה של 1% לפחות','target2':'עלייה של 2% לפחות','day':'מחיר סגירה רשמי של יום המסחר','timing':'זמן מהאות עד לשיא ולשפל שנצפו במהלך חלון המסחר'}}
 
     async def loop():
         while True:
