@@ -1,7 +1,7 @@
 import unittest
 from datetime import datetime, timezone
 
-from timing_signals import annotate_and_record
+from timing_signals import annotate_and_record, monitor_active_positions
 
 
 class Store:
@@ -34,6 +34,14 @@ class TimingSignalsTests(unittest.TestCase):
         store=Store();row=eligible();row['spread_bps']=120
         events=annotate_and_record([row],store,'scan-1',datetime(2026,9,24,14,0,tzinfo=timezone.utc))
         self.assertEqual(row['timing_signal'],'watch');self.assertFalse(events)
+
+    def test_exit_is_recorded_after_ticker_leaves_top10(self):
+        store=Store();t=datetime(2026,9,24,14,0,tzinfo=timezone.utc)
+        annotate_and_record([eligible()],store,'scan-1',t)
+        events=monitor_active_positions([{'ticker':'TEST','price':9.89}],store,'scan-2',t)
+        self.assertEqual(len(events),1)
+        self.assertEqual(events[0]['event_type'],'exit')
+        self.assertTrue(events[0]['monitored_outside_top10'])
 
 
 if __name__=='__main__':unittest.main()
