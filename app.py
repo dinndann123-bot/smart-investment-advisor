@@ -86,8 +86,11 @@ try:
  import learning_store
  from scheduled_learning import install_scheduled_learning
  SCHEDULED_LEARNING=install_scheduled_learning(app,_v66_scanner_engine,learning_store,ASYNC_STRATEGY_VERSION,price_fetcher=getattr(_scanner_core,'_future_prices',None))
+ from timing_signals import install_timing_routes
+ TIMING_SIGNALS=install_timing_routes(app,learning_store)
 except Exception as _scheduled_error:
  SCHEDULED_LEARNING={'installed':False,'error':f'{type(_scheduled_error).__name__}: {_scheduled_error}'}
+ TIMING_SIGNALS={'installed':False,'error':f'{type(_scheduled_error).__name__}: {_scheduled_error}'}
 
 @app.get('/api/scanner/async-status')
 async def scanner_async_status():
