@@ -165,8 +165,9 @@ def install_local_scanner(app):
   timing_events=[]
   try:
    import learning_store
-   from timing_signals import annotate_and_record
+   from timing_signals import annotate_and_record,monitor_active_positions
    timing_events=annotate_and_record(sel,learning_store,sid,ts)
+   timing_events+=monitor_active_positions(pool,learning_store,sid,ts)
   except Exception as e:print(f'TIMING_SIGNAL_ERROR {type(e).__name__}',flush=True)
   payload={'results':sel,'timing_events_recorded':len(timing_events),'timing_version':'timing-signals-v1','watch_observations':sorted(watch,key=lambda x:x['forward_rank'],reverse=True)[:30],'extended_observations':ext[:30],'diagnostic_sample':diag,'assets_scanned':len(aa),'snapshots_received':len(ss),'stale_snapshots_filtered':stale,'fresh_market_pool':len(pool),'deep_candidates':len(en),'forward_candidate_count':len(pred),'predictive_top10_count':len(predictive),'watch_fallback_count':len(fallback),'requested_top':wanted,'complete_top10':len(sel)>=wanted,'strategy_version':STRATEGY_VERSION,'scan_id':sid,'generated_at':ts.isoformat(),'session':sess,'data_source':'Alpaca','feed':feed,'bars_feed':bf,'data_delay_minutes':15 if feed=='delayed_sip' else 0,'ranking_status':'session-aware-quality-tiered-top10','candidate_semantics':'predictive-first-then-explicit-watch-fallback;already-extended-excluded','cache_policy':'no-store','quality_guard':{'fresh_snapshot_required':True,'batched_bars':True,'delayed_sip_snapshots':feed=='delayed_sip','historical_sip_bars':bf=='sip','historical_sip_safety_minutes':16,'rvol_cap':25,'minimum_baseline_volume':1000,'unreliable_rvol_excluded_from_predictive':True,'watch_fallbacks_explicitly_labeled':True,'same_effective_clock_baseline':True}}
   print(f'LOCAL_SCANNER_DONE scan_id={sid} session={sess} snapshot_feed={feed} bars_feed={bf} assets={len(aa)} snaps={len(ss)} fresh={len(pool)} stale_filtered={stale} results={len(sel)} predictive={len(pred)} complete={payload["complete_top10"]}',flush=True);return JSONResponse(payload,headers={'Cache-Control':'no-store','X-Scanner-Version':STRATEGY_VERSION,'X-Scan-Id':sid,'X-Market-Feed':feed,'X-Bars-Feed':bf})
