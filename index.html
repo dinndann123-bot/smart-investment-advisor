@@ -1189,7 +1189,7 @@ function renderTables(){
  <td><span class="badge">${riskLabel(s.risk)}</span></td><td><span class="news-pill">${s.media}/100</span></td>
  <td>${s.summary}</td><td><button class="btn quick-chart" onclick="event.stopPropagation();openDetail('long','${s.ticker}')">גרף</button></td><td><button class="btn btn-secondary" onclick="event.stopPropagation();openDetail('long','${s.ticker}')">פרטים</button></td></tr>`).join("");
  document.getElementById("dayTable").innerHTML=dayData.map((s,i)=>`
- <tr class="stock-row ${s.timing_signal==='entry'?'timing-entry-row':s.timing_signal==='exit'?'timing-exit-row':s.timing_signal==='active'?'timing-active-row':''}" data-timing-signal="${s.timing_signal||'watch'}" title="${(s.timing_reason||'').replace(/\"/g,\"'\")}" onclick="openDetail('day','${s.ticker}')">
+ <tr class="stock-row ${s.timing_signal==='entry'?'timing-entry-row':s.timing_signal==='exit'?'timing-exit-row':s.timing_signal==='active'?'timing-active-row':''}" data-timing-signal="${s.timing_signal||'watch'}" title="${(s.timing_reason||'').replace(/"/g,"'")}" onclick="openDetail('day','${s.ticker}')">
  <td>${i+1}</td><td><div class="company">${logoHtml(s)}<div><b>${s.ticker}</b><div class="small">${s.name||s.ticker}</div></div></div></td>
  <td>${money(s.price)}</td><td>${Number.isFinite(s.change)?`<span class="${s.change>=0?'positive':'negative'}">${s.change>=0?'+':''}${s.change.toFixed(1)}%</span>`:"—"}</td>
  <td><span class="score ${scoreClass(s.score)}" title="אחוז התאמה לקריטריונים של השיטה — לא אחוז הצלחה">${s.score}%</span></td><td><span class="badge">${riskLabel(s.risk)}</span></td>
