@@ -49,12 +49,13 @@ def install_local_scanner(app):
    await asyncio.gather(*(one(symbols[i:i+100]) for i in range(0,len(symbols),100)))
   return out
  def basic(m,s,now,feed):
-  lt=s.get('latestTrade') or {};mb=s.get('minuteBar') or {};db=s.get('dailyBar') or {};pb=s.get('prevDailyBar') or {};mts=lt.get('t') or mb.get('t')
+  lt=s.get('latestTrade') or {};lq=s.get('latestQuote') or {};mb=s.get('minuteBar') or {};db=s.get('dailyBar') or {};pb=s.get('prevDailyBar') or {};mts=lt.get('t') or mb.get('t')
   if not fresh(mts,now):return None
   p=f(lt.get('p'),f(mb.get('c'),f(db.get('c'))));prev=f(pb.get('c'));vol=f(db.get('v'));pv=f(pb.get('v'));o=f(db.get('o'));hi=f(db.get('h'));lo=f(db.get('l'))
   if p<.5 or prev<=0:return None
   ch=(p/prev-1)*100;gap=(o/prev-1)*100 if o else ch;rp=(p-lo)/(hi-lo) if hi>lo else .5;vr=vol/pv if pv else 0
-  return {**m,'price':round(p,4),'prev_close':prev,'change_pct':round(ch,2),'snapshot_gap_pct':round(gap,2),'day_volume':vol,'prev_day_volume':pv,'snapshot_volume_ratio':round(vr,3) if vr else None,'snapshot_range_position':round(rp,3),'day_open':o,'day_high':hi,'day_low':lo,'minute_volume':f(mb.get('v')),'market_timestamp':mts,'data_source':'Alpaca','data_feed':feed,'bars_feed':bars_feed(feed),'data_delay_minutes':15 if feed=='delayed_sip' else 0}
+  bid=f(lq.get('bp'));ask=f(lq.get('ap'));mid=(bid+ask)/2 if bid>0 and ask>=bid else 0;spread_bps=(ask-bid)/mid*10000 if mid else None
+  return {**m,'price':round(p,4),'prev_close':prev,'change_pct':round(ch,2),'snapshot_gap_pct':round(gap,2),'day_volume':vol,'dollar_volume':round(p*vol,2),'prev_day_volume':pv,'snapshot_volume_ratio':round(vr,3) if vr else None,'snapshot_range_position':round(rp,3),'day_open':o,'day_high':hi,'day_low':lo,'minute_volume':f(mb.get('v')),'bid':bid or None,'ask':ask or None,'spread_bps':round(spread_bps,1) if spread_bps is not None else None,'market_timestamp':mts,'data_source':'Alpaca','data_feed':feed,'bars_feed':bars_feed(feed),'data_delay_minutes':15 if feed=='delayed_sip' else 0}
  def qrank(r):
   ch=f(r.get('change_pct'));gap=f(r.get('snapshot_gap_pct'));vr=f(r.get('snapshot_volume_ratio'));rp=f(r.get('snapshot_range_position'),.5);dv=f(r.get('price'))*max(f(r.get('day_volume')),1)
   return min(math.log10(max(dv,1)),10)*3+min(vr,5)*8+rp*8+min(max(ch,0),4)*2-max(ch-6,0)*12-max(gap-9,0)*8
