@@ -1,20 +1,25 @@
 import asyncio
 import math
+import os
 import statistics
-from datetime import datetime, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
+
+import httpx
 
 NY=ZoneInfo('America/New_York')
 
 # Research checkpoints, deliberately separated so we can compare what the
 # strategy knew before the open with what it knew after the first five minutes.
 CHECKPOINTS={(8,0):'08:00_pre_market',(9,25):'09:25_pre_open',(9,35):'09:35_post_open'}
+CHECKPOINT_GRACE_MINUTES=3
 HORIZONS=(1,3,5,10,15)
 PERIODS={'day':24*60*60,'week':7*24*60*60,'month':30*24*60*60}
 PERIOD_LABELS={'day':'יום','week':'שבוע','month':'חודש'}
 MIN_VALIDATION_SAMPLES=50
 MEASUREMENT_GRACE_SECONDS=70
 MARKET_SAMPLE_SECONDS=300
+DAY_CLOSE_GRACE_MINUTES=10
 
 
 def _number(value):
@@ -42,8 +47,97 @@ def _criteria(row):
     ]
 
 
+def _shadow_profile(row):
+    """Research-only split between opportunity and entry risk.
+
+    It is deliberately not used by the production ranker.  The point is to
+    learn whether unusual demand was present even when the exact breakout-stage
+    gate was wrong, while separately measuring whether an entry was already
+    stretched or collapsing.
+    """
+    rv=_number(row.get('rvol'));burst=_number(row.get('minute_volume_burst'))
+    volume=_number(row.get('day_volume'));baseline=_number(row.get('historical_baseline_volume'))
+    used=_number(row.get('intraday_move_used_pct'));position=_number(row.get('current_range_position'))
+    gap=_number(row.get('snapshot_gap_pct') if row.get('snapshot_gap_pct') is not None else row.get('premarket_gap_pct'))
+    change=_number(row.get('change_pct'))
+    opportunity_checks={
+        'reliable_rvol':bool(row.get('rvol_reliable') and rv is not None and rv>=1.5),
+        'volume_acceleration':bool(burst is not None and burst>=1.5),
+        'liquid_baseline':bool(volume is not None and baseline is not None and volume>=1000 and baseline>=1000),
+    }
+    risk_flags={
+        'move_exhausted':bool(used is not None and used>=92),
+        'range_extreme':bool(position is not None and (position<.08 or position>.97)),
+        'gap_extreme':bool(gap is not None and abs(gap)>8),
+        'momentum_extreme':bool(change is not None and (change<-3 or change>8)),
+        'unreliable_volume':not bool(row.get('rvol_reliable')),
+    }
+    opportunity_score=round(100*sum(opportunity_checks.values())/len(opportunity_checks))
+    entry_risk_score=round(100*sum(risk_flags.values())/len(risk_flags))
+    return {'version':'shadow-opportunity-entry-v1','opportunity_score':opportunity_score,'entry_risk_score':entry_risk_score,'opportunity_checks':opportunity_checks,'entry_risk_flags':risk_flags,'research_eligible':opportunity_score>=67 and entry_risk_score<=40,'production_effect':False}
+
+
+def _checkpoint_due(ny, captured_labels):
+    """Return the checkpoint due now without fabricating a late snapshot.
+
+    The old implementation required the scheduler to wake during one exact
+    minute.  A normal event-loop delay could therefore lose a checkpoint.  A
+    small grace window is safe because the real capture time is still stored;
+    anything later is reported as missed instead of being backdated.
+    """
+    current=ny.hour*60+ny.minute
+    for (hour,minute),label in CHECKPOINTS.items():
+        target=hour*60+minute
+        if label not in captured_labels and target<=current<=target+CHECKPOINT_GRACE_MINUTES:
+            return label
+    return None
+
+
+def _session_close_utc(trade_date):
+    day=date.fromisoformat(str(trade_date))
+    return datetime.combine(day,time(16,0),NY).astimezone(timezone.utc)
+
+
+async def _official_closes(symbols, trade_date):
+    """Fetch the completed regular-session daily close from Alpaca.
+
+    This avoids evaluating a "day" with an overnight snapshot after a sleeping
+    Render instance wakes up.  Missing coverage stays missing; it is never
+    replaced with a current or synthetic price.
+    """
+    key=(os.getenv('ALPACA_API_KEY') or os.getenv('ALPACA_KEY') or '').strip()
+    secret=(os.getenv('ALPACA_SECRET_KEY') or os.getenv('ALPACA_SECRET') or '').strip()
+    if not key or not secret or not symbols:return {}
+    day=date.fromisoformat(str(trade_date));start=datetime.combine(day,time(0,0),NY).astimezone(timezone.utc)
+    end=start+timedelta(days=1)
+    headers={'APCA-API-KEY-ID':key,'APCA-API-SECRET-KEY':secret}
+    out={}
+    async with httpx.AsyncClient(timeout=25) as client:
+        for offset in range(0,len(symbols),100):
+            chunk=symbols[offset:offset+100]
+            params={'symbols':','.join(chunk),'timeframe':'1Day','start':start.isoformat(),'end':end.isoformat(),'feed':'iex','adjustment':'split','limit':1000,'sort':'asc'}
+            try:response=await client.get('https://data.alpaca.markets/v2/stocks/bars',headers=headers,params=params)
+            except Exception:continue
+            if response.status_code>=400:continue
+            for symbol,bars in ((response.json() or {}).get('bars') or {}).items():
+                if bars and _number(bars[-1].get('c')) is not None:out[symbol]=_number(bars[-1].get('c'))
+    return out
+
+
 def install_scheduled_learning(app, scanner_engine, learning_store, strategy_version, price_fetcher=None):
-    state={'installed':True,'strategy_version':strategy_version,'checkpoints':list(CHECKPOINTS.values()),'horizons_minutes':list(HORIZONS),'periods':PERIOD_LABELS,'minimum_validation_samples':MIN_VALIDATION_SAMPLES,'last_capture':{},'last_evaluation':None,'last_market_sample_epoch':0,'last_error':None}
+    state={'installed':True,'strategy_version':strategy_version,'checkpoints':list(CHECKPOINTS.values()),'checkpoint_grace_minutes':CHECKPOINT_GRACE_MINUTES,'horizons_minutes':list(HORIZONS),'periods':PERIOD_LABELS,'minimum_validation_samples':MIN_VALIDATION_SAMPLES,'last_capture':{},'missed_checkpoints':[],'last_evaluation':None,'last_market_sample_epoch':0,'last_error':None}
+
+    def captured_for_day(day):
+        return {r.get('checkpoint') for r in learning_store.load(3000) if r.get('record_type')=='scheduled_checkpoint' and r.get('strategy_version')==strategy_version and r.get('trade_date')==day and r.get('checkpoint')}
+
+    def refresh_checkpoint_state(ny):
+        day=ny.date().isoformat();captured=captured_for_day(day)
+        for label in captured:state['last_capture'][label]=day
+        current=ny.hour*60+ny.minute;missed=[]
+        for (hour,minute),label in CHECKPOINTS.items():
+            if current>hour*60+minute+CHECKPOINT_GRACE_MINUTES and label not in captured:missed.append(label)
+        state['missed_checkpoints']=missed
+        return captured
 
     async def capture(label):
         now=datetime.now(timezone.utc);ny=now.astimezone(NY);key=f'{ny.date().isoformat()}:{label}'
@@ -61,7 +155,7 @@ def install_scheduled_learning(app, scanner_engine, learning_store, strategy_ver
         scan_id=(payload or {}).get('scan_id') or key
         for rank,row in enumerate(rows[:10],1):
             criteria=_criteria(row)
-            rec={'record_type':'scheduled_checkpoint','checkpoint':label,'trade_date':ny.date().isoformat(),'signal_time':now.isoformat(),'epoch':now.timestamp(),'scan_id':f'{key}:{scan_id}','strategy_version':strategy_version,'engine_strategy_version':(payload or {}).get('engine_strategy_version') or (payload or {}).get('strategy_version'),'ticker':row.get('ticker'),'rank':rank,'signal_price':row.get('price'),'score':row.get('score'),'stage':row.get('breakout_stage'),'change_pct':row.get('change_pct'),'gap_pct':row.get('snapshot_gap_pct',row.get('premarket_gap_pct')),'rvol':row.get('rvol'),'premarket_volume':row.get('premarket_volume'),'premarket_high':row.get('premarket_high'),'premarket_low':row.get('premarket_low'),'premarket_vwap':row.get('premarket_vwap'),'distance_from_pm_high_pct':row.get('distance_from_pm_high_pct'),'distance_from_pm_vwap_pct':row.get('distance_from_pm_vwap_pct'),'minute_volume_burst':row.get('minute_volume_burst'),'move_used_pct':row.get('intraday_move_used_pct'),'range_position':row.get('current_range_position'),'gate_metrics':row.get('gate_metrics'),'criteria':criteria,'market_timestamp':row.get('market_timestamp'),'data_feed':row.get('data_feed'),'market_session':row.get('market_session') or (payload or {}).get('session'),'observed_peak_price':row.get('price'),'observed_trough_price':row.get('price'),'minutes_to_peak':0,'minutes_to_trough':0,'peak_observed_at':now.isoformat(),'trough_observed_at':now.isoformat()}
+            rec={'record_type':'scheduled_checkpoint','checkpoint':label,'trade_date':ny.date().isoformat(),'signal_time':now.isoformat(),'epoch':now.timestamp(),'scan_id':f'{key}:{scan_id}','strategy_version':strategy_version,'engine_strategy_version':(payload or {}).get('engine_strategy_version') or (payload or {}).get('strategy_version'),'ticker':row.get('ticker'),'rank':rank,'signal_price':row.get('price'),'score':row.get('score'),'stage':row.get('breakout_stage'),'quality_tier':row.get('quality_tier'),'is_predictive_signal':bool(row.get('is_predictive_signal')),'shadow_profile':_shadow_profile(row),'change_pct':row.get('change_pct'),'gap_pct':row.get('snapshot_gap_pct',row.get('premarket_gap_pct')),'rvol':row.get('rvol'),'premarket_volume':row.get('premarket_volume'),'premarket_high':row.get('premarket_high'),'premarket_low':row.get('premarket_low'),'premarket_vwap':row.get('premarket_vwap'),'distance_from_pm_high_pct':row.get('distance_from_pm_high_pct'),'distance_from_pm_vwap_pct':row.get('distance_from_pm_vwap_pct'),'minute_volume_burst':row.get('minute_volume_burst'),'move_used_pct':row.get('intraday_move_used_pct'),'range_position':row.get('current_range_position'),'gate_metrics':row.get('gate_metrics'),'criteria':criteria,'market_timestamp':row.get('market_timestamp'),'data_feed':row.get('data_feed'),'market_session':row.get('market_session') or (payload or {}).get('session'),'observed_peak_price':row.get('price'),'observed_trough_price':row.get('price'),'minutes_to_peak':0,'minutes_to_trough':0,'peak_observed_at':now.isoformat(),'trough_observed_at':now.isoformat(),'capture_lateness_seconds':round(max(0,(now-datetime.combine(ny.date(),time(*next(k for k,v in CHECKPOINTS.items() if v==label)),NY).astimezone(timezone.utc)).total_seconds()),1)}
             learning_store.upsert(rec)
         state['last_capture'][label]=ny.date().isoformat();state['last_error']=None
 
@@ -73,7 +167,8 @@ def install_scheduled_learning(app, scanner_engine, learning_store, strategy_ver
             elapsed=now.timestamp()-float(rec.get('epoch') or 0)
             # Entry timing is an intraday parameter.  Never pretend a first
             # observation weeks later was the time of the move.
-            if 0<=elapsed<=PERIODS['day']:active.append(rec)
+            close_at=_session_close_utc(rec.get('trade_date'))
+            if 0<=elapsed and now<=close_at:active.append(rec)
             for minutes in HORIZONS:
                 result_key=f'ret{minutes}m_pct'; missed_key=f'missed{minutes}m'
                 if result_key in rec or missed_key in rec or elapsed<minutes*60:continue
@@ -82,22 +177,29 @@ def install_scheduled_learning(app, scanner_engine, learning_store, strategy_ver
                     learning_store.upsert(rec)
                     continue
                 due.append((rec,'minute',minutes))
-            for period,seconds in PERIODS.items():
-                if f'ret_{period}_pct' not in rec and elapsed>=seconds:
-                    due.append((rec,'period',period))
+            if 'ret_day_pct' not in rec and now>=close_at+timedelta(minutes=DAY_CLOSE_GRACE_MINUTES):due.append((rec,'day_close','day'))
+            for period,seconds in ((k,v) for k,v in PERIODS.items() if k!='day'):
+                if f'ret_{period}_pct' not in rec and elapsed>=seconds:due.append((rec,'period',period))
         sample_market=bool(active) and now.timestamp()-state['last_market_sample_epoch']>=MARKET_SAMPLE_SECONDS
         targets=active if sample_market else []
         symbols=sorted({r.get('ticker') for r,_,_ in due if r.get('ticker')}|{r.get('ticker') for r in targets if r.get('ticker')})
         if not symbols:return
         prices=await price_fetcher(symbols)
+        close_groups={}
+        for rec,kind,_ in due:
+            if kind=='day_close':close_groups.setdefault(rec.get('trade_date'),set()).add(rec.get('ticker'))
+        official={}
+        for trade_date,group in close_groups.items():official[trade_date]=await _official_closes(sorted(x for x in group if x),trade_date)
         changed={}
         for rec,kind,horizon in due:
-            price=_number(prices.get(rec.get('ticker'))); signal=_number(rec.get('signal_price'))
+            price=_number((official.get(rec.get('trade_date')) or {}).get(rec.get('ticker'))) if kind=='day_close' else _number(prices.get(rec.get('ticker')))
+            signal=_number(rec.get('signal_price'))
             if price is None or signal is None or signal<=0:continue
             if kind=='minute':
                 rec[f'p{horizon}m']=round(price,4);rec[f'ret{horizon}m_pct']=round((price/signal-1)*100,3)
             else:
                 rec[f'p_{horizon}']=round(price,4);rec[f'ret_{horizon}_pct']=round((price/signal-1)*100,3);rec[f'evaluated_{horizon}_at']=now.isoformat()
+                if kind=='day_close':rec['day_evaluation_source']='alpaca_iex_completed_daily_bar'
             changed[id(rec)]=rec
         if sample_market:
             for rec in targets:
@@ -128,6 +230,13 @@ def install_scheduled_learning(app, scanner_engine, learning_store, strategy_ver
             vals=[ret for r,_,ret in evaluated if any(c.get('key')==key and c.get('passed') for c in r.get('criteria') or [])]
             features.append({'feature':key,'label':label,'signals':len(vals),'success_pct':round(100*sum(v>0 for v in vals)/len(vals),1) if vals else None,'avg_return_pct':round(sum(vals)/len(vals),3) if vals else None})
         n=len(evaluated); ready=n>=MIN_VALIDATION_SAMPLES
+        def cohort(items):
+            vals=[ret for _,_,ret in items]
+            return {'signals':len(vals),'positive_rate_pct':round(100*sum(v>0 for v in vals)/len(vals),1) if vals else None,'target1_rate_pct':round(100*sum(v>=1 for v in vals)/len(vals),1) if vals else None,'target2_rate_pct':round(100*sum(v>=2 for v in vals)/len(vals),1) if vals else None,'stop_rate_pct':round(100*sum(v<=-1 for v in vals)/len(vals),1) if vals else None,'avg_return_pct':round(sum(vals)/len(vals),3) if vals else None}
+        predictive=[x for x in evaluated if x[0].get('is_predictive_signal') or x[0].get('stage') in {'pre_breakout','early_breakout'}]
+        fallback=[x for x in evaluated if x not in predictive]
+        shadow_eligible=[x for x in evaluated if (x[0].get('shadow_profile') or {}).get('research_eligible')]
+        shadow_other=[x for x in evaluated if x not in shadow_eligible]
         recent=[]
         for r,m,ret in reversed(evaluated[-50:]):recent.append({'date':r.get('trade_date'),'symbol':r.get('ticker'),'checkpoint':r.get('checkpoint'),'score':r.get('score'),'close_return_pct':ret,'horizon_minutes':m,'scan_id':r.get('scan_id'),'criteria':r.get('criteria'),'day_return_pct':_number(r.get('ret_day_pct')),'week_return_pct':_number(r.get('ret_week_pct')),'month_return_pct':_number(r.get('ret_month_pct')),'minutes_to_peak':_number(r.get('minutes_to_peak')),'minutes_to_trough':_number(r.get('minutes_to_trough'))})
         stock_performance=[]
@@ -142,14 +251,15 @@ def install_scheduled_learning(app, scanner_engine, learning_store, strategy_ver
             stock_performance.append(item)
         stock_performance.sort(key=lambda x:(x['signals'],x['day']['success_pct'] if x['day']['success_pct'] is not None else -1),reverse=True)
         missed=sum(sum(bool(r.get(f'missed{m}m')) for m in HORIZONS) for r in rows)
-        return {'has_data':bool(rows),'source':'scheduled_point_in_time_forward_validation','storage':learning_store.status(),'strategy_version':strategy_version,'signals':len(rows),'evaluated':n,'pending':len(rows)-n,'missed_measurement_windows':missed,'success_rate_pct':round(100*sum(v>0 for _,_,v in evaluated)/n,1) if n else None,'expectancy_r':round(sum(v for _,_,v in evaluated)/n,3) if n else None,'universe_size':len({r.get('ticker') for r in rows}),'feature_learning':features,'recent_signals':recent,'stock_performance':stock_performance,'horizons_minutes':list(HORIZONS),'periods':PERIOD_LABELS,'validation':{'ready':ready,'minimum_samples':MIN_VALIDATION_SAMPLES,'chronological_point_in_time':True,'measurement_grace_seconds':MEASUREMENT_GRACE_SECONDS,'weights_changed':False,'legacy_records_excluded':len(all_rows)-len(rows)},'definitions':{'score':'התאמה לשיטה, לא הסתברות הצלחה','success_rate':'תשואה חיובית באופק הנמדד','timing':'זמן מהאות עד לשיא ולשפל שנצפו בדגימות השוק'}}
+        return {'has_data':bool(rows),'source':'scheduled_point_in_time_forward_validation','storage':learning_store.status(),'strategy_version':strategy_version,'signals':len(rows),'evaluated':n,'pending':len(rows)-n,'missed_measurement_windows':missed,'success_rate_pct':round(100*sum(v>0 for _,_,v in evaluated)/n,1) if n else None,'target1_rate_pct':round(100*sum(v>=1 for _,_,v in evaluated)/n,1) if n else None,'target2_rate_pct':round(100*sum(v>=2 for _,_,v in evaluated)/n,1) if n else None,'expectancy_r':round(sum(v for _,_,v in evaluated)/n,3) if n else None,'cohorts':{'predictive':cohort(predictive),'watch_fallback':cohort(fallback),'shadow_entry_eligible':cohort(shadow_eligible),'shadow_other':cohort(shadow_other)},'shadow_research':{'version':'shadow-opportunity-entry-v1','production_effect':False,'hypothesis':'Separate unusual-volume opportunity from entry-extension risk before changing production weights.'},'universe_size':len({r.get('ticker') for r in rows}),'feature_learning':features,'recent_signals':recent,'stock_performance':stock_performance,'horizons_minutes':list(HORIZONS),'periods':PERIOD_LABELS,'checkpoint_health':{'captured':state.get('last_capture'),'missed':state.get('missed_checkpoints'),'grace_minutes':CHECKPOINT_GRACE_MINUTES},'validation':{'ready':ready,'minimum_samples':MIN_VALIDATION_SAMPLES,'chronological_point_in_time':True,'measurement_grace_seconds':MEASUREMENT_GRACE_SECONDS,'weights_changed':False,'production_weights_unchanged':True,'legacy_records_excluded':len(all_rows)-len(rows)},'definitions':{'score':'התאמה לשיטה, לא הסתברות הצלחה','success_rate':'תשואה חיובית באופק הנמדד','target1':'עלייה של 1% לפחות','target2':'עלייה של 2% לפחות','day':'מחיר סגירה רשמי של יום המסחר','timing':'זמן מהאות עד לשיא ולשפל שנצפו במהלך חלון המסחר'}}
 
     async def loop():
         while True:
             try:
                 ny=datetime.now(timezone.utc).astimezone(NY)
                 if ny.weekday()<5:
-                    label=CHECKPOINTS.get((ny.hour,ny.minute))
+                    captured=refresh_checkpoint_state(ny)
+                    label=_checkpoint_due(ny,captured)
                     if label:await capture(label)
                     await evaluate_due()
             except Exception as e:state['last_error']=f'{type(e).__name__}: {e}'
