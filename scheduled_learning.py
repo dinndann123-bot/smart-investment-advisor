@@ -11,7 +11,14 @@ NY=ZoneInfo('America/New_York')
 
 # Research checkpoints, deliberately separated so we can compare what the
 # strategy knew before the open with a completed 09:30-09:45 opening window.
-CHECKPOINTS={(8,0):'08:00_pre_market',(9,25):'09:25_pre_open',(9,45):'09:45_post_open'}
+CHECKPOINTS={
+    (8,0):'08:00_pre_market',
+    (9,25):'09:25_pre_open',
+    (9,45):'09:45_post_open',
+    (10,15):'10:15_intraday_ignition',
+    (11,0):'11:00_intraday_ignition',
+    (13,30):'13:30_intraday_ignition',
+}
 CHECKPOINT_GRACE_MINUTES=3
 HORIZONS=(1,3,5,10,15)
 PERIODS={'day':24*60*60,'week':7*24*60*60,'month':30*24*60*60}
@@ -57,6 +64,7 @@ def _shadow_profile(row):
     """
     rv=_number(row.get('rvol'));burst=_number(row.get('minute_volume_burst'))
     volume=_number(row.get('day_volume'));baseline=_number(row.get('historical_baseline_volume'))
+    dollar_volume=_number(row.get('dollar_volume'));spread_bps=_number(row.get('spread_bps'));price=_number(row.get('price'))
     used=_number(row.get('intraday_move_used_pct'));position=_number(row.get('current_range_position'))
     gap=_number(row.get('snapshot_gap_pct') if row.get('snapshot_gap_pct') is not None else row.get('premarket_gap_pct'))
     change=_number(row.get('change_pct'))
@@ -64,6 +72,7 @@ def _shadow_profile(row):
         'reliable_rvol':bool(row.get('rvol_reliable') and rv is not None and rv>=1.5),
         'volume_acceleration':bool(burst is not None and burst>=1.5),
         'liquid_baseline':bool(volume is not None and baseline is not None and volume>=1000 and baseline>=1000),
+        'liquid_dollar_volume':bool(dollar_volume is not None and dollar_volume>=1_000_000),
     }
     risk_flags={
         'move_exhausted':bool(used is not None and used>=92),
@@ -71,6 +80,8 @@ def _shadow_profile(row):
         'gap_extreme':bool(gap is not None and abs(gap)>8),
         'momentum_extreme':bool(change is not None and (change<-3 or change>8)),
         'unreliable_volume':not bool(row.get('rvol_reliable')),
+        'wide_or_unknown_spread':spread_bps is None or spread_bps>75,
+        'sub_dollar_price':price is None or price<1,
     }
     opportunity_score=round(100*sum(opportunity_checks.values())/len(opportunity_checks))
     entry_risk_score=round(100*sum(risk_flags.values())/len(risk_flags))
@@ -79,11 +90,11 @@ def _shadow_profile(row):
     # v1 averaged those hazards and could therefore label a +50%/+100% move as
     # research-eligible. v2 preserves the observation and explicitly vetoes entry.
     entry_veto_reasons=[key for key,value in risk_flags.items() if value]
-    opportunity_detected=opportunity_score>=67
+    opportunity_detected=all(opportunity_checks.values())
     entry_window_ok=not entry_veto_reasons
     stage_confirmed=row.get('breakout_stage') in {'pre_breakout','early_breakout'}
     return {
-        'version':'shadow-opportunity-entry-v2',
+        'version':'shadow-opportunity-entry-v3',
         'opportunity_score':opportunity_score,
         'entry_risk_score':entry_risk_score,
         'opportunity_checks':opportunity_checks,
@@ -175,7 +186,7 @@ def install_scheduled_learning(app, scanner_engine, learning_store, strategy_ver
         scan_id=(payload or {}).get('scan_id') or key
         for rank,row in enumerate(rows[:10],1):
             criteria=_criteria(row)
-            rec={'record_type':'scheduled_checkpoint','checkpoint':label,'trade_date':ny.date().isoformat(),'signal_time':now.isoformat(),'epoch':now.timestamp(),'scan_id':f'{key}:{scan_id}','strategy_version':strategy_version,'engine_strategy_version':(payload or {}).get('engine_strategy_version') or (payload or {}).get('strategy_version'),'ticker':row.get('ticker'),'rank':rank,'signal_price':row.get('price'),'score':row.get('score'),'stage':row.get('breakout_stage'),'quality_tier':row.get('quality_tier'),'is_predictive_signal':bool(row.get('is_predictive_signal')),'shadow_profile':_shadow_profile(row),'change_pct':row.get('change_pct'),'gap_pct':row.get('snapshot_gap_pct',row.get('premarket_gap_pct')),'rvol':row.get('rvol'),'premarket_volume':row.get('premarket_volume'),'premarket_high':row.get('premarket_high'),'premarket_low':row.get('premarket_low'),'premarket_vwap':row.get('premarket_vwap'),'distance_from_pm_high_pct':row.get('distance_from_pm_high_pct'),'distance_from_pm_vwap_pct':row.get('distance_from_pm_vwap_pct'),'minute_volume_burst':row.get('minute_volume_burst'),'move_used_pct':row.get('intraday_move_used_pct'),'range_position':row.get('current_range_position'),'gate_metrics':row.get('gate_metrics'),'criteria':criteria,'market_timestamp':row.get('market_timestamp'),'data_feed':row.get('data_feed'),'market_session':row.get('market_session') or (payload or {}).get('session'),'observed_peak_price':row.get('price'),'observed_trough_price':row.get('price'),'minutes_to_peak':0,'minutes_to_trough':0,'peak_observed_at':now.isoformat(),'trough_observed_at':now.isoformat(),'capture_lateness_seconds':round(max(0,(now-datetime.combine(ny.date(),time(*next(k for k,v in CHECKPOINTS.items() if v==label)),NY).astimezone(timezone.utc)).total_seconds()),1)}
+            rec={'record_type':'scheduled_checkpoint','checkpoint':label,'research_lane':'intraday_ignition' if 'intraday_ignition' in label else 'opening','trade_date':ny.date().isoformat(),'signal_time':now.isoformat(),'epoch':now.timestamp(),'scan_id':f'{key}:{scan_id}','strategy_version':strategy_version,'engine_strategy_version':(payload or {}).get('engine_strategy_version') or (payload or {}).get('strategy_version'),'ticker':row.get('ticker'),'rank':rank,'signal_price':row.get('price'),'score':row.get('score'),'stage':row.get('breakout_stage'),'quality_tier':row.get('quality_tier'),'is_predictive_signal':bool(row.get('is_predictive_signal')),'shadow_profile':_shadow_profile(row),'change_pct':row.get('change_pct'),'gap_pct':row.get('snapshot_gap_pct',row.get('premarket_gap_pct')),'rvol':row.get('rvol'),'dollar_volume':row.get('dollar_volume'),'spread_bps':row.get('spread_bps'),'premarket_volume':row.get('premarket_volume'),'premarket_high':row.get('premarket_high'),'premarket_low':row.get('premarket_low'),'premarket_vwap':row.get('premarket_vwap'),'distance_from_pm_high_pct':row.get('distance_from_pm_high_pct'),'distance_from_pm_vwap_pct':row.get('distance_from_pm_vwap_pct'),'minute_volume_burst':row.get('minute_volume_burst'),'move_used_pct':row.get('intraday_move_used_pct'),'range_position':row.get('current_range_position'),'gate_metrics':row.get('gate_metrics'),'criteria':criteria,'market_timestamp':row.get('market_timestamp'),'data_feed':row.get('data_feed'),'market_session':row.get('market_session') or (payload or {}).get('session'),'observed_peak_price':row.get('price'),'observed_trough_price':row.get('price'),'minutes_to_peak':0,'minutes_to_trough':0,'peak_observed_at':now.isoformat(),'trough_observed_at':now.isoformat(),'capture_lateness_seconds':round(max(0,(now-datetime.combine(ny.date(),time(*next(k for k,v in CHECKPOINTS.items() if v==label)),NY).astimezone(timezone.utc)).total_seconds()),1)}
             learning_store.upsert(rec)
         state['last_capture'][label]=ny.date().isoformat();state['last_error']=None
 
@@ -257,6 +268,17 @@ def install_scheduled_learning(app, scanner_engine, learning_store, strategy_ver
         fallback=[x for x in evaluated if x not in predictive]
         shadow_eligible=[x for x in evaluated if (x[0].get('shadow_profile') or {}).get('research_eligible')]
         shadow_other=[x for x in evaluated if x not in shadow_eligible]
+        shadow_v3=[x for x in evaluated if (x[0].get('shadow_profile') or {}).get('version')=='shadow-opportunity-entry-v3']
+        # Repeated scans of one ticker on one trading day are correlated.  The
+        # precision target therefore uses only its first eligible observation.
+        independent=[];seen_units=set()
+        for x in sorted(shadow_v3,key=lambda z:float(z[0].get('epoch') or 0)):
+            if not (x[0].get('shadow_profile') or {}).get('research_eligible'):continue
+            unit=(x[0].get('trade_date'),x[0].get('ticker'))
+            if unit in seen_units:continue
+            seen_units.add(unit);independent.append(x)
+        opening_v3=[x for x in shadow_v3 if x[0].get('research_lane')!='intraday_ignition']
+        ignition_v3=[x for x in shadow_v3 if x[0].get('research_lane')=='intraday_ignition']
         recent=[]
         for r,m,ret in reversed(evaluated[-50:]):recent.append({'date':r.get('trade_date'),'symbol':r.get('ticker'),'checkpoint':r.get('checkpoint'),'score':r.get('score'),'close_return_pct':ret,'horizon_minutes':m,'scan_id':r.get('scan_id'),'criteria':r.get('criteria'),'day_return_pct':_number(r.get('ret_day_pct')),'week_return_pct':_number(r.get('ret_week_pct')),'month_return_pct':_number(r.get('ret_month_pct')),'minutes_to_peak':_number(r.get('minutes_to_peak')),'minutes_to_trough':_number(r.get('minutes_to_trough'))})
         stock_performance=[]
@@ -271,7 +293,7 @@ def install_scheduled_learning(app, scanner_engine, learning_store, strategy_ver
             stock_performance.append(item)
         stock_performance.sort(key=lambda x:(x['signals'],x['day']['success_pct'] if x['day']['success_pct'] is not None else -1),reverse=True)
         missed=sum(sum(bool(r.get(f'missed{m}m')) for m in HORIZONS) for r in rows)
-        return {'has_data':bool(rows),'source':'scheduled_point_in_time_forward_validation','storage':learning_store.status(),'strategy_version':strategy_version,'signals':len(rows),'evaluated':n,'pending':len(rows)-n,'missed_measurement_windows':missed,'success_rate_pct':round(100*sum(v>0 for _,_,v in evaluated)/n,1) if n else None,'target1_rate_pct':round(100*sum(v>=1 for _,_,v in evaluated)/n,1) if n else None,'target2_rate_pct':round(100*sum(v>=2 for _,_,v in evaluated)/n,1) if n else None,'expectancy_r':round(sum(v for _,_,v in evaluated)/n,3) if n else None,'cohorts':{'predictive':cohort(predictive),'watch_fallback':cohort(fallback),'shadow_entry_eligible':cohort(shadow_eligible),'shadow_other':cohort(shadow_other)},'shadow_research':{'version':'shadow-opportunity-entry-v2','production_effect':False,'hypothesis':'Separate unusual-volume opportunity from entry-extension risk; extreme conditions remain observable but explicitly veto entry.'},'universe_size':len({r.get('ticker') for r in rows}),'feature_learning':features,'recent_signals':recent,'stock_performance':stock_performance,'horizons_minutes':list(HORIZONS),'periods':PERIOD_LABELS,'checkpoint_health':{'captured':state.get('last_capture'),'missed':state.get('missed_checkpoints'),'grace_minutes':CHECKPOINT_GRACE_MINUTES},'validation':{'ready':ready,'minimum_samples':MIN_VALIDATION_SAMPLES,'chronological_point_in_time':True,'measurement_grace_seconds':MEASUREMENT_GRACE_SECONDS,'weights_changed':False,'production_weights_unchanged':True,'legacy_records_excluded':len(all_rows)-len(rows)},'definitions':{'score':'התאמה לשיטה, לא הסתברות הצלחה','success_rate':'תשואה חיובית באופק הנמדד','target1':'עלייה של 1% לפחות','target2':'עלייה של 2% לפחות','day':'מחיר סגירה רשמי של יום המסחר','timing':'זמן מהאות עד לשיא ולשפל שנצפו במהלך חלון המסחר'}}
+        return {'has_data':bool(rows),'source':'scheduled_point_in_time_forward_validation','storage':learning_store.status(),'strategy_version':strategy_version,'signals':len(rows),'evaluated':n,'pending':len(rows)-n,'missed_measurement_windows':missed,'success_rate_pct':round(100*sum(v>0 for _,_,v in evaluated)/n,1) if n else None,'target1_rate_pct':round(100*sum(v>=1 for _,_,v in evaluated)/n,1) if n else None,'target2_rate_pct':round(100*sum(v>=2 for _,_,v in evaluated)/n,1) if n else None,'expectancy_r':round(sum(v for _,_,v in evaluated)/n,3) if n else None,'cohorts':{'predictive':cohort(predictive),'watch_fallback':cohort(fallback),'shadow_entry_eligible':cohort(shadow_eligible),'shadow_other':cohort(shadow_other)},'precision_research':{'target_positive_rate_pct':70,'measurement_horizon_minutes':15,'minimum_independent_samples':MIN_VALIDATION_SAMPLES,'independent_entry_signals':cohort(independent),'opening_lane':cohort(opening_v3),'intraday_ignition_lane':cohort(ignition_v3),'independence_rule':'first eligible signal per ticker per trade date','ready':len(independent)>=MIN_VALIDATION_SAMPLES},'shadow_research':{'version':'shadow-opportunity-entry-v3','production_effect':False,'hypothesis':'Require reliable acceleration, tradable dollar liquidity and acceptable spread; keep extreme conditions observable but veto entry.'},'universe_size':len({r.get('ticker') for r in rows}),'feature_learning':features,'recent_signals':recent,'stock_performance':stock_performance,'horizons_minutes':list(HORIZONS),'periods':PERIOD_LABELS,'checkpoint_health':{'captured':state.get('last_capture'),'missed':state.get('missed_checkpoints'),'grace_minutes':CHECKPOINT_GRACE_MINUTES},'validation':{'ready':ready,'minimum_samples':MIN_VALIDATION_SAMPLES,'chronological_point_in_time':True,'measurement_grace_seconds':MEASUREMENT_GRACE_SECONDS,'weights_changed':False,'production_weights_unchanged':True,'legacy_records_excluded':len(all_rows)-len(rows)},'definitions':{'score':'התאמה לשיטה, לא הסתברות הצלחה','success_rate':'תשואה חיובית באופק הנמדד','target1':'עלייה של 1% לפחות','target2':'עלייה של 2% לפחות','day':'מחיר סגירה רשמי של יום המסחר','timing':'זמן מהאות עד לשיא ולשפל שנצפו במהלך חלון המסחר'}}
 
     async def loop():
         while True:
