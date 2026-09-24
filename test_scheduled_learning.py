@@ -22,6 +22,10 @@ class ScheduledLearningTests(unittest.TestCase):
         now=datetime(2026,9,24,9,26,tzinfo=NY)
         self.assertIsNone(_checkpoint_due(now,{'09:25_pre_open'}))
 
+    def test_post_open_checkpoint_uses_completed_0945_window(self):
+        now=datetime(2026,9,24,9,46,tzinfo=NY)
+        self.assertEqual(_checkpoint_due(now,set()),'09:45_post_open')
+
     def test_day_ends_at_new_york_market_close(self):
         self.assertEqual(
             _session_close_utc('2026-09-23'),
@@ -34,11 +38,26 @@ class ScheduledLearningTests(unittest.TestCase):
             'day_volume':100000,'historical_baseline_volume':20000,
             'intraday_move_used_pct':75,'current_range_position':.72,
             'snapshot_gap_pct':2,'change_pct':3,
+            'breakout_stage':'early_breakout',
         })
+        self.assertEqual(profile['version'],'shadow-opportunity-entry-v2')
         self.assertEqual(profile['opportunity_score'],100)
         self.assertEqual(profile['entry_risk_score'],0)
         self.assertTrue(profile['research_eligible'])
         self.assertFalse(profile['production_effect'])
+
+    def test_shadow_extreme_move_is_observed_but_entry_is_vetoed(self):
+        profile=_shadow_profile({
+            'rvol':20,'rvol_reliable':True,'minute_volume_burst':12,
+            'day_volume':1000000,'historical_baseline_volume':10000,
+            'intraday_move_used_pct':97,'current_range_position':.99,
+            'snapshot_gap_pct':30,'change_pct':55,
+            'breakout_stage':'already_extended',
+        })
+        self.assertTrue(profile['opportunity_detected'])
+        self.assertFalse(profile['entry_window_ok'])
+        self.assertFalse(profile['research_eligible'])
+        self.assertIn('momentum_extreme',profile['entry_veto_reasons'])
 
 
 if __name__=='__main__':
