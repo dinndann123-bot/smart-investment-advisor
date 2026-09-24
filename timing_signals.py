@@ -73,6 +73,28 @@ def annotate_and_record(rows, learning_store, scan_id, observed_at=None):
     return recorded
 
 
+def monitor_active_positions(rows, learning_store, scan_id, observed_at=None):
+    """Keep target/stop monitoring alive after a ticker leaves the displayed Top-10."""
+    now=observed_at or datetime.now(timezone.utc);day=now.astimezone(NY).date().isoformat()
+    history=learning_store.load(3000)
+    today=[x for x in history if x.get('record_type')=='timing_event' and x.get('trade_date')==day and x.get('version')==VERSION]
+    entries={x.get('ticker'):x for x in today if x.get('event_type')=='entry'}
+    closed={x.get('ticker') for x in today if x.get('event_type')=='exit'}
+    market={str(x.get('ticker') or '').upper():x for x in rows}
+    recorded=[]
+    for symbol,entry in entries.items():
+        if symbol in closed or symbol not in market:continue
+        price=_number(market[symbol].get('price'));entry_price=_number(entry.get('price'))
+        if price is None or not entry_price:continue
+        ret=(price/entry_price-1)*100;reason=None
+        if ret>=2:reason='יעד רווח 2% הושג'
+        elif ret<=-1:reason='עצירת הפסד 1% הופעלה'
+        if not reason:continue
+        event={'record_type':'timing_event','event_type':'exit','trade_date':day,'signal_time':now.isoformat(),'epoch':now.timestamp(),'scan_id':f'timing:{day}:{symbol}:exit','ticker':symbol,'rank':entry.get('rank'),'price':price,'entry_price':entry_price,'return_pct':round(ret,3),'reason':reason,'version':VERSION,'production_effect':False,'source_scan_id':scan_id,'monitored_outside_top10':True}
+        learning_store.upsert(event);recorded.append(event)
+    return recorded
+
+
 def install_timing_routes(app, learning_store):
     @app.get('/api/learning/timing-events')
     async def timing_events(limit:int=200):
