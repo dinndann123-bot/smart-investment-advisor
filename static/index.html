@@ -240,6 +240,19 @@ button:focus-visible,.btn:focus-visible,input:focus-visible,select:focus-visible
   </div>
 </div>
 
+<div class="card" id="lastSessionPerformancePanel" style="margin-top:16px">
+  <div class="section-head"><div><h2 style="margin:0">📊 ביצועי השיטה – יום המסחר האחרון</h2><p>10 הבחירות שנשמרו בזמן אמת מול התוצאה וזמן ההגעה לשיא. ללא השלמה בדיעבד.</p></div><button class="btn btn-secondary" onclick="loadLastSessionPerformance()">רענן</button></div>
+  <div class="cards">
+    <div class="card metric"><b id="lastSessionHit">—</b><span>אחוז הצלחה</span></div>
+    <div class="card metric"><b id="lastSessionCount">—</b><span>בחירות שנמדדו</span></div>
+    <div class="card metric"><b id="lastSessionAvg">—</b><span>תשואה ממוצעת לסגירה</span></div>
+    <div class="card metric"><b id="lastSessionPeakTime">—</b><span>זמן חציוני לשיא</span></div>
+  </div>
+  <div class="chart-wrap" style="margin-top:12px"><canvas id="lastSessionChart" height="300" aria-label="ביצועי עשר הבחירות האחרונות"></canvas></div>
+  <div class="table-wrap" style="margin-top:12px"><table class="compact-table"><thead><tr><th>#</th><th>מניה</th><th>ציון</th><th>תוצאה יומית</th><th>שיא מהאות</th><th>זמן לשיא</th></tr></thead><tbody id="lastSessionRows"></tbody></table></div>
+  <div id="lastSessionNote" class="note" style="margin-top:8px">הנתונים נטענים מיומן התחזיות שנשמר בזמן אמת.</div>
+</div>
+
 <div class="card" id="systemHealthPanel" style="margin-top:16px">
   <div class="section-head">
     <div>
@@ -807,7 +820,7 @@ function go(page){
  document.querySelectorAll(".page").forEach(x=>x.classList.remove("active"));
  document.querySelectorAll(".nav button").forEach(x=>x.classList.toggle("active",x.dataset.page===page));
  document.getElementById("page-"+page)?.classList.add("active");
- if(page==="home")loadLearningSummary(); if(page==="portfolio")renderPortfolio(); if(page==="day")refreshDayScanner(false); if(page==="lab")loadBacktestRuns(); if(page==="premarket")loadPremarket();
+ if(page==="home"){loadLearningSummary();loadLastSessionPerformance();} if(page==="portfolio")renderPortfolio(); if(page==="day")refreshDayScanner(false); if(page==="lab")loadBacktestRuns(); if(page==="premarket")loadPremarket();
  window.scrollTo({top:150,behavior:"smooth"});
 }
 document.querySelectorAll(".nav button").forEach(b=>b.onclick=()=>go(b.dataset.page));
@@ -886,6 +899,41 @@ async function loadLivePerformance(force=false){
   }catch(e){
     const note=document.getElementById("livePerformanceNote");if(note)note.textContent="לא ניתן לטעון כרגע את מעקב האותות החיים.";
   }
+}
+
+function drawLastSessionChart(rows){
+  const cv=document.getElementById("lastSessionChart");if(!cv)return;
+  const ctx=cv.getContext("2d"),dpr=window.devicePixelRatio||1,w=Math.max(320,cv.clientWidth||700),h=300;
+  cv.width=w*dpr;cv.height=h*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);
+  const pad={l:42,r:18,t:24,b:46},iw=w-pad.l-pad.r,ih=h-pad.t-pad.b;
+  const vals=rows.map(x=>Number(x.day_return_pct)).filter(Number.isFinite);
+  if(!vals.length){ctx.fillStyle="#6f7b91";ctx.font="14px Arial";ctx.textAlign="center";ctx.fillText("עדיין אין תוצאות יום מלאות להצגה",w/2,h/2);return}
+  const max=Math.max(2,...vals.map(Math.abs)),zero=pad.t+ih/2;
+  ctx.strokeStyle="#dfe5ef";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(pad.l,zero);ctx.lineTo(w-pad.r,zero);ctx.stroke();
+  const gap=iw/rows.length,bw=Math.max(10,gap*.58);
+  rows.forEach((x,i)=>{const v=Number(x.day_return_pct),cx=pad.l+gap*(i+.5);if(Number.isFinite(v)){const bh=Math.min(ih/2-4,Math.abs(v)/max*(ih/2-8));ctx.fillStyle=v>=0?"#0f9d6e":"#d84d4d";ctx.fillRect(cx-bw/2,v>=0?zero-bh:zero,bw,bh);ctx.fillStyle="#55627a";ctx.font="11px Arial";ctx.textAlign="center";ctx.fillText((v>=0?"+":"")+v.toFixed(1)+"%",cx,v>=0?zero-bh-6:zero+bh+14)}ctx.fillStyle="#34425c";ctx.font="bold 11px Arial";ctx.textAlign="center";ctx.fillText(x.symbol||"—",cx,h-18)});
+}
+async function loadLastSessionPerformance(){
+  const note=document.getElementById("lastSessionNote");if(!note)return;
+  try{
+    const r=await fetch("/api/learning/summary",{cache:"no-store"}),j=await r.json();if(!r.ok)throw new Error("summary");
+    const all=(j.recent_signals||[]).filter(x=>x.date);
+    const dates=[...new Set(all.map(x=>x.date))].sort().reverse();
+    const last=dates.find(d=>all.some(x=>x.date===d&&Number.isFinite(Number(x.day_return_pct))))||dates[0];
+    let rows=all.filter(x=>x.date===last);
+    const seen=new Set();rows=rows.filter(x=>{const k=x.symbol;if(!k||seen.has(k))return false;seen.add(k);return true}).slice(0,10);
+    const measured=rows.filter(x=>Number.isFinite(Number(x.day_return_pct))),wins=measured.filter(x=>Number(x.day_return_pct)>0);
+    const avg=measured.length?measured.reduce((a,x)=>a+Number(x.day_return_pct),0)/measured.length:null;
+    const times=rows.map(x=>Number(x.minutes_to_peak)).filter(Number.isFinite).sort((a,b)=>a-b);
+    const med=times.length?(times.length%2?times[(times.length-1)/2]:(times[times.length/2-1]+times[times.length/2])/2):null;
+    document.getElementById("lastSessionHit").textContent=measured.length?(100*wins.length/measured.length).toFixed(1)+"%":"—";
+    document.getElementById("lastSessionCount").textContent=measured.length+"/10";
+    document.getElementById("lastSessionAvg").textContent=avg==null?"—":(avg>=0?"+":"")+avg.toFixed(2)+"%";
+    document.getElementById("lastSessionPeakTime").textContent=med==null?"—":Math.round(med)+" דק׳";
+    document.getElementById("lastSessionRows").innerHTML=rows.map((x,i)=>{const d=Number(x.day_return_pct),peak=Number(x.close_return_pct);return `<tr><td>${i+1}</td><td><b>${x.symbol||"—"}</b></td><td>${Number.isFinite(Number(x.score))?Number(x.score).toFixed(0)+"%":"—"}</td><td class="${d>=0?'positive':'negative'}">${Number.isFinite(d)?(d>=0?'+':'')+d.toFixed(2)+'%':'ממתין'}</td><td>${Number.isFinite(peak)?(peak>=0?'+':'')+peak.toFixed(2)+'%':'—'}</td><td>${Number.isFinite(Number(x.minutes_to_peak))?Math.round(Number(x.minutes_to_peak))+' דק׳':'—'}</td></tr>`}).join("")||'<tr><td colspan="6" class="empty">עדיין אין יום מסחר שמור עם תוצאות.</td></tr>';
+    note.textContent=last?`יום מסחר: ${last} · מקור: snapshot שנשמר בזמן אמת. הצלחה = תשואה חיובית בסגירה; ימים ללא מדידה אינם נספרים.`:"עדיין אין נתונים שמורים.";
+    drawLastSessionChart(rows);
+  }catch(e){note.textContent="לא ניתן לטעון כרגע את סיכום יום המסחר האחרון."}
 }
 
 async function refreshHealth(){
