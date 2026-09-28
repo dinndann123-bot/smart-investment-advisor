@@ -1065,7 +1065,7 @@ function renderHome(){
  document.getElementById("homePortfolioCount").textContent=holdings.length;
  document.getElementById("homeBestScore").textContent=Math.max(...longData.map(x=>x.score))+"/100";
  const renderTop=(arr,target,page)=>document.getElementById(target).innerHTML=arr.slice(0,5).map((s,i)=>`
-  <div class="top-card" onclick="openDetail('${page}','${s.ticker}')"><div class="rank">${i+1}</div>${logoHtml(s)}
+  <div class="top-card" data-ticker="${s.ticker}" onclick="openDetail('${page}','${s.ticker}')"><div class="rank">${i+1}</div>${logoHtml(s)}
   <div class="grow"><b>${s.ticker} · ${s.name}</b><div class="small">${s.summary||s.catalyst||""}</div></div>
   <div><div class="score ${scoreClass(s.score)}">${s.score}/100</div><div class="small">${s.price?money(s.price):""}</div></div></div>`).join("");
  renderTop(longData,"homeLong","long");renderTop(dayData,"homeDay","day");
@@ -1075,6 +1075,26 @@ function formatVolume(v){
   if(typeof v==="string")return v;
   if(!Number.isFinite(+v))return "—";
   const n=+v;if(n>=1e9)return (n/1e9).toFixed(1)+"B";if(n>=1e6)return (n/1e6).toFixed(1)+"M";if(n>=1e3)return (n/1e3).toFixed(0)+"K";return String(n);
+}
+function applyCanonicalDaySnapshot(results,payload){
+ const snapshot=(Array.isArray(results)?results:[]).slice(0,10).map((x,i)=>({
+   ...x,scanner_rank:i+1,canonical_scan_id:payload?.scan_id||null,
+   name:x.name||x.ticker,
+   summary:`RVOL ${Number.isFinite(+x.rvol)?(+x.rvol).toFixed(2)+"×":"—"} · ${x.news_count||0} חדשות`
+ }));
+ const symbols=snapshot.map(x=>String(x.ticker||"").trim().toUpperCase());
+ if(snapshot.length!==10||symbols.some(x=>!x)||new Set(symbols).size!==10)throw new Error("Scanner snapshot integrity failed");
+ dayData=snapshot;
+ renderTables();renderHome();loadLivePerformance(false);
+ const scanId=payload?.scan_id||"";
+ document.getElementById("dayTable")?.setAttribute("data-scan-id",scanId);
+ document.getElementById("homeDay")?.setAttribute("data-scan-id",scanId);
+ const tableSymbols=[...document.querySelectorAll("#dayTable tr[data-ticker]")].map(x=>x.dataset.ticker);
+ const homeSymbols=[...document.querySelectorAll("#homeDay [data-ticker]")].map(x=>x.dataset.ticker);
+ if(tableSymbols.join(",")!==symbols.join(",")||homeSymbols.join(",")!==symbols.slice(0,5).join(",")){
+   renderTables();renderHome();console.warn("DAY_UI_SYNC_REPAINT",scanId);
+ }
+ window.__CANONICAL_DAY_SNAPSHOT__={scan_id:scanId,symbols,generated_at:payload?.generated_at||null};
 }
 function updateScannerButton(){
  const b=document.getElementById("autoScanBtn");if(!b)return;
@@ -1091,12 +1111,7 @@ async function refreshDayScanner(manual=false){
    const j=await r.json();
    if(!r.ok)throw new Error(j.detail||"Scanner error");
    if(Array.isArray(j.results)&&j.results.length){
-     dayData=j.results.map(x=>({
-       ...x,
-       name:x.name||x.ticker,
-       summary:`RVOL ${Number.isFinite(x.rvol)?x.rvol.toFixed(2)+"×":"—"} · ${x.news_count||0} חדשות`
-     }));
-     renderTables();renderHome();loadLivePerformance(false);
+     applyCanonicalDaySnapshot(j.results,j);
    }else if(st){
      st.textContent="הסריקה הסתיימה ללא נתונים — בדוק חיבור נתונים";
      st.className="live-badge live-error";
@@ -1134,7 +1149,7 @@ function renderTables(){
  <td><span class="badge">${riskLabel(s.risk)}</span></td><td><span class="news-pill">${s.media}/100</span></td>
  <td>${s.summary}</td><td><button class="btn quick-chart" onclick="event.stopPropagation();openDetail('long','${s.ticker}')">גרף</button></td><td><button class="btn btn-secondary" onclick="event.stopPropagation();openDetail('long','${s.ticker}')">פרטים</button></td></tr>`).join("");
  document.getElementById("dayTable").innerHTML=dayData.map((s,i)=>`
- <tr class="stock-row" onclick="openDetail('day','${s.ticker}')">
+ <tr class="stock-row" data-ticker="${s.ticker}" onclick="openDetail('day','${s.ticker}')">
  <td>${i+1}</td><td><div class="company">${logoHtml(s)}<div><b>${s.ticker}</b><div class="small">${s.name||s.ticker}</div></div></div></td>
  <td>${money(s.price)}</td><td>${Number.isFinite(s.change)?`<span class="${s.change>=0?'positive':'negative'}">${s.change>=0?'+':''}${s.change.toFixed(1)}%</span>`:"—"}</td>
  <td><span class="score ${scoreClass(s.score)}">${s.score}/100</span></td><td><span class="badge">${riskLabel(s.risk)}</span></td>
