@@ -15,6 +15,8 @@ class FakeStore:
              "scan_id":"scan-1","ret15m_pct":1.25},
             {"ticker":"HAL","signal_time":now,"signal_price":33,"score":69,
              "scan_id":"scan-1"},
+            {"ticker":"AMPX","signal_time":now,"price":10,
+             "scan_id":"timing:entry","record_type":"timing_event"},
         ]
 
     def status(self):
@@ -29,7 +31,12 @@ class CanonicalLiveSignalsTests(unittest.TestCase):
         self.assertEqual(payload["storage"]["backend"],"postgresql")
         self.assertEqual(payload["today"]["signals"],2)
         self.assertEqual(payload["today"]["evaluated"],1)
+        self.assertEqual(payload["day"]["signals"],2)
+        self.assertEqual(payload["week"]["hit1_pct"],100.0)
+        self.assertEqual(payload["month"]["signals"],2)
+        self.assertEqual(len(payload["recent"]),2)
         self.assertEqual(payload["recent"][0]["status"],"target1")
+        self.assertAlmostEqual(payload["recent"][0]["last_price"],10.125)
         self.assertIsNone(payload["recent"][1]["current_return_pct"])
 
 

@@ -85,7 +85,7 @@ def install_local_scanner(app):
     token=body.get('next_page_token');pages+=1
     if not token:break
   return out
- async def recent_news(symbols,now):
+ async def recent_news(symbols,now,names=None):
   if not symbols:return {}
   start=now.replace(hour=0,minute=0,second=0,microsecond=0).astimezone(timezone.utc)
   params={'symbols':','.join(symbols),'start':start.isoformat().replace('+00:00','Z'),'limit':50,'sort':'desc','include_content':'false'}
@@ -94,13 +94,20 @@ def install_local_scanner(app):
    if r.status_code>=400:return {}
    items=(r.json() or {}).get('news') or []
   except Exception:return {}
-  out={}
+  out={};names=names or {}
+  def relevant(symbol,item):
+   headline=str(item.get('headline') or '').upper()
+   if symbol in headline:return True
+   # Alpaca can tag broad roundup articles with every mentioned ticker.  Only
+   # promote one as a catalyst when the headline actually names the company.
+   words=[w for w in re.findall(r'[A-Z0-9]+',str(names.get(symbol) or '').upper()) if len(w)>=4 and w not in {'INC','CORP','CORPORATION','CLASS','COMMON','STOCK','HOLDINGS','GROUP'}]
+   return any(w in headline for w in words[:3])
   for item in items:
    published=parse_ts(item.get('created_at') or item.get('updated_at'))
    age=max(0,(now-published).total_seconds()/60) if published else None
    for symbol in item.get('symbols') or []:
     symbol=str(symbol).upper()
-    if symbol not in symbols or symbol in out:continue
+    if symbol not in symbols or symbol in out or not relevant(symbol,item):continue
     out[symbol]={'catalyst_present':True,'catalyst_age_minutes':round(age,1) if age is not None else None,'catalyst_headline':item.get('headline'),'catalyst_source':item.get('source')}
   return out
  def enrich(r,bar_result):
@@ -173,14 +180,22 @@ def install_local_scanner(app):
   for x in fallback:
    x['candidate_type']='watch_candidate';x['quality_tier']='watch_fallback';x['is_predictive_signal']=False
   sel=predictive+fallback
-  news=await recent_news([x['ticker'] for x in sel],now)
+  news=await recent_news([x['ticker'] for x in sel],now,{x['ticker']:x.get('name') for x in sel})
   for x in sel:
    x.update(news.get(x['ticker']) or {'catalyst_present':False,'catalyst_age_minutes':None,'catalyst_headline':None,'catalyst_source':None})
    # Stable compatibility aliases consumed by the existing UI.  These do not
    # change layout; they make the already-present columns show canonical data.
    x['change']=x.get('change_pct');x['gap_pct']=x.get('snapshot_gap_pct')
    x['volume']=x.get('day_volume');x['catalyst']=x.get('catalyst_headline') or 'לא נמצא קטליזטור חדשותי עדכני'
-   x['risk']=1 if x.get('quality_tier')=='predictive' and x.get('rvol_reliable') else 3
+   # Risk must reflect liquidity/spread/price, not merely a high scanner rank.
+   price=f(x.get('price'));volume=f(x.get('day_volume'));spread=f(x.get('spread_bps'))
+   if price<2 or volume<20000 or spread>100:x['risk']=5
+   elif price<5 or volume<50000 or spread>60:x['risk']=4
+   elif x.get('quality_tier')!='predictive' or not x.get('rvol_reliable') or volume<100000:x['risk']=3
+   else:x['risk']=2
+   x['score']=min(94,max(0,int(round(f(x.get('score'))))))
+   if x.get('quality_tier')!='predictive':x['score']=min(x['score'],72)
+   x['strategy_fit_score']=x['score'];x['score_semantics']='strategy_fit_not_success_probability'
   for position,x in enumerate(sel,1):x['rank']=position
   timing_events=[]
   try:

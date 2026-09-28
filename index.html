@@ -761,7 +761,7 @@ let selected=null,lastListPage="long",detailRange="1D",portfolioSymbol=null,port
 const cache={};
 
 function logoHtml(s,big=false){
- const initials=(s.ticker||"?").slice(0,3);
+ const initials=(s.ticker||"?").slice(0,5);
  if(!s.domain)return `<div class="logo-fallback">${initials}</div>`;
  return `<img class="logo" src="https://logo.clearbit.com/${s.domain}" alt="${s.name}" onerror="this.outerHTML='<div class=&quot;logo-fallback&quot;>${initials}</div>'">`;
 }
@@ -1091,12 +1091,15 @@ async function loadLearningSummary(){
     }
 
 document.getElementById("learningSignalsTable").innerHTML=(j.recent_signals||[]).map(x=>{
-      const ok=!!x.hit1, t2=!!x.hit2;
+      const ok=!!x.hit1, t2=!!x.hit2, ret=Number(x.close_return_pct);
+      const pending=!Number.isFinite(ret), stopped=Number.isFinite(ret)&&ret<=-1;
+      const resultText=ok?'✅ יעד 1':pending?'⏳ ממתין':stopped?'❌ Stop':ret>0?'↗ חיובי, ללא יעד':'↘ ללא יעד';
+      const resultClass=ok||ret>0?'positive':pending?'':'negative';
       return `<tr>
         <td>${x.date}</td><td><b>${x.symbol}</b></td><td>${Number(x.score).toFixed(0)}/100</td>
         <td>${Number.isFinite(+x.gap_pct)?(+x.gap_pct).toFixed(1)+"%":"—"}</td>
         <td>${Number.isFinite(+x.rvol_open)?(+x.rvol_open).toFixed(2)+"×":"—"}</td>
-        <td><span class="${ok?'positive':'negative'}">${ok?'✅ הצליח':'❌ נכשל'}</span></td>
+        <td><span class="${resultClass}">${resultText}</span></td>
         <td>${ok?'✅':'—'}</td><td>${t2?'✅':'—'}</td>
         <td class="${(+x.close_return_pct)>=0?'positive':'negative'}">${Number.isFinite(+x.close_return_pct)?((+x.close_return_pct)>=0?'+':'')+(+x.close_return_pct).toFixed(2)+'%':'—'}</td>
       </tr>`;
@@ -1199,7 +1202,7 @@ function renderTables(){
  document.getElementById("longTable").innerHTML=longData.map((s,i)=>`
  <tr class="stock-row" onclick="openDetail('long','${s.ticker}')">
  <td>${i+1}</td><td><div class="company">${logoHtml(s)}<div><b>${s.ticker}</b><div class="small">${s.name}</div></div></div></td>
- <td>${s.price?money(s.price):"API"}</td><td id="chg-${s.ticker}">${s.change==null?"—":`<span class="${s.change>=0?'positive':'negative'}">${s.change>=0?'+':''}${s.change.toFixed(1)}%</span>`}</td>
+ <td>${Number.isFinite(+s.price)?money(+s.price):"טוען…"}</td><td id="chg-${s.ticker}">${s.change==null?"—":`<span class="${s.change>=0?'positive':'negative'}">${s.change>=0?'+':''}${s.change.toFixed(1)}%</span>`}</td>
  <td><span class="score ${scoreClass(s.score)}"><span class="score-dot" style="background:currentColor"></span>${s.score}/100</span></td>
  <td><span class="badge">${riskLabel(s.risk)}</span></td><td><span class="news-pill">${s.media}/100</span></td>
  <td>${s.summary}</td><td><button class="btn quick-chart" onclick="event.stopPropagation();openDetail('long','${s.ticker}')">גרף</button></td><td><button class="btn btn-secondary" onclick="event.stopPropagation();openDetail('long','${s.ticker}')">פרטים</button></td></tr>`).join("");
@@ -1951,7 +1954,7 @@ function saveOcrRows(){let n=0;document.querySelectorAll("#ocrRows tr").forEach(
 if(location.protocol==='file:'){
   document.body.innerHTML='<div style="max-width:760px;margin:80px auto;font-family:Arial;direction:rtl;padding:24px"><h1>האפליקציה נפתחה בצורה לא נכונה</h1><p>אין לפתוח את index.html ישירות. יש להפעיל את השרת ואז להיכנס דרך http://127.0.0.1:8000 כדי שהגרפים, הנתונים והעדכונים החיים יעבדו.</p></div>';
 }else{
-  initializeVisibleClocks();renderHome();renderTables();renderBacktests();renderWeekly();setחיBadge();checkBackendStatus();updateScannerButton();startAutoScanner();loadLearningSummary();refreshHealth();loadLivePerformance(false);syncMarketClock();startDataWatchdog();loadMarketIndexes();
+  initializeVisibleClocks();renderHome();renderTables();renderBacktests();renderWeekly();setחיBadge();checkBackendStatus();updateScannerButton();startAutoScanner();loadLearningSummary();refreshHealth();loadLivePerformance(false);syncMarketClock();startDataWatchdog();loadMarketIndexes();refreshAll();
   document.querySelectorAll('[data-index-symbol]').forEach(card=>card.addEventListener('click',()=>openDetail('long',card.dataset.indexSymbol)));
   setInterval(updateClockUI,1000);setInterval(syncMarketClock,60000);setInterval(refreshHealth,300000);setInterval(()=>loadLivePerformance(true),300000);setInterval(loadMarketIndexes,60000);
 }
