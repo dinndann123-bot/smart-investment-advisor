@@ -1607,7 +1607,8 @@ async function loadDetailחי(){
  let bundle=null,price=Number(selected.price),change=Number(selected.change),pts=[],news=[];
  try{
    bundle=await getBundle(selected.ticker,detailRange);
-   if(bundle.quote&&Number.isFinite(+bundle.quote.price)){price=+bundle.quote.price;change=Number.isFinite(+bundle.quote.change)?+bundle.quote.change:change;}
+   const keepScanQuote=lastListPage==="day"&&detailRange==="1D"&&Number.isFinite(+selected.price);
+   if(!keepScanQuote&&bundle.quote&&Number.isFinite(+bundle.quote.price)){price=+bundle.quote.price;change=Number.isFinite(+bundle.quote.change)?+bundle.quote.change:change;}
    pts=(bundle.bars||[]).map(x=>({d:x.d,o:+x.o,h:+x.h,l:+x.l,v:+x.v,volume:+(x.volume||0)})).filter(x=>Number.isFinite(x.v));
    news=bundle.news||[];
    if(!pts.length && detailRange==="1D"){
