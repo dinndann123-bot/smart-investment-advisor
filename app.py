@@ -92,6 +92,12 @@ except Exception as _scheduled_error:
  SCHEDULED_LEARNING={'installed':False,'error':f'{type(_scheduled_error).__name__}: {_scheduled_error}'}
  TIMING_SIGNALS={'installed':False,'error':f'{type(_scheduled_error).__name__}: {_scheduled_error}'}
 
+try:
+ from live_signals_canonical import install as _install_live_signals
+ LIVE_SIGNALS_CANONICAL=_install_live_signals(app,learning_store)
+except Exception as _live_signals_error:
+ LIVE_SIGNALS_CANONICAL={'installed':False,'error':f'{type(_live_signals_error).__name__}: {_live_signals_error}'}
+
 @app.get('/api/scanner/async-status')
 async def scanner_async_status():
     return {'installed':True,'strategy_version':ASYNC_STRATEGY_VERSION,'engine':'local-full-market-predictive-shortlist-progressive-top10','live_market_source':'Alpaca','cache_scope':'last-scanner-result-only','canonical_top10_contract':True,'canonical_ui':'index.html','ui_recovery':'complete-navigation-and-data-shell','canonical_chart_api':'/api/market/chart/{symbol}','scheduled_learning':SCHEDULED_LEARNING,'session_data_fix':SCANNER_SESSION_DATA_FIX,'local_scanner_core':True}

@@ -32,7 +32,9 @@ try:
    {'key':'liquidity','label':'נזילות','value':vol,'display':f'{int(vol):,}' if vol else '—','passed':vol>=1000 and base>=1000,'why':'מחזור ובסיס היסטורי מספיקים למדידה'},
    {'key':'momentum','label':'שינוי יומי','value':chg,'display':f'{chg:+.2f}%' if chg else '0.00%','passed':-3<=chg<=8,'why':'מומנטום מוקדם ללא רדיפה אחרי זינוק חריג'}]
   passed=sum(bool(c['passed']) for c in criteria)
-  return {'criteria':criteria,'passed':passed,'total':len(criteria),'selection_reasons':[c['label']+': '+c['why'] for c in criteria if c['passed']],'anti_chase':x.get('breakout_stage')!='already_extended','data_feed':x.get('data_feed'),'market_timestamp':x.get('market_timestamp')}
+  required={'rvol':x.get('rvol'),'volume_burst':x.get('minute_volume_burst'),'range_position':x.get('current_range_position'),'move_used':x.get('intraday_move_used_pct'),'gap':x.get('snapshot_gap_pct'),'volume':x.get('day_volume'),'baseline':x.get('historical_baseline_volume'),'change':x.get('change_pct')}
+  present=sum(v is not None for v in required.values());completeness=round(100*present/len(required))
+  return {'criteria':criteria,'passed':passed,'total':len(criteria),'data_completeness_pct':completeness,'missing_fields':[k for k,v in required.items() if v is None],'selection_reasons':[c['label']+': '+c['why'] for c in criteria if c['passed']],'anti_chase':x.get('breakout_stage')!='already_extended','data_feed':x.get('data_feed'),'market_timestamp':x.get('market_timestamp')}
  async def _future_prices(symbols):
   ss=await snaps(symbols);out={}
   for s in symbols:
@@ -69,7 +71,15 @@ try:
     raw=f(x.get('forward_rank'),f(x.get('score')))
     relative=(raw-raw_min)/spread if raw_values else 0
     rank_quality=1-(rank_i-1)/den
+    profile=_selection_profile(x)
     fit_score=round(max(55,min(94,58+22*relative+14*rank_quality)))
+    # Missing evidence may never be rewarded as if it were a passed signal.
+    # Keep the candidate visible for learning, but cap confidence explicitly.
+    completeness=profile['data_completeness_pct']
+    if completeness<75:fit_score=min(fit_score,69)
+    elif completeness<100:fit_score=min(fit_score,84)
+    if not x.get('rvol_reliable'):fit_score=min(fit_score,74)
+    if x.get('quality_tier')=='watch_fallback':fit_score=min(fit_score,72)
     x['raw_strategy_score']=round(raw,2)
     x['strategy_fit_score']=fit_score
     x['score']=fit_score
@@ -77,8 +87,10 @@ try:
     x['score_semantics']='strategy_fit_not_success_probability'
     x['success_rate']=None
     x['success_rate_status']='pending_forward_validation'
-    profile=_selection_profile(x)
     x['learning_profile']=profile
+    x['data_completeness_pct']=completeness
+    x['missing_fields']=profile['missing_fields']
+    x['score_confidence']='complete' if completeness==100 else 'limited_missing_data'
     x['selection_reasons']=profile['selection_reasons']
     x['criteria']={
      'שלב המהלך':100 if x.get('breakout_stage')=='pre_breakout' else 82,

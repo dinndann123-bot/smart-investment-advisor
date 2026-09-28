@@ -115,8 +115,23 @@ def install_local_scanner(app):
    v=sum(f(b.get('v')) for z,b in a if session_start<=z.hour*60+z.minute<=effective_cur)
    if v>0:hist.append(v)
   baseline=sum(hist[-5:])/len(hist[-5:]) if hist else 0;raw=live/baseline if baseline else 0;reliable=bool(baseline>=1000 and live>0);rvol=min(raw,25.0) if raw>0 else 0
-  highs=[f(b.get('h')) for z,b in todays if session_start<=z.hour*60+z.minute<=effective_cur];lows=[f(b.get('l')) for z,b in todays if session_start<=z.hour*60+z.minute<=effective_cur and f(b.get('l'))>0];p=f(r.get('price'));lo=min(lows) if lows else f(r.get('day_low'),p);hi=max(highs) if highs else f(r.get('day_high'),p);used=(p-lo)/(hi-lo)*100 if hi>lo else 50;rp=max(0,min(1,(p-lo)/(hi-lo))) if hi>lo else .5;latest5=f(todays[-1][1].get('v')) if todays else f(r.get('minute_volume'));elapsed=max((effective_cur-session_start)/5,1);avg_min=baseline/elapsed if baseline else 0;burst=latest5/avg_min if avg_min else 0
-  r.update({'bars_count':len(bs),'bars_error':bar_error,'today_bars_count':len(todays),'historical_days_with_volume':len(hist),'session':sess,'session_start_minute':session_start,'effective_market_minute':effective_cur,'premarket_mode':sess=='premarket','session_live_volume':round(live),'rvol_raw':round(raw,3) if raw else None,'rvol':round(rvol,3) if rvol else None,'rvol_reliable':reliable,'rvol_capped':bool(raw>25),'intraday_move_used_pct':round(used,1),'minute_volume_burst':round(burst,2) if burst else None,'historical_baseline_volume':round(baseline) if baseline else None,'current_range_position':round(rp,3),'live_structure_source':'delayed-snapshot+historical-sip-bars'});return r
+  window=[(z,b) for z,b in todays if session_start<=z.hour*60+z.minute<=effective_cur]
+  highs=[f(b.get('h')) for z,b in window if f(b.get('h'))>0];lows=[f(b.get('l')) for z,b in window if f(b.get('l'))>0]
+  # One canonical delayed-SIP clock drives every premarket field.  The old
+  # code mixed the snapshot trade with an older chart bar, so the list and
+  # detail screen could legitimately disagree even though both were Alpaca.
+  if sess=='premarket' and window:
+   last_bar=window[-1][1];p=f(last_bar.get('c'));prev=f(r.get('prev_close'))
+   if p>0:r['price']=round(p,4)
+   if prev>0 and p>0:
+    r['change_pct']=round((p/prev-1)*100,2);r['snapshot_gap_pct']=r['change_pct']
+   r['market_timestamp']=last_bar.get('t') or r.get('market_timestamp')
+   r['day_volume']=round(live);r['dollar_volume']=round(p*live,2)
+  else:p=f(r.get('price'))
+  lo=min(lows) if lows else f(r.get('day_low'),p);hi=max(highs) if highs else f(r.get('day_high'),p);used=(p-lo)/(hi-lo)*100 if hi>lo else 50;rp=max(0,min(1,(p-lo)/(hi-lo))) if hi>lo else .5;latest5=f(window[-1][1].get('v')) if window else f(r.get('minute_volume'));elapsed=max((effective_cur-session_start)/5,1);avg_min=baseline/elapsed if baseline else 0;burst=latest5/avg_min if avg_min else 0
+  pm_vwap=(sum(((f(b.get('h'))+f(b.get('l'))+f(b.get('c')))/3)*f(b.get('v')) for _,b in window)/live) if live>0 else None
+  freshness='current_delayed_premarket' if sess=='premarket' and window else ('no_premarket_trades' if sess=='premarket' else 'current_session')
+  r.update({'bars_count':len(bs),'bars_error':bar_error,'today_bars_count':len(todays),'historical_days_with_volume':len(hist),'session':sess,'market_session':sess,'session_start_minute':session_start,'effective_market_minute':effective_cur,'premarket_mode':sess=='premarket','session_live_volume':round(live),'premarket_volume':round(live) if sess=='premarket' and window else None,'premarket_high':round(hi,4) if sess=='premarket' and window else None,'premarket_low':round(lo,4) if sess=='premarket' and window else None,'premarket_price':round(p,4) if sess=='premarket' and window else None,'premarket_vwap':round(pm_vwap,4) if pm_vwap else None,'rvol_raw':round(raw,3) if raw else None,'rvol':round(rvol,3) if rvol else None,'rvol_reliable':reliable,'rvol_capped':bool(raw>25),'intraday_move_used_pct':round(used,1),'minute_volume_burst':round(burst,2) if burst else None,'historical_baseline_volume':round(baseline) if baseline else None,'current_range_position':round(rp,3),'data_freshness_status':freshness,'market_timestamp_current_day':bool(window),'live_structure_source':'canonical-delayed-sip-bars'});return r
  def stage(r):
   if not r.get('rvol_reliable'):return 'watch'
   ch=f(r.get('change_pct'));rv=f(r.get('rvol'));used=f(r.get('intraday_move_used_pct'),50);rp=f(r.get('current_range_position'),.5);burst=f(r.get('minute_volume_burst'));gap=f(r.get('snapshot_gap_pct'))
@@ -161,6 +176,11 @@ def install_local_scanner(app):
   news=await recent_news([x['ticker'] for x in sel],now)
   for x in sel:
    x.update(news.get(x['ticker']) or {'catalyst_present':False,'catalyst_age_minutes':None,'catalyst_headline':None,'catalyst_source':None})
+   # Stable compatibility aliases consumed by the existing UI.  These do not
+   # change layout; they make the already-present columns show canonical data.
+   x['change']=x.get('change_pct');x['gap_pct']=x.get('snapshot_gap_pct')
+   x['volume']=x.get('day_volume');x['catalyst']=x.get('catalyst_headline') or 'לא נמצא קטליזטור חדשותי עדכני'
+   x['risk']=1 if x.get('quality_tier')=='predictive' and x.get('rvol_reliable') else 3
   for position,x in enumerate(sel,1):x['rank']=position
   timing_events=[]
   try:
