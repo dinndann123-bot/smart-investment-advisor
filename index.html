@@ -1708,7 +1708,8 @@ async function loadDetailחי(){
  let bundle=null,price=Number(selected.price),change=Number(selected.change),pts=[],news=[];
  try{
    bundle=await getBundle(selected.ticker,detailRange);
-   if(bundle.quote&&Number.isFinite(+bundle.quote.price)){price=+bundle.quote.price;change=Number.isFinite(+bundle.quote.change)?+bundle.quote.change:change;}
+   const keepScanQuote=lastListPage==="day"&&detailRange==="1D"&&Number.isFinite(+selected.price);
+   if(!keepScanQuote&&bundle.quote&&Number.isFinite(+bundle.quote.price)){price=+bundle.quote.price;change=Number.isFinite(+bundle.quote.change)?+bundle.quote.change:change;}
    pts=(bundle.bars||[]).map(x=>({d:x.d,o:+x.o,h:+x.h,l:+x.l,v:+x.v,volume:+(x.volume||0)})).filter(x=>Number.isFinite(x.v));
    news=bundle.news||[];
    if(!pts.length && detailRange==="1D"){
@@ -2037,3 +2038,14 @@ window.addEventListener('load',refreshInstallButton);
 </script>
 <script src="/static/timing_highlight_v1.js?v=1"></script>
 </body></html>
+test_summary_surfaces_durable_scanner_records_without_fabrication (test_live_signals_canonical.CanonicalLiveSignalsTests.test_summary_surfaces_durable_scanner_records_without_fabrication) ... ok
+test_checkpoint_accepts_small_scheduler_delay (test_scheduled_learning.ScheduledLearningTests.test_checkpoint_accepts_small_scheduler_delay) ... ok
+test_checkpoint_does_not_fabricate_late_capture (test_scheduled_learning.ScheduledLearningTests.test_checkpoint_does_not_fabricate_late_capture) ... ok
+test_checkpoint_is_not_duplicated_after_restart (test_scheduled_learning.ScheduledLearningTests.test_checkpoint_is_not_duplicated_after_restart) ... ok
+test_day_ends_at_new_york_market_close (test_scheduled_learning.ScheduledLearningTests.test_day_ends_at_new_york_market_close) ... ok
+test_post_open_checkpoint_uses_completed_0945_window (test_scheduled_learning.ScheduledLearningTests.test_post_open_checkpoint_uses_completed_0945_window) ... ok
+test_shadow_extreme_move_is_observed_but_entry_is_vetoed (test_scheduled_learning.ScheduledLearningTests.test_shadow_extreme_move_is_observed_but_entry_is_vetoed) ... ok
+test_shadow_profile_separates_opportunity_and_entry_risk (test_scheduled_learning.ScheduledLearningTests.test_shadow_profile_separates_opportunity_and_entry_risk) ... ok
+test_shadow_rejects_untradable_spread_and_low_dollar_volume (test_scheduled_learning.ScheduledLearningTests.test_shadow_rejects_untradable_spread_and_low_dollar_volume) ... ok
+test_entry_is_recorded_once_and_exit_at_target (test_timing_signals.TimingSignalsTests.test_entry_is_recorded_once_and_exit_at_target) ... ok
+test_exit_is_recorded_after_ticker_leaves_top10 (test_timing_signals.TimingSignalsTests.test_exit_is_recorded_after_ticker_leaves_top10) ... ok
