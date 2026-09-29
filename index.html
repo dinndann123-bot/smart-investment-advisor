@@ -2000,7 +2000,16 @@ async function checkBackendStatus(){
 
 function saveApi(){alert("המפתחות מנוהלים בקובץ .env של השרת.")}
 function clearApi(){alert("כדי לשנות מפתחות, ערוך את קובץ .env בשרת.")}
-async function refreshAll(){Object.keys(cache).forEach(k=>delete cache[k]);await Promise.all(longData.slice(0,10).map(async s=>{try{const q=await getQuote(s.ticker);s.price=q.price;s.change=q.change;s.quoteStatus=q.freshness;s.quoteAt=q.quoteAt}catch(e){s.price=null;s.change=null;s.quoteStatus='unavailable';s.quoteAt=null}}));renderTables();renderHome();loadLongDailyLearning()}
+let quoteRefreshBusy=false;
+async function refreshAll(){
+ if(quoteRefreshBusy)return;
+ quoteRefreshBusy=true;
+ try{
+  Object.keys(cache).forEach(k=>delete cache[k]);
+  await Promise.all(longData.slice(0,10).map(async s=>{try{const q=await getQuote(s.ticker);s.price=q.price;s.change=q.change;s.quoteStatus=q.freshness;s.quoteAt=q.quoteAt}catch(e){s.price=null;s.change=null;s.quoteStatus='unavailable';s.quoteAt=null}}));
+  renderTables();renderHome();loadLongDailyLearning();
+ }finally{quoteRefreshBusy=false}
+}
 
 function openImport(){document.getElementById("importModal").classList.add("open");if(!document.querySelector("#ocrRows tr"))addOcrRow()}
 function addOcrRow(sym="",qty="",buy=""){document.getElementById("ocrRows").insertAdjacentHTML("beforeend",`<tr><td><input class="os" value="${sym}"></td><td><input class="oq" type="number" value="${qty}"></td><td><input class="ob" type="number" value="${buy}"></td><td><button class="btn btn-danger" onclick="this.closest('tr').remove()">מחק</button></td></tr>`)}
@@ -2012,7 +2021,7 @@ if(location.protocol==='file:'){
 }else{
   initializeVisibleClocks();renderHome();renderTables();renderBacktests();renderWeekly();setחיBadge();checkBackendStatus();updateScannerButton();startAutoScanner();loadLearningSummary();loadLongDailyLearning();captureLongDailyForecast();refreshHealth();loadLivePerformance(false);syncMarketClock();startDataWatchdog();loadMarketIndexes();refreshAll();
   document.querySelectorAll('[data-index-symbol]').forEach(card=>card.addEventListener('click',()=>openDetail('long',card.dataset.indexSymbol)));
-  setInterval(updateClockUI,1000);setInterval(syncMarketClock,60000);setInterval(refreshHealth,300000);setInterval(()=>loadLivePerformance(true),300000);setInterval(loadMarketIndexes,60000);setInterval(captureLongDailyForecast,300000);
+  setInterval(updateClockUI,1000);setInterval(syncMarketClock,60000);setInterval(refreshHealth,300000);setInterval(()=>loadLivePerformance(true),300000);setInterval(loadMarketIndexes,60000);setInterval(refreshAll,300000);setInterval(captureLongDailyForecast,300000);
 }
 
 
