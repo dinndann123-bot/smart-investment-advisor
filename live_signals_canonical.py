@@ -26,8 +26,7 @@ def install(app, learning_store):
             symbol=row.get("ticker") or row.get("symbol")
             created=row.get("signal_time") or row.get("captured_at")
             entry=_num(row.get("signal_price") if row.get("signal_price") is not None else row.get("price"))
-            returns=[_num(row.get(f"ret{m}m_pct")) for m in (1,3,5,10,15)]
-            returns=[v for v in returns if v is not None];ret=returns[-1] if returns else None
+            # Compare every signal at one fixed horizon. Mixing 1–15 minute\n            # returns made incomplete, very fresh signals distort the hit rate.\n            ret=_num(row.get("ret15m_pct"))
             if not symbol or not created:continue
             status="target2" if ret is not None and ret>=2 else "target1" if ret is not None and ret>=1 else "stopped" if ret is not None and ret<=-1 else "open"
             last_price=entry*(1+ret/100) if entry is not None and ret is not None else None
