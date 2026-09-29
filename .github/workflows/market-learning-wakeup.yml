@@ -1,0 +1,33 @@
+name: Keep market learning awake
+
+on:
+  schedule:
+    # New York is UTC-4 during the current September session.  These short
+    # windows wake the free Render service before and around each checkpoint.
+    - cron: '55 11 * * 1-5'
+    - cron: '0 12 * * 1-5'
+    - cron: '20,25,40,45,50 13 * * 1-5'
+    - cron: '5,10,15,20,50,55 14 * * 1-5'
+    - cron: '0,5 15 * * 1-5'
+    - cron: '20,25,30,35 17 * * 1-5'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: market-learning-wakeup
+  cancel-in-progress: false
+
+jobs:
+  wake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Wake scheduler and request evaluation
+        shell: bash
+        run: |
+          curl --fail --silent --show-error --retry 3 --retry-delay 10 --max-time 90 \
+            'https://smart-investment-advisor-yjtz.onrender.com/api/learning/scheduled-status'
+          curl --fail --silent --show-error --retry 2 --retry-delay 10 --max-time 90 \
+            'https://smart-investment-advisor-yjtz.onrender.com/api/learning/summary'
