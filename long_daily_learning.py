@@ -140,17 +140,14 @@ def install_long_daily_learning(app, store, market_module, quote_fetcher=None):
                 "forecast_definition": "ממוצע תשואות הסגירה של 5 ימי המסחר המלאים הקודמים, מוגבל ל־±5%",
                 "records": [saved[t] for t in TICKERS if t in saved]}
 
-    @app.post("/api/learning/long-daily/evaluate")
-    async def evaluate_long_daily():
-        now_et = datetime.now(timezone.utc).astimezone(ET)
-        if (now_et.hour, now_et.minute) < (16, 15):
-            raise HTTPException(425, "הערכת יום תתבצע אחרי 16:15 שעון ניו יורק, כדי לא למדוד נר יומי חלקי")
+    async def _evaluate_trade_date(trade_date):
         if not (getattr(market_module, "ALPACA_KEY", None) and getattr(market_module, "ALPACA_SECRET", None)):
             raise HTTPException(503, "Alpaca data is not configured")
-        trade_date = now_et.date().isoformat()
         records = [r for r in _all_records() if r.get("trade_date") == trade_date]
         if len(records) != 10:
             raise HTTPException(409, "לא נמצאה תחזית נעולה של 10 מניות להיום")
+        if all(r.get("forecast_closed") for r in records):
+            return {"ok": True, "trade_date": trade_date, "evaluated": 10, "pending": 0, "already_evaluated": True, "records": records}
         headers = {"APCA-API-KEY-ID": market_module.ALPACA_KEY,
                    "APCA-API-SECRET-KEY": market_module.ALPACA_SECRET}
         feed = records[0].get("data_feed", "iex")
@@ -177,6 +174,36 @@ def install_long_daily_learning(app, store, market_module, quote_fetcher=None):
                 "direction_accuracy_pct": round(100 * sum(bool(r["forecast_direction_correct"]) for r in valid) / len(valid), 1) if valid else None,
                 "mean_absolute_forecast_error_pct_points": round(sum(abs(r["forecast_error_pct_points"]) for r in valid)/len(valid), 3) if valid else None,
                 "records": updated}
+
+    @app.post("/api/learning/long-daily/evaluate")
+    async def evaluate_long_daily():
+        now_et = datetime.now(timezone.utc).astimezone(ET)
+        if (now_et.hour, now_et.minute) < (16, 15):
+            raise HTTPException(425, "הערכת יום תתבצע אחרי 16:15 שעון ניו יורק, כדי לא למדוד נר יומי חלקי")
+        return await _evaluate_trade_date(now_et.date().isoformat())
+
+    async def _auto_evaluate_long_daily():
+        while True:
+            try:
+                now_et = datetime.now(timezone.utc).astimezone(ET)
+                if now_et.weekday() < 5 and (now_et.hour, now_et.minute) >= (16, 25):
+                    pending_dates = sorted({r.get("trade_date") for r in _all_records()
+                                            if r.get("trade_date") and not r.get("forecast_closed")
+                                            and r.get("trade_date") <= now_et.date().isoformat()})
+                    for trade_date in pending_dates:
+                        try:
+                            await _evaluate_trade_date(trade_date)
+                        except HTTPException as exc:
+                            if exc.status_code not in (409, 425):
+                                raise
+            except Exception as exc:
+                print(f"LONG_DAILY_AUTO_EVALUATE_ERROR {type(exc).__name__}: {exc}", flush=True)
+            await asyncio.sleep(300)
+
+    async def _start_long_daily_evaluator():
+        asyncio.create_task(_auto_evaluate_long_daily())
+
+    app.router.add_event_handler("startup", _start_long_daily_evaluator)
 
     @app.get("/api/learning/long-daily")
     async def long_daily_summary():
@@ -206,4 +233,4 @@ def install_long_daily_learning(app, store, market_module, quote_fetcher=None):
                 "mean_absolute_forecast_error_pct_points": round(sum(abs(r["forecast_error_pct_points"]) for r in evaluated)/total, 3) if total else None,
                 "records": records}
 
-    return {"installed": True, "ticker_count": len(TICKERS), "forecast": "prior five completed daily returns"}
+    return {"installed": True, "ticker_count": len(TICKERS), "forecast": "prior five completed daily returns", "automatic_capture_after_sip_delay": True, "automatic_close_evaluation": True}
