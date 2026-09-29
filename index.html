@@ -737,10 +737,10 @@ function providerHe(value){
  const k=s.toLowerCase();
  if(k.includes("delayed_sip")||k.includes("delayed sip"))return "נתוני SIP מושהים";
  if(k.includes("alpaca")&&k.includes("sip"))return "נתוני SIP בזמן אמת";
- if(k.includes("alpaca")&&k.includes("iex"))return "נתוני IEX בזמן אמת";
+ if(k.includes("alpaca")&&k.includes("iex"))return "ערוץ IEX מוגדר";
  if(k.includes("alpha vantage"))return "נתוני סגירה — Alpha Vantage";
  if(k==="sip")return "SIP בזמן אמת";
- if(k==="iex")return "IEX בזמן אמת";
+ if(k==="iex")return "ערוץ IEX מוגדר";
  return s||"מקור שוק";
 }
 function returnHe(v){return Number.isFinite(+v)?`${+v>=0?'+':''}${(+v).toFixed(2)}%`:"ממתין"}
@@ -982,11 +982,15 @@ async function refreshHealth(){
     ]);
     const data=document.getElementById("healthData");
     const feed=document.getElementById("healthFeed");
+    const captured=window.__CANONICAL_DAY_SNAPSHOT__;
+    const capturedAt=Date.parse(captured?.generated_at||"");
+    const scanFresh=Number.isFinite(capturedAt)&&Date.now()-capturedAt>=-60000&&Date.now()-capturedAt<=5*60*1000;
+    const actualFeed=scanFresh?(dayData[0]?.data_feed||dayData[0]?.feed||null):null;
     if(data){
-      data.textContent=s.alpaca_configured?"מחובר":"גיבוי";
-      data.className=s.alpaca_configured?"positive":"";
+      data.textContent=s.alpaca_configured?(scanFresh?"מחובר · סריקה עדכנית":"מחובר · ממתין לסריקה"):"גיבוי";
+      data.className=s.alpaca_configured&&scanFresh?"positive":"";
     }
-    if(feed)feed.textContent=s.alpaca_configured?providerHe(`Alpaca ${String(s.alpaca_feed||"").toUpperCase()}`):(s.alpha_vantage_configured?"נתוני סגירה — Alpha Vantage":"מקור ציבורי");
+    if(feed)feed.textContent=actualFeed?providerHe(`Alpaca ${actualFeed}`):s.alpaca_configured?`ערוץ מוגדר: ${providerHe(`Alpaca ${String(s.alpaca_feed||"").toUpperCase()}`)}`:(s.alpha_vantage_configured?"נתוני סגירה — Alpha Vantage":"מקור ציבורי");
     document.getElementById("healthStrategy").textContent=h.status_he||"לא ידוע";
     document.getElementById("healthAge").textContent=h.has_data?`${h.backtest_age_days} ימים`:"אין בדיקה";
     document.getElementById("healthRecentHit").textContent=h.has_data&&h.recent?`${h.recent.hit1.toFixed(1)}%`:"—";
