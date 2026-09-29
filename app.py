@@ -104,9 +104,15 @@ try:
 except Exception as _live_signals_error:
  LIVE_SIGNALS_CANONICAL={'installed':False,'error':f'{type(_live_signals_error).__name__}: {_live_signals_error}'}
 
+try:
+ from long_daily_learning import install_long_daily_learning
+ LONG_DAILY_LEARNING=install_long_daily_learning(app,learning_store,_scanner_core,quote_fetcher=CHART_API_V7['quote'])
+except Exception as _long_daily_error:
+ LONG_DAILY_LEARNING={'installed':False,'error':f'{type(_long_daily_error).__name__}: {_long_daily_error}'}
+
 @app.get('/api/scanner/async-status')
 async def scanner_async_status():
-    return {'installed':True,'strategy_version':ASYNC_STRATEGY_VERSION,'engine':'local-full-market-predictive-shortlist-progressive-top10','live_market_source':'Alpaca','cache_scope':'last-scanner-result-only','canonical_top10_contract':True,'canonical_ui':'index.html','ui_recovery':'complete-navigation-and-data-shell','canonical_chart_api':'/api/market/chart/{symbol}','scheduled_learning':SCHEDULED_LEARNING,'missed_movers_learning':MISSED_MOVERS_LEARNING if 'MISSED_MOVERS_LEARNING' in globals() else {'installed':False},'session_data_fix':SCANNER_SESSION_DATA_FIX,'local_scanner_core':True}
+    return {'installed':True,'strategy_version':ASYNC_STRATEGY_VERSION,'engine':'local-full-market-predictive-shortlist-progressive-top10','live_market_source':'Alpaca','cache_scope':'last-scanner-result-only','canonical_top10_contract':True,'canonical_ui':'index.html','ui_recovery':'complete-navigation-and-data-shell','canonical_chart_api':'/api/market/chart/{symbol}','canonical_quote_api':'/api/market/quote/{symbol}','long_daily_learning':LONG_DAILY_LEARNING if 'LONG_DAILY_LEARNING' in globals() else {'installed':False},'scheduled_learning':SCHEDULED_LEARNING,'missed_movers_learning':MISSED_MOVERS_LEARNING if 'MISSED_MOVERS_LEARNING' in globals() else {'installed':False},'session_data_fix':SCANNER_SESSION_DATA_FIX,'local_scanner_core':True}
 
 try:
  from app_tail import install_app_tail

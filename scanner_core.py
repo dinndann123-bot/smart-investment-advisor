@@ -26,8 +26,15 @@ def install_local_scanner(app):
   if session(now) in {'premarket','afterhours'}:return 'delayed_sip'
   return 'sip' if regular_feed=='sip' else 'iex'
  def bars_feed(snapshot_feed):return 'sip' if snapshot_feed=='delayed_sip' else snapshot_feed
- def fresh(ts,now):
-  z=parse_ts(ts);return bool(z and z.date()==now.date())
+ def fresh(ts,now,feed):
+  z=parse_ts(ts)
+  if not z or z.date()!=now.date():return False
+  age=(now-z).total_seconds()
+  # Delayed SIP events reach us about 15 minutes after the trade; allow five
+  # minutes of transport/quiet-market tolerance, but never accept an old
+  # same-day snapshot as current. IEX/SIP regular-session quotes must be fresh.
+  max_age=20*60 if feed=='delayed_sip' else 180
+  return -60<=age<=max_age
  async def assets():
   async with httpx.AsyncClient(timeout=15) as c:r=await c.get('https://paper-api.alpaca.markets/v2/assets',headers=hdr(),params={'asset_class':'us_equity','status':'active'})
   out=[]
@@ -50,7 +57,7 @@ def install_local_scanner(app):
   return out
  def basic(m,s,now,feed):
   lt=s.get('latestTrade') or {};lq=s.get('latestQuote') or {};mb=s.get('minuteBar') or {};db=s.get('dailyBar') or {};pb=s.get('prevDailyBar') or {};mts=lt.get('t') or mb.get('t')
-  if not fresh(mts,now):return None
+  if not fresh(mts,now,feed):return None
   p=f(lt.get('p'),f(mb.get('c'),f(db.get('c'))));prev=f(pb.get('c'));vol=f(db.get('v'));pv=f(pb.get('v'));o=f(db.get('o'));hi=f(db.get('h'));lo=f(db.get('l'))
   if p<.5 or prev<=0:return None
   ch=(p/prev-1)*100;gap=(o/prev-1)*100 if o else ch;rp=(p-lo)/(hi-lo) if hi>lo else .5;vr=vol/pv if pv else 0

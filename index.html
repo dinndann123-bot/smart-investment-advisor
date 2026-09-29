@@ -368,6 +368,12 @@ img,svg,canvas{max-width:100%;height:auto}
         <button class="btn btn-secondary" onclick="refreshAll()">רענון נתונים</button>
       </div>
       <div class="table-wrap"><table><thead><tr><th>#</th><th>חברה</th><th>מחיר</th><th>שינוי</th><th>ציון</th><th>סיכון</th><th>תקשורת</th><th>למה היא כאן?</th><th>גרף</th><th>פעולה</th></tr></thead><tbody id="longTable"></tbody></table></div>
+      <div class="card" style="margin-top:16px;padding:16px">
+        <h3 style="margin-top:0">בדיקת התחזית היומית לעשר המניות</h3>
+        <div class="note" id="longDailyStatus">ממתין לצילום נתונים תקין בפרה־מרקט. התחזית תינעל פעם אחת ביום.</div>
+        <div class="table-wrap" style="margin-top:10px"><table class="compact-table"><thead><tr><th>תאריך</th><th>מניה</th><th>ציון שיטה</th><th>תחזית יומית</th><th>מחיר בצילום</th><th>תשואה בפועל בסגירה</th><th>שגיאת תחזית</th></tr></thead><tbody id="longDailyTable"><tr><td colspan="7" class="empty">עדיין אין מדגם יומי. אין שחזור בדיעבד.</td></tr></tbody></table></div>
+        <div class="note" style="margin-top:8px">קו בסיס: ממוצע התשואות בחמשת ימי המסחר המלאים שקדמו לצילום, מוגבל ל־±5%. המדד הוא כיוון התשואה ושגיאת תחזית, בנפרד מציון התאמה ומהצלחה שבועית/חודשית. לא משנים את השיטה לפני שבוע מדידה ומספיק תוצאות.</div>
+      </div>
     </section>
 
     
@@ -672,10 +678,10 @@ img,svg,canvas{max-width:100%;height:auto}
 <script>
 const longData=[
 {ticker:"TSSI",name:"TSS, Inc.",domain:"tssiusa.com",score:86,risk:4,price:null,change:null,media:72,what:"חברת תשתיות ואינטגרציה למרכזי נתונים ומערכות מחשוב עתירות ביצועים.",why:"נהנית ישירות מהשקעות בתשתיות בינה מלאכותית ומציגה צמיחה חזקה בפעילויות הליבה.",catalyst:"הזמנות חדשות, הרחבת קיבולת ולקוחות גדולים בתחום AI.",riskText:"תלות בלקוחות גדולים ותנודתיות גבוהה של חברה קטנה.",summary:"תשתיות AI עם צמיחה גבוהה.",criteria:{"צמיחה":23,"שוק":18,"קטליזטור":17,"פיננסים":13,"תמחור":8,"מומנטום":7}},
-{ticker:"NVTS",name:"Navitas Semiconductor",domain:"navitassemi.com",score:85,risk:4,price:11.66,change:null,media:70,what:"יצרנית שבבי הספק מסוג GaN ו-SiC לניהול חשמל יעיל.",why:"ממוקמת בשכבת החשמל הקריטית למרכזי נתונים ורשתות אנרגיה.",catalyst:"אימוץ במרכזי נתונים, עסקאות OEM וגדילת תחום AI.",riskText:"עדיין עסק קטן יחסית עם סיכון ביצוע ותחרות.",summary:"שבבי הספק ל-AI ורשת החשמל.",criteria:{"צמיחה":20,"שוק":20,"קטליזטור":18,"פיננסים":15,"תמחור":6,"מומנטום":6}},
-{ticker:"CTRI",name:"Centuri Holdings",domain:"centuri.com",score:83,risk:3,price:20.73,change:null,media:66,what:"קבלנית תשתיות חשמל וגז בארה״ב.",why:"נהנית מהרחבת רשת החשמל ומחיבור מרכזי נתונים חדשים.",catalyst:"צבר הזמנות, חוזי חשמל ומרכזי נתונים.",riskText:"שולי רווח נמוכים יחסית וסיכון ביצוע בפרויקטים.",summary:"חשיפה לתשתיות החשמל של מהפכת AI.",criteria:{"צמיחה":18,"שוק":18,"קטליזטור":16,"פיננסים":13,"תמחור":9,"מומנטום":6}},
-{ticker:"CRMD",name:"CorMedix",domain:"cormedix.com",score:82,risk:4,price:7.83,change:null,media:62,what:"חברת ביופארמה עם מוצר מסחרי להפחתת זיהומים בצנתרים.",why:"שילוב של צמיחה גבוהה והכנסות מסחריות אמיתיות.",catalyst:"הרחבת מכירות, חדירה לספקי דיאליזה והרחבת התוויות.",riskText:"תלות במוצרים מרכזיים ורגולציה רפואית.",summary:"ביופארמה בצמיחה עם הכנסות ממשיות.",criteria:{"צמיחה":22,"שוק":15,"קטליזטור":16,"פיננסים":15,"תמחור":8,"מומנטום":6}},
-{ticker:"POET",name:"POET Technologies",domain:"poet-technologies.com",score:78,risk:5,price:7.88,change:null,media:74,what:"חברת פוטוניקה המפתחת רכיבים אופטיים להעברת מידע במרכזי נתונים.",why:"יכולה ליהנות מצוואר הבקבוק של קישוריות במערכות AI.",catalyst:"הזמנות ייצור, לקוחות hyperscale ומעבר לייצור המוני.",riskText:"הכנסות קטנות וסיכון גבוה מאוד בביצוע.",summary:"פוטוניקה ל-AI עם פוטנציאל גבוה וסיכון גבוה.",criteria:{"צמיחה":17,"שוק":20,"קטליזטור":19,"פיננסים":13,"תמחור":4,"מומנטום":5}},
+{ticker:"NVTS",name:"Navitas Semiconductor",domain:"navitassemi.com",score:85,risk:4,price:null,change:null,media:70,what:"יצרנית שבבי הספק מסוג GaN ו-SiC לניהול חשמל יעיל.",why:"ממוקמת בשכבת החשמל הקריטית למרכזי נתונים ורשתות אנרגיה.",catalyst:"אימוץ במרכזי נתונים, עסקאות OEM וגדילת תחום AI.",riskText:"עדיין עסק קטן יחסית עם סיכון ביצוע ותחרות.",summary:"שבבי הספק ל-AI ורשת החשמל.",criteria:{"צמיחה":20,"שוק":20,"קטליזטור":18,"פיננסים":15,"תמחור":6,"מומנטום":6}},
+{ticker:"CTRI",name:"Centuri Holdings",domain:"centuri.com",score:83,risk:3,price:null,change:null,media:66,what:"קבלנית תשתיות חשמל וגז בארה״ב.",why:"נהנית מהרחבת רשת החשמל ומחיבור מרכזי נתונים חדשים.",catalyst:"צבר הזמנות, חוזי חשמל ומרכזי נתונים.",riskText:"שולי רווח נמוכים יחסית וסיכון ביצוע בפרויקטים.",summary:"חשיפה לתשתיות החשמל של מהפכת AI.",criteria:{"צמיחה":18,"שוק":18,"קטליזטור":16,"פיננסים":13,"תמחור":9,"מומנטום":6}},
+{ticker:"CRMD",name:"CorMedix",domain:"cormedix.com",score:82,risk:4,price:null,change:null,media:62,what:"חברת ביופארמה עם מוצר מסחרי להפחתת זיהומים בצנתרים.",why:"שילוב של צמיחה גבוהה והכנסות מסחריות אמיתיות.",catalyst:"הרחבת מכירות, חדירה לספקי דיאליזה והרחבת התוויות.",riskText:"תלות במוצרים מרכזיים ורגולציה רפואית.",summary:"ביופארמה בצמיחה עם הכנסות ממשיות.",criteria:{"צמיחה":22,"שוק":15,"קטליזטור":16,"פיננסים":15,"תמחור":8,"מומנטום":6}},
+{ticker:"POET",name:"POET Technologies",domain:"poet-technologies.com",score:78,risk:5,price:null,change:null,media:74,what:"חברת פוטוניקה המפתחת רכיבים אופטיים להעברת מידע במרכזי נתונים.",why:"יכולה ליהנות מצוואר הבקבוק של קישוריות במערכות AI.",catalyst:"הזמנות ייצור, לקוחות hyperscale ומעבר לייצור המוני.",riskText:"הכנסות קטנות וסיכון גבוה מאוד בביצוע.",summary:"פוטוניקה ל-AI עם פוטנציאל גבוה וסיכון גבוה.",criteria:{"צמיחה":17,"שוק":20,"קטליזטור":19,"פיננסים":13,"תמחור":4,"מומנטום":5}},
 {ticker:"RKLB",name:"Rocket Lab",domain:"rocketlabusa.com",score:77,risk:4,price:null,change:null,media:76,what:"חברת חלל המספקת שיגורים ומערכות לוויין.",why:"צבר הזמנות גדול וחשיפה לצמיחה מסחרית וממשלתית בחלל.",catalyst:"Neutron, חוזים ביטחוניים ושיגורים.",riskText:"השקעות כבדות, עיכובים טכנולוגיים ושריפת מזומנים.",summary:"חלל וצבר הזמנות משמעותי.",criteria:{"צמיחה":17,"שוק":18,"קטליזטור":18,"פיננסים":10,"תמחור":6,"מומנטום":8}},
 {ticker:"PLTR",name:"Palantir",domain:"palantir.com",score:76,risk:3,price:null,change:null,media:80,what:"חברת תוכנה ו-AI לממשלות וארגונים.",why:"צמיחה, רווחיות וחשיפה ישירה להטמעת AI בארגונים.",catalyst:"AIP, חוזים ממשלתיים ולקוחות מסחריים.",riskText:"תמחור גבוה מאוד שעלול להגביל תשואה עתידית.",summary:"AI ארגוני איכותי אך יקר.",criteria:{"צמיחה":18,"שוק":20,"קטליזטור":17,"פיננסים":15,"תמחור":2,"מומנטום":4}},
 {ticker:"APP",name:"AppLovin",domain:"applovin.com",score:75,risk:4,price:null,change:null,media:78,what:"פלטפורמת פרסום ואופטימיזציה מבוססת תוכנה.",why:"מנוע תוכנה יעיל וצמיחה חזקה.",catalyst:"שיפור AI בפרסום והתרחבות מעבר לגיימינג.",riskText:"תמחור, רגולציה ותלות במחזורי פרסום.",summary:"מנוע פרסום מבוסס AI עם צמיחה גבוהה.",criteria:{"צמיחה":19,"שוק":17,"קטליזטור":16,"פיננסים":14,"תמחור":4,"מומנטום":5}},
@@ -1126,6 +1132,25 @@ document.getElementById("learningSignalsTable").innerHTML=(j.recent_signals||[])
   }
 }
 
+async function loadLongDailyLearning(){
+ const status=document.getElementById("longDailyStatus"),body=document.getElementById("longDailyTable");
+ if(!status||!body)return;
+ try{
+  const response=await fetch("/api/learning/long-daily",{cache:"no-store"});
+  if(!response.ok)throw new Error("summary unavailable");
+  const data=await response.json(),records=data.records||[];
+  const days=data.days||[],latestDay=days.length?days[days.length-1]:null;
+  if(!latestDay){
+   status.textContent="ממתין לצילום הראשון בפתיחת הפרה־מרקט. המדידה תתחיל היום, ללא נתונים היסטוריים מומצאים.";
+   body.innerHTML='<tr><td colspan="7" class="empty">עדיין אין מדגם יומי. אין שחזור בדיעבד.</td></tr>';return;
+  }
+  const pct=v=>v!=null&&Number.isFinite(+v)?`${(+v>=0?"+":"")}${(+v).toFixed(2)}%`:"ממתין לסגירה";
+  status.textContent=`מדידה מאז ${latestDay.trade_date}: ${data.sample_size} תוצאות סגירה מתוך 10 ליום; ${latestDay.selected} נבחרו ביום האחרון. ${data.direction_accuracy_pct==null?"דיוק הכיוון יופיע אחרי סגירה.":`דיוק כיוון מצטבר ${data.direction_accuracy_pct.toFixed(1)}%`}${data.mean_absolute_forecast_error_pct_points==null?".":`; שגיאה מוחלטת ממוצעת ${data.mean_absolute_forecast_error_pct_points.toFixed(2)} נקודות אחוז.`}`;
+  const rows=records.filter(r=>r.trade_date===latestDay.trade_date).sort((a,b)=>a.rank-b.rank);
+  body.innerHTML=rows.map(r=>`<tr><td>${r.trade_date}</td><td><b>${r.ticker}</b></td><td>${r.long_term_score??"—"}/100</td><td>${pct(r.forecast_return_pct)}</td><td>${r.snapshot_price!=null&&Number.isFinite(+r.snapshot_price)?money(+r.snapshot_price):"אין צילום מאומת"}</td><td>${pct(r.actual_return_pct)}</td><td>${pct(r.forecast_error_pct_points)}</td></tr>`).join("")||'<tr><td colspan="7" class="empty">אין נתונים תקינים להצגה.</td></tr>';
+ }catch(_){status.textContent="שירות מדידת התחזית אינו זמין כרגע.";}
+}
+
 function renderHome(){
  document.getElementById("homePortfolioCount").textContent=holdings.length;
  document.getElementById("homeBestScore").textContent=Math.max(...longData.map(x=>x.score))+"/100";
@@ -1182,13 +1207,14 @@ async function refreshDayScanner(manual=false){
      applyCanonicalDaySnapshot(j.results,j);
    }else{
      dayData=[];renderTables();renderHome();
-     if(st)st.textContent=rows.length?"הסריקה נפסלה: נתונים לא עקביים":"אין אותות עדכניים בחלון המסחר הנוכחי";
-     if(st)st.title=`scan_id: ${j.scan_id||'—'} · rows: ${rows.length} · ${j.market_data_health?.quality||'unknown'}`;
+     const health=j.market_data_health||{};
+     if(st)st.textContent=rows.length?"הסריקה נפסלה: נתונים לא עקביים":health.quality==='waiting_for_delayed_feed'?"ממתין לנתוני הפרה־מרקט לאחר עיכוב SIP":health.message_he||"אין מספיק נתוני שוק טריים להצגת בחירות";
+     if(st)st.title=`scan_id: ${j.scan_id||'—'} · rows: ${rows.length} · ${health.quality||'unknown'} · מקור: ${j.feed||'—'} · נוצר: ${j.generated_at||'—'}`;
      if(st)st.className="live-badge live-error";
    }
    if(coherent&&st){
      const delayed=Number(j.data_delay_minutes||0)>0?` · עיכוב ${j.data_delay_minutes} דק׳`:'';
-     st.textContent=`מסונכרן 10/10 · ${providerHe(j.feed)}${delayed} · ${new Date(j.generated_at).toLocaleTimeString("he-IL")}`;
+     st.textContent=`10/10 · אותות ${j.predictive_top10_count??rows.filter(x=>x.quality_tier==='predictive').length} + מעקב ${j.watch_fallback_count??rows.filter(x=>x.quality_tier!=='predictive').length} · ${providerHe(j.feed)}${delayed} · ${new Date(j.generated_at).toLocaleTimeString("he-IL")}`;
      st.className="live-badge live-on";
      st.title=`scan_id: ${j.scan_id} · strategy: ${j.strategy_version} · source: ${j.data_source||'—'}`;
    }
@@ -1214,7 +1240,7 @@ function renderTables(){
  document.getElementById("longTable").innerHTML=longData.map((s,i)=>`
  <tr class="stock-row" onclick="openDetail('long','${s.ticker}')">
  <td>${i+1}</td><td><div class="company">${logoHtml(s)}<div><b>${s.ticker}</b><div class="small">${s.name}</div></div></div></td>
- <td>${Number.isFinite(+s.price)?money(+s.price):"טוען…"}</td><td id="chg-${s.ticker}">${s.change==null?"—":`<span class="${s.change>=0?'positive':'negative'}">${s.change>=0?'+':''}${s.change.toFixed(1)}%</span>`}</td>
+ <td>${s.price!=null&&Number.isFinite(+s.price)?money(+s.price):"—"}<div class="small" title="${s.quoteAt||''}">${s.quoteStatus==='current'?'חי':s.quoteStatus==='current_delayed'?'SIP מושהה 15 דק׳':s.quoteStatus==='waiting_for_delayed_feed'?'ממתין לנתון מושהה':s.quoteStatus==='market_closed'?'שוק סגור':s.quoteStatus==='previous_session'?'נתון מסשן קודם':s.quoteStatus==='stale'?'מחיר ישן':s.quoteStatus==='no_current_trade'?'אין עסקה עדכנית':s.quoteStatus==='clock_skew'?'חותמת זמן לא תקינה':s.quoteStatus==='unavailable'?'לא זמין':'ממתין לאימות'}${s.quoteAt?' · '+fmtMarketTimestamp(s.quoteAt):''}</div></td><td id="chg-${s.ticker}">${s.change==null?"—":`<span class="${s.change>=0?'positive':'negative'}">${s.change>=0?'+':''}${s.change.toFixed(1)}%</span>`}</td>
  <td><span class="score ${scoreClass(s.score)}"><span class="score-dot" style="background:currentColor"></span>${s.score}/100</span></td>
  <td><span class="badge">${riskLabel(s.risk)}</span></td><td><span class="news-pill">${s.media}/100</span></td>
  <td>${s.summary}</td><td><button class="btn quick-chart" onclick="event.stopPropagation();openDetail('long','${s.ticker}')">גרף</button></td><td><button class="btn btn-secondary" onclick="event.stopPropagation();openDetail('long','${s.ticker}')">פרטים</button></td></tr>`).join("");
@@ -1222,7 +1248,7 @@ function renderTables(){
  <tr class="stock-row ${s.timing_signal==='entry'?'timing-entry-row':s.timing_signal==='exit'?'timing-exit-row':s.timing_signal==='active'?'timing-active-row':''}" data-ticker="${s.ticker}" data-timing-signal="${s.timing_signal||'watch'}" title="${(s.timing_reason||'').replace(/"/g,"'")}" onclick="openDetail('day','${s.ticker}')">
  <td>${i+1}</td><td><div class="company">${logoHtml(s)}<div><b>${s.ticker}</b><div class="small">${s.name||s.ticker}</div></div></div></td>
  <td>${money(s.price)}</td><td>${Number.isFinite(s.change)?`<span class="${s.change>=0?'positive':'negative'}">${s.change>=0?'+':''}${s.change.toFixed(1)}%</span>`:"—"}</td>
- <td><span class="score ${scoreClass(s.score)}" title="אחוז התאמה לקריטריונים של השיטה — לא אחוז הצלחה">${s.score}%</span></td><td><span class="badge">${riskLabel(s.risk)}</span></td>
+ <td><span class="score ${scoreClass(s.score)}" title="ציון התאמה לקריטריונים של השיטה — לא אחוז הצלחה">${s.score}%</span><div class="small">${s.quality_tier==='predictive'?'אות חיזוי':'מועמד מעקב'}</div></td><td><span class="badge">${riskLabel(s.risk)}</span></td>
  <td id="sig-${s.ticker}">${signalHtml(baseSignal(s))}</td>
  <td title="${(s.catalyst||"").replace(/"/g,"'")}">${(s.catalyst||"").slice(0,90)}</td>
  <td>${Number.isFinite(s.rvol)?s.rvol.toFixed(2)+"×":"—"}</td>
@@ -1253,32 +1279,35 @@ async function loadMarketIndexes(){
  await Promise.all(marketIndexes.map(async item=>{
   const symbol=item.ticker;
   try{
-   const bundle=await getBundle(symbol,"1D"),q=bundle.quote||{};
-   const bars=(bundle.bars||[]).map(b=>({d:b.d||b.t,o:+b.o,h:+b.h,l:+b.l,v:+(b.v??b.c),volume:+(b.volume||0)})).filter(b=>Number.isFinite(b.v));
-   const price=Number(q.price??q.latest_price??bars.at(-1)?.v);
-   const previous=Number(q.previous_close??q.prev_close);
-   const change=Number.isFinite(+q.change)?+q.change:Number.isFinite(price)&&Number.isFinite(previous)&&previous?((price/previous-1)*100):bars.length>1?((bars.at(-1).v/bars[0].v-1)*100):null;
-   item.price=price;item.change=change;
+   const [q,bundle]=await Promise.all([getQuote(symbol),getCanonicalChart(symbol,"1D")]);
+   const bars=bundle.points.map(b=>({d:b.t,o:+b.o,h:+b.h,l:+b.l,v:+b.c,volume:+(b.v||0)})).filter(b=>Number.isFinite(b.v));
+   const price=q.price,change=q.change;
+   item.price=price;item.change=change;item.quoteStatus=q.freshness;item.quoteAt=q.quoteAt;
    const priceEl=document.getElementById(`idx-${symbol}-price`),changeEl=document.getElementById(`idx-${symbol}-change`);
-   if(priceEl)priceEl.textContent=money(price);
+   if(priceEl)priceEl.textContent=price!=null?money(price):"—";
    if(changeEl){changeEl.textContent=Number.isFinite(change)?`${change>=0?'+':''}${change.toFixed(2)}%`:'—';changeEl.className=Number.isFinite(change)?(change>=0?'positive':'negative'):''}
    draw(`idx-${symbol}-chart`,bars,null,{compact:true,lineColor:Number.isFinite(change)&&change<0?'#ff6472':'#dcb352'});
    const source=document.getElementById(`idx-${symbol}-source`),time=document.getElementById(`idx-${symbol}-time`);
-   if(source)source.textContent=`${providerHe(bundle.provider)} · ${bundle.freshness?.state_he||bundle.freshness?.state||'—'}`;
-   if(time)time.textContent=bars.length?fmtMarketTimestamp(bars.at(-1).d):'—';
+   if(source)source.textContent=`Alpaca ${q.feed||'—'} · ${q.freshness||'לא זמין'}${q.session==='premarket'?' · פרה־מרקט':''}`;
+   if(time)time.textContent=q.quoteAt?fmtMarketTimestamp(q.quoteAt):bars.length?fmtMarketTimestamp(bars.at(-1).d):'—';
   }catch(e){const source=document.getElementById(`idx-${symbol}-source`);if(source)source.textContent='הנתון אינו זמין כרגע';draw(`idx-${symbol}-chart`,null,null,{compact:true})}
  }));
 }
 async function getQuote(symbol){
- const j=await getBundle(symbol,"1M");
- if(j.quote&&Number.isFinite(+j.quote.price))return {price:+j.quote.price,change:Number.isFinite(+j.quote.change)?+j.quote.change:0,date:j.quote.date,provider:j.provider};
- const arr=j.bars||[];
- if(arr.length){const last=arr[arr.length-1],prev=arr.length>1?arr[arr.length-2]:null;return {price:+last.v,change:prev&&prev.v?((+last.v/+prev.v-1)*100):0,date:String(last.d).slice(0,10),provider:j.provider};}
- throw new Error("אין מחיר זמין");
+ const response=await fetch(`/api/market/quote/${encodeURIComponent(symbol)}`,{cache:"no-store"});
+ const quote=await response.json();
+ if(!response.ok)throw new Error(quote.detail?.message||"שגיאת נתוני מחיר");
+ return {price:quote.price,change:quote.change_percent,date:quote.price_timestamp,provider:quote.source,feed:quote.feed,freshness:quote.freshness?.state,quoteAt:quote.price_timestamp,session:quote.session};
+}
+async function getCanonicalChart(symbol,r){
+ const response=await fetch(`/api/market/chart/${encodeURIComponent(symbol)}?range=${encodeURIComponent(r)}`,{cache:"no-store"});
+ const chart=await response.json();
+ if(!response.ok)throw new Error(chart.detail?.message||"שגיאת נתוני גרף");
+ return chart;
 }
 async function getSeries(symbol,r){
- const j=await getBundle(symbol,r);
- const rows=(j.bars||[]).map(x=>({d:x.d,o:+x.o,h:+x.h,l:+x.l,v:+x.v,volume:+(x.volume||0)})).filter(x=>Number.isFinite(x.v));
+ const j=await getCanonicalChart(symbol,r);
+ const rows=(j.points||[]).map(x=>({d:x.t,o:+x.o,h:+x.h,l:+x.l,v:+x.c,volume:+(x.v||0)})).filter(x=>Number.isFinite(x.v));
  if(!rows.length)throw new Error("אין סדרת מחירים זמינה");
  return rows;
 }
@@ -1956,7 +1985,7 @@ async function checkBackendStatus(){
 
 function saveApi(){alert("המפתחות מנוהלים בקובץ .env של השרת.")}
 function clearApi(){alert("כדי לשנות מפתחות, ערוך את קובץ .env בשרת.")}
-async function refreshAll(){Object.keys(cache).forEach(k=>delete cache[k]);for(const s of longData.slice(0,10)){try{let q=await getQuote(s.ticker);s.price=q.price;s.change=q.change}catch(e){}}renderTables();renderHome()}
+async function refreshAll(){Object.keys(cache).forEach(k=>delete cache[k]);await Promise.all(longData.slice(0,10).map(async s=>{try{const q=await getQuote(s.ticker);s.price=q.price;s.change=q.change;s.quoteStatus=q.freshness;s.quoteAt=q.quoteAt}catch(e){s.price=null;s.change=null;s.quoteStatus='unavailable';s.quoteAt=null}}));renderTables();renderHome();loadLongDailyLearning()}
 
 function openImport(){document.getElementById("importModal").classList.add("open");if(!document.querySelector("#ocrRows tr"))addOcrRow()}
 function addOcrRow(sym="",qty="",buy=""){document.getElementById("ocrRows").insertAdjacentHTML("beforeend",`<tr><td><input class="os" value="${sym}"></td><td><input class="oq" type="number" value="${qty}"></td><td><input class="ob" type="number" value="${buy}"></td><td><button class="btn btn-danger" onclick="this.closest('tr').remove()">מחק</button></td></tr>`)}
@@ -1966,7 +1995,7 @@ function saveOcrRows(){let n=0;document.querySelectorAll("#ocrRows tr").forEach(
 if(location.protocol==='file:'){
   document.body.innerHTML='<div style="max-width:760px;margin:80px auto;font-family:Arial;direction:rtl;padding:24px"><h1>האפליקציה נפתחה בצורה לא נכונה</h1><p>אין לפתוח את index.html ישירות. יש להפעיל את השרת ואז להיכנס דרך http://127.0.0.1:8000 כדי שהגרפים, הנתונים והעדכונים החיים יעבדו.</p></div>';
 }else{
-  initializeVisibleClocks();renderHome();renderTables();renderBacktests();renderWeekly();setחיBadge();checkBackendStatus();updateScannerButton();startAutoScanner();loadLearningSummary();refreshHealth();loadLivePerformance(false);syncMarketClock();startDataWatchdog();loadMarketIndexes();refreshAll();
+  initializeVisibleClocks();renderHome();renderTables();renderBacktests();renderWeekly();setחיBadge();checkBackendStatus();updateScannerButton();startAutoScanner();loadLearningSummary();loadLongDailyLearning();refreshHealth();loadLivePerformance(false);syncMarketClock();startDataWatchdog();loadMarketIndexes();refreshAll();
   document.querySelectorAll('[data-index-symbol]').forEach(card=>card.addEventListener('click',()=>openDetail('long',card.dataset.indexSymbol)));
   setInterval(updateClockUI,1000);setInterval(syncMarketClock,60000);setInterval(refreshHealth,300000);setInterval(()=>loadLivePerformance(true),300000);setInterval(loadMarketIndexes,60000);
 }

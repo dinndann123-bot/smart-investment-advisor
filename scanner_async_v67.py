@@ -3,6 +3,7 @@ import json
 import time
 import uuid
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from fastapi.responses import JSONResponse
 
@@ -14,6 +15,7 @@ MIN_DEEP_CANDIDATES = 80
 NO_TRADE_STATES = {"no_premarket_sip_trades", "insufficient_clock_baseline"}
 STALE_STATES = {"previous_session_snapshot", "waiting_for_premarket"}
 DATA_FAILURE_STATES = {"market_data_error", "feed_error", "request_failed", "rate_limited"}
+NY = ZoneInfo("America/New_York")
 
 
 def install_async_scanner(app, scanner_engine):
@@ -30,17 +32,37 @@ def install_async_scanner(app, scanner_engine):
         failures = sum(1 for s in statuses if s in DATA_FAILURE_STATES)
         no_trades = sum(1 for s in statuses if s in NO_TRADE_STATES)
         stale = sum(1 for s in statuses if s in STALE_STATES)
+        waiting_for_delay = False
+        if (payload.get("session") == "premarket" and payload.get("feed") == "delayed_sip"
+                and not payload.get("fresh_market_pool") and payload.get("stale_snapshots_filtered")):
+            generated = payload.get("generated_at")
+            try:
+                clock = datetime.fromisoformat(str(generated).replace("Z", "+00:00")).astimezone(NY)
+                minute = clock.hour * 60 + clock.minute
+                waiting_for_delay = 240 <= minute < 256
+            except Exception:
+                waiting_for_delay = False
         if failures:
             quality = "feed_failure"
         elif live_rows:
             quality = "current_market_data"
+        elif waiting_for_delay:
+            quality = "waiting_for_delayed_feed"
         elif statuses and no_trades == len(statuses):
             quality = "no_session_trades"
         elif statuses and stale == len(statuses):
             quality = "stale_or_waiting"
         else:
             quality = "mixed_or_unknown"
-        return {"quality": quality, "sample_rows": len(sample), "live_rows": live_rows, "no_trade_rows": no_trades, "stale_rows": stale, "failure_rows": failures, "sessions": sorted(set(sessions))}
+        descriptions = {
+            "waiting_for_delayed_feed": "ממתין לחלוף עיכוב ה־SIP לפני דירוג מניות; צילומים מהסשן הקודם לא יוצגו כהמלצות.",
+            "stale_or_waiting": "לא התקבלו ציטוטים טריים מספיק; לא נציג בחירות כאילו אומתו.",
+            "no_session_trades": "המקור מחובר, אך אין עסקאות בסשן הנוכחי למדידה.",
+            "current_market_data": "נמצאו נתונים טריים מהסשן הנוכחי.",
+            "feed_failure": "מקור הנתונים החזיר שגיאה.",
+            "mixed_or_unknown": "איכות הנתונים עדיין אינה ברורה.",
+        }
+        return {"quality": quality, "message_he": descriptions.get(quality), "sample_rows": len(sample), "live_rows": live_rows, "no_trade_rows": no_trades, "stale_rows": stale, "failure_rows": failures, "sessions": sorted(set(sessions))}
 
     def public_state():
         result=state.get("result") or {}
@@ -69,7 +91,7 @@ def install_async_scanner(app, scanner_engine):
                 # Slow down only for a true feed failure or a fully stale/waiting
                 # sample. A stock simply having no premarket trades is normal and
                 # must not be confused with a broken data connection.
-                state['effective_auto_scan_interval_sec'] = 300 if health['quality'] in {'feed_failure','stale_or_waiting'} and not payload.get('results') else AUTO_SCAN_INTERVAL_SEC
+                state['effective_auto_scan_interval_sec'] = 300 if health['quality'] in {'feed_failure','stale_or_waiting','waiting_for_delayed_feed'} and not payload.get('results') else AUTO_SCAN_INTERVAL_SEC
                 print(f"SCANNER_DATA_HEALTH job_id={job_id} quality={health['quality']} live={health['live_rows']} noTrades={health['no_trade_rows']} stale={health['stale_rows']} failures={health['failure_rows']} sessions={health['sessions']}",flush=True)
                 print(f"SCANNER_AUTO_JOB_DONE job_id={job_id} results={len(payload.get('results') or [])} deep={payload.get('deep_candidates')} duration={state['duration_sec']}",flush=True)
             except asyncio.TimeoutError:

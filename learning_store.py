@@ -25,6 +25,11 @@ def initialize():
                 signal_epoch DOUBLE PRECISION NOT NULL, signal_time TEXT,
                 payload JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())""")
             con.execute("CREATE INDEX IF NOT EXISTS idx_learning_ticker_epoch ON strategy_learning_signals(ticker, signal_epoch DESC)")
+            con.execute("""CREATE TABLE IF NOT EXISTS long_daily_predictions (
+                trade_date TEXT NOT NULL, ticker TEXT NOT NULL, signal_epoch DOUBLE PRECISION NOT NULL,
+                payload JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (trade_date, ticker))""")
+            con.execute("CREATE INDEX IF NOT EXISTS idx_long_daily_epoch ON long_daily_predictions(signal_epoch DESC)")
     else:
         with sqlite3.connect(SQLITE_PATH) as con:
             con.execute("""CREATE TABLE IF NOT EXISTS strategy_learning_signals (
@@ -32,6 +37,11 @@ def initialize():
                 signal_epoch REAL NOT NULL, signal_time TEXT, payload TEXT NOT NULL,
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)""")
             con.execute("CREATE INDEX IF NOT EXISTS idx_learning_ticker_epoch ON strategy_learning_signals(ticker, signal_epoch DESC)")
+            con.execute("""CREATE TABLE IF NOT EXISTS long_daily_predictions (
+                trade_date TEXT NOT NULL, ticker TEXT NOT NULL, signal_epoch REAL NOT NULL,
+                payload TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (trade_date, ticker))""")
+            con.execute("CREATE INDEX IF NOT EXISTS idx_long_daily_epoch ON long_daily_predictions(signal_epoch DESC)")
 
 def load(limit=3000):
     initialize()
@@ -59,6 +69,34 @@ def upsert(row):
         with sqlite3.connect(SQLITE_PATH) as con:
             con.execute("""INSERT INTO strategy_learning_signals(signal_id,scan_id,ticker,signal_epoch,signal_time,payload)
                 VALUES(?,?,?,?,?,?) ON CONFLICT(signal_id) DO UPDATE
+                SET payload=excluded.payload,updated_at=CURRENT_TIMESTAMP""",args)
+
+def load_long_daily(limit=10000):
+    initialize()
+    if DATABASE_URL:
+        with _pg() as con:
+            rows=con.execute("SELECT payload FROM long_daily_predictions ORDER BY signal_epoch,trade_date,ticker LIMIT %s",(limit,)).fetchall()
+    else:
+        with sqlite3.connect(SQLITE_PATH) as con:
+            rows=con.execute("SELECT payload FROM long_daily_predictions ORDER BY signal_epoch,trade_date,ticker LIMIT ?",(limit,)).fetchall()
+    out=[]
+    for (payload,) in rows:
+        try:out.append(payload if isinstance(payload,dict) else json.loads(payload))
+        except Exception:continue
+    return out
+
+def upsert_long_daily(row):
+    initialize();payload=json.dumps(row,ensure_ascii=False,separators=(",",":"))
+    args=(row.get("trade_date"),row.get("ticker"),float(row.get("epoch") or 0),payload)
+    if DATABASE_URL:
+        with _pg() as con:
+            con.execute("""INSERT INTO long_daily_predictions(trade_date,ticker,signal_epoch,payload)
+                VALUES(%s,%s,%s,%s::jsonb) ON CONFLICT(trade_date,ticker) DO UPDATE
+                SET payload=EXCLUDED.payload,updated_at=NOW()""",args)
+    else:
+        with sqlite3.connect(SQLITE_PATH) as con:
+            con.execute("""INSERT INTO long_daily_predictions(trade_date,ticker,signal_epoch,payload)
+                VALUES(?,?,?,?) ON CONFLICT(trade_date,ticker) DO UPDATE
                 SET payload=excluded.payload,updated_at=CURRENT_TIMESTAMP""",args)
 
 def status():
