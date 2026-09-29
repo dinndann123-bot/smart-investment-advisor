@@ -14,6 +14,8 @@ class ScannerOutputTruthTests(unittest.TestCase):
         self.assertIn('.slice(0,5)',source)
         self.assertIn('loadMarketIndexes();refreshAll();',source)
         self.assertNotIn('s.price?money(s.price):"API"',source)
+        self.assertIn('/api/learning/missed-movers/summary',source)
+        self.assertIn('learnMissedSymbols',source)
 
 
 if __name__ == "__main__":
