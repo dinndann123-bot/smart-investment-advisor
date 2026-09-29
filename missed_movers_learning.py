@@ -1,171 +1,464 @@
-import json
-import sqlite3
-from datetime import datetime, timezone
-from pathlib import Path
+"""End-of-day audit of strong movers the live Top-10 scanner did not capture.
+
+Outcome observations are stored in the same durable learning store as scanner
+signals so the audit survives a Render restart and can be compared by day.
+"""
+
+import asyncio
+from datetime import datetime, time, timezone
 from zoneinfo import ZoneInfo
-import httpx
 
-NY = ZoneInfo('America/New_York')
-DB = Path(__file__).resolve().parent / 'signal_journal.sqlite3'
-STRATEGY_VERSION = 'strategy-learning-v2'
+
+NY = ZoneInfo("America/New_York")
 MOVE_THRESHOLD_PCT = 8.0
+AUDIT_AFTER = time(16, 10)
+AUDIT_LIMIT = 50
+AUDIT_STORE_LIMIT = 30000
 
-def _f(v):
+
+def _f(value):
     try:
-        return float(v)
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _row_time(row):
+    epoch = _f(row.get("epoch"))
+    if epoch is not None and epoch > 0:
+        return datetime.fromtimestamp(epoch, timezone.utc)
+    raw = row.get("signal_time") or row.get("captured_at")
+    try:
+        stamp = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        return stamp.replace(tzinfo=timezone.utc) if stamp.tzinfo is None else stamp
+    except (TypeError, ValueError):
+        return None
+
+
+def _top10_for_day(rows, trade_date, strategy_version):
+    """Collapse repeated scan rows to each ticker's best rank for the day."""
+    top = {}
+    for row in rows:
+        if row.get("record_type") not in (None, "scanner_signal", "scheduled_checkpoint"):
+            continue
+        symbol = str(row.get("ticker") or row.get("symbol") or "").upper().strip()
+        rank = _f(row.get("rank"))
+        if not symbol or rank is None or not 1 <= rank <= 10:
+            continue
+        stamp = _row_time(row)
+        if stamp is None or stamp.astimezone(NY).date().isoformat() != trade_date:
+            continue
+        # Older live scanner rows do not carry a strategy_version field. Their
+        # timestamps identify today's currently deployed scanner. When a row
+        # does carry a version, reject records from unrelated strategies.
+        row_version = row.get("strategy_version")
+        if row_version and row_version != strategy_version:
+            continue
+        old = top.get(symbol)
+        if old is None:
+            top[symbol] = {"rank": int(rank), "first_seen": stamp.isoformat()}
+        else:
+            old["rank"] = min(old["rank"], int(rank))
+            old["first_seen"] = min(old["first_seen"], stamp.isoformat())
+    return top
+
+
+def _instrument(asset, symbol):
+    name = str((asset or {}).get("name") or "").lower()
+    sym = str(symbol or "").upper()
+    if "warrant" in name or sym.endswith((".WS", "WS")) or (len(sym) >= 5 and sym.endswith("W")):
+        return "warrant"
+    if "right" in name or sym.endswith((".RT", "RT")) or (len(sym) >= 5 and sym.endswith("R")):
+        return "right"
+    if "unit" in name or sym.endswith(".U"):
+        return "unit"
+    if "preferred" in name or "depositary share" in name:
+        return "preferred"
+    if "etf" in name or "exchange traded fund" in name:
+        return "etf"
+    if "common stock" in name or "common share" in name or "ordinary share" in name:
+        return "common_stock"
+    return "other_equity"
+
+
+def _eligible(asset, instrument):
+    return bool(
+        asset
+        and asset.get("status") == "active"
+        and asset.get("tradable") is True
+        and instrument in ("common_stock", "other_equity")
+    )
+
+
+async def _request(core, url, *, params=None, timeout=20):
+    import httpx
+    headers = {
+        "APCA-API-KEY-ID": core.ALPACA_KEY,
+        "APCA-API-SECRET-KEY": core.ALPACA_SECRET,
+    }
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        return await client.get(url, headers=headers, params=params)
+
+
+async def _is_market_day(core, day):
+    """Fail closed when Alpaca's calendar cannot verify this date."""
+    try:
+        response = await _request(
+            core,
+            "https://paper-api.alpaca.markets/v2/calendar",
+            params={"start": day, "end": day},
+        )
+        if response.status_code >= 400:
+            return None
+        calendar = response.json() or []
+        return any(str(item.get("date")) == day for item in calendar)
     except Exception:
         return None
 
-def _db():
-    con = sqlite3.connect(DB)
-    con.row_factory = sqlite3.Row
-    con.execute('''CREATE TABLE IF NOT EXISTS missed_movers(id INTEGER PRIMARY KEY AUTOINCREMENT,trade_date TEXT,symbol TEXT,observed_at TEXT,move_pct REAL,price REAL,volume REAL,was_top10 INTEGER,top10_best_rank INTEGER,strategy_version TEXT,features TEXT,premarket_gap_pct REAL,premarket_volume REAL,premarket_high REAL,premarket_low REAL,premarket_last REAL,first_seen_top10 TEXT,discovery_source TEXT,verification_feed TEXT,verified INTEGER,asset_name TEXT,instrument_type TEXT,eligible_common_stock INTEGER,asset_status TEXT,tradable INTEGER,asset_attributes TEXT,UNIQUE(trade_date,symbol,strategy_version))''')
-    existing = {r[1] for r in con.execute('PRAGMA table_info(missed_movers)').fetchall()}
-    cols = {'premarket_gap_pct':'REAL','premarket_volume':'REAL','premarket_high':'REAL','premarket_low':'REAL','premarket_last':'REAL','first_seen_top10':'TEXT','discovery_source':'TEXT','verification_feed':'TEXT','verified':'INTEGER','asset_name':'TEXT','instrument_type':'TEXT','eligible_common_stock':'INTEGER','asset_status':'TEXT','tradable':'INTEGER','asset_attributes':'TEXT'}
-    for col, typ in cols.items():
-        if col not in existing:
-            con.execute(f'ALTER TABLE missed_movers ADD COLUMN {col} {typ}')
-    con.commit()
-    return con
 
-async def _sip_movers(core, limit=50):
-    if not (core.ALPACA_KEY and core.ALPACA_SECRET):
-        return [], {'status':'no_credentials','count':0}
-    headers = {'APCA-API-KEY-ID':core.ALPACA_KEY,'APCA-API-SECRET-KEY':core.ALPACA_SECRET}
-    requested_top = max(1, min(int(limit or 50), 50))
-    async with httpx.AsyncClient(timeout=30) as client:
-        response = await client.get('https://data.alpaca.markets/v1beta1/screener/stocks/movers', headers=headers, params={'top':requested_top})
+async def _sip_movers(core, limit=AUDIT_LIMIT):
+    requested = max(1, min(int(limit or AUDIT_LIMIT), AUDIT_LIMIT))
+    try:
+        response = await _request(
+            core,
+            "https://data.alpaca.markets/v1beta1/screener/stocks/movers",
+            params={"top": requested},
+            timeout=30,
+        )
+    except Exception as exc:
+        return [], {"status": f"request_{type(exc).__name__}", "count": 0}
     if response.status_code >= 400:
-        return [], {'status':f'http_{response.status_code}','count':0,'requested_top':requested_top,'body':(response.text or '')[:200]}
+        return [], {
+            "status": f"http_{response.status_code}",
+            "count": 0,
+            "requested_top": requested,
+            "body": (response.text or "")[:200],
+        }
     data = response.json() or {}
-    raw = data.get('gainers') or []
+    raw = data.get("gainers") or []
     out = []
-    for x in raw:
-        symbol = str(x.get('symbol') or '').upper()
-        pct = _f(x.get('percent_change'))
-        if symbol and pct is not None:
-            out.append({'symbol':symbol,'move_pct':pct,'price':_f(x.get('price')),'change':_f(x.get('change')),'raw':x})
-    out.sort(key=lambda z:z['move_pct'], reverse=True)
-    return out, {'status':'ok','count':len(out),'raw_gainers':len(raw),'requested_top':requested_top,'keys':list(data.keys())[:10]}
+    for item in raw:
+        symbol = str(item.get("symbol") or "").upper().strip()
+        move = _f(item.get("percent_change"))
+        if symbol and move is not None:
+            out.append({
+                "symbol": symbol,
+                "move_pct": move,
+                "price": _f(item.get("price")),
+                "change": _f(item.get("change")),
+                "raw": item,
+            })
+    out.sort(key=lambda item: item["move_pct"], reverse=True)
+    return out, {"status": "ok", "count": len(out), "raw_gainers": len(raw), "requested_top": requested}
+
 
 async def _asset(core, symbol):
-    if not (core.ALPACA_KEY and core.ALPACA_SECRET):
-        return None
-    headers = {'APCA-API-KEY-ID':core.ALPACA_KEY,'APCA-API-SECRET-KEY':core.ALPACA_SECRET}
     try:
-        async with httpx.AsyncClient(timeout=12) as client:
-            response = await client.get(f'https://paper-api.alpaca.markets/v2/assets/{symbol}', headers=headers)
+        response = await _request(
+            core,
+            f"https://paper-api.alpaca.markets/v2/assets/{symbol}",
+            timeout=12,
+        )
         return (response.json() or {}) if response.status_code < 400 else None
     except Exception:
         return None
 
-def _instrument(asset, symbol):
-    name = str((asset or {}).get('name') or '').lower()
-    s = str(symbol or '').upper()
-    if 'warrant' in name or s.endswith('.WS') or s.endswith('WS') or (len(s) >= 5 and s.endswith('W')):
-        return 'warrant'
-    if 'right' in name or s.endswith('.RT') or s.endswith('RT') or (len(s) >= 5 and s.endswith('R')):
-        return 'right'
-    if 'unit' in name or s.endswith('.U'):
-        return 'unit'
-    if 'preferred' in name or 'depositary share' in name:
-        return 'preferred'
-    if 'etf' in name or 'exchange traded fund' in name:
-        return 'etf'
-    if 'common stock' in name or 'common share' in name or 'ordinary share' in name:
-        return 'common_stock'
-    return 'other_equity'
-
-def _eligible(asset, instrument):
-    return bool(asset and asset.get('status') == 'active' and asset.get('tradable') is True and instrument in ('common_stock','other_equity'))
 
 async def _iex_snapshot(core, symbol):
-    if not (core.ALPACA_KEY and core.ALPACA_SECRET):
+    try:
+        response = await _request(
+            core,
+            f"https://data.alpaca.markets/v2/stocks/{symbol}/snapshot",
+            params={"feed": core.ALPACA_FEED},
+            timeout=15,
+        )
+        return (response.json() or {}) if response.status_code < 400 else None
+    except Exception:
         return None
-    headers = {'APCA-API-KEY-ID':core.ALPACA_KEY,'APCA-API-SECRET-KEY':core.ALPACA_SECRET}
-    async with httpx.AsyncClient(timeout=15) as client:
-        response = await client.get(f'https://data.alpaca.markets/v2/stocks/{symbol}/snapshot', headers=headers, params={'feed':core.ALPACA_FEED})
-    if response.status_code >= 400:
-        return None
-    data = response.json() or {}
-    return data if data else None
+
+
+def _snapshot_is_for_day(snapshot, day):
+    for key in ("dailyBar", "latestTrade"):
+        item = (snapshot or {}).get(key) or {}
+        stamp = item.get("t")
+        if not stamp:
+            continue
+        try:
+            parsed = datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+            if parsed.astimezone(NY).date().isoformat() == day:
+                return True
+        except ValueError:
+            continue
+    return False
+
 
 async def _premarket(core, symbol, day):
-    if not (core.ALPACA_KEY and core.ALPACA_SECRET):
-        return {}
-    headers = {'APCA-API-KEY-ID':core.ALPACA_KEY,'APCA-API-SECRET-KEY':core.ALPACA_SECRET}
-    params = {'timeframe':'1Min','start':f'{day}T04:00:00-04:00','end':f'{day}T09:30:00-04:00','limit':10000,'feed':core.ALPACA_FEED,'adjustment':'split','sort':'asc'}
-    async with httpx.AsyncClient(timeout=20) as client:
-        response = await client.get(f'https://data.alpaca.markets/v2/stocks/{symbol}/bars', headers=headers, params=params)
-    bars = ((response.json() or {}).get('bars') or []) if response.status_code < 400 else []
+    params = {
+        "timeframe": "1Min",
+        "start": f"{day}T04:00:00-04:00",
+        "end": f"{day}T09:30:00-04:00",
+        "limit": 10000,
+        "feed": core.ALPACA_FEED,
+        "adjustment": "split",
+        "sort": "asc",
+    }
+    try:
+        response = await _request(
+            core,
+            f"https://data.alpaca.markets/v2/stocks/{symbol}/bars",
+            params=params,
+            timeout=20,
+        )
+        bars = ((response.json() or {}).get("bars") or []) if response.status_code < 400 else []
+    except Exception:
+        bars = []
     if not bars:
         return {}
-    lows = [_f(b.get('l')) for b in bars if _f(b.get('l')) is not None]
-    highs = [_f(b.get('h')) for b in bars if _f(b.get('h')) is not None]
-    return {'last':_f(bars[-1].get('c')),'volume':sum(_f(b.get('v')) or 0 for b in bars),'high':max(highs) if highs else None,'low':min(lows) if lows else None,'bars':len(bars)}
+    lows = [_f(bar.get("l")) for bar in bars if _f(bar.get("l")) is not None]
+    highs = [_f(bar.get("h")) for bar in bars if _f(bar.get("h")) is not None]
+    return {
+        "last": _f(bars[-1].get("c")),
+        "volume": sum(_f(bar.get("v")) or 0 for bar in bars),
+        "high": max(highs) if highs else None,
+        "low": min(lows) if lows else None,
+        "bars": len(bars),
+    }
 
-def install_missed_movers_learning(app, core):
-    @app.post('/api/learning/missed-movers')
-    async def missed_movers(threshold_pct:float=MOVE_THRESHOLD_PCT, limit:int=100):
-        now = datetime.now(timezone.utc)
-        day = now.astimezone(NY).date().isoformat()
-        discovered, diag = await _sip_movers(core, limit)
-        con = _db()
-        top = {}
-        for row in con.execute('SELECT symbol,MIN(rank) best_rank,MIN(captured_at) first_seen FROM signal_journal WHERE trade_date=? AND strategy_version=? GROUP BY symbol',(day,STRATEGY_VERSION)).fetchall():
-            top[row['symbol']] = {'rank':int(row['best_rank']),'first_seen':row['first_seen']}
-        movers = [x for x in discovered if x['move_pct'] >= threshold_pct]
-        saved = 0
+
+def _summary_from_reports(reports):
+    eligible = sum(int(row.get("eligible_stock_movers") or 0) for row in reports)
+    captured = sum(int(row.get("eligible_top10_overlap") or 0) for row in reports)
+    missed = sum(int(row.get("eligible_false_negatives") or 0) for row in reports)
+    return {
+        "ok": True,
+        "days": len(reports),
+        "eligible_movers": eligible,
+        "captured": captured,
+        "missed": missed,
+        "capture_rate_pct": round(captured / eligible * 100, 1) if eligible else None,
+        "daily": reports,
+    }
+
+
+def _feature_group(rows):
+    def average(key):
+        values = [_f(row.get(key)) for row in rows]
+        values = [value for value in values if value is not None]
+        return round(sum(values) / len(values), 3) if values else None
+
+    ranges = []
+    for row in rows:
+        high = _f(row.get("premarket_high"))
+        low = _f(row.get("premarket_low"))
+        if high and low and low > 0:
+            ranges.append((high / low - 1) * 100)
+    return {
+        "count": len(rows),
+        "avg_move_pct": average("move_pct"),
+        "avg_premarket_gap_pct": average("premarket_gap_pct"),
+        "premarket_gap_coverage": sum(_f(row.get("premarket_gap_pct")) is not None for row in rows),
+        "avg_premarket_volume": average("premarket_volume"),
+        "premarket_volume_coverage": sum(_f(row.get("premarket_volume")) is not None for row in rows),
+        "avg_premarket_range_pct": round(sum(ranges) / len(ranges), 3) if ranges else None,
+        "verified_current_day": sum(bool(row.get("verified_current_day")) for row in rows),
+    }
+
+
+def install_missed_movers_learning(app, core, learning_store, strategy_version):
+    state = {"last_run_day": None, "last_attempt_epoch": 0, "last_result": None, "last_error": None, "auto_task_started": False}
+
+    async def run_audit(day, now=None):
+        now = now or datetime.now(timezone.utc)
+        local_now = now.astimezone(NY)
+        result = {
+            "record_type": "missed_mover_report",
+            "ticker": "__DAILY_REPORT__",
+            "rank": 0,
+            "scan_id": f"missed-movers:{day}",
+            "signal_time": now.isoformat(),
+            "epoch": now.timestamp(),
+            "trade_date": day,
+            "strategy_version": strategy_version,
+            "threshold_pct": MOVE_THRESHOLD_PCT,
+            "status": "pending",
+            "discovery_source": "alpaca_sip_market_movers",
+            "point_in_time": True,
+        }
+        if day != local_now.date().isoformat() or local_now.time() < AUDIT_AFTER:
+            result.update(status="waiting_for_completed_session", saved=0)
+            return result
+        state["last_attempt_epoch"] = now.timestamp()
+        if not (getattr(core, "ALPACA_KEY", None) and getattr(core, "ALPACA_SECRET", None)):
+            result.update(status="no_credentials", saved=0)
+            _save_report(learning_store, result)
+            state.update(last_run_day=day, last_result=result)
+            return result
+        market_day = await _is_market_day(core, day)
+        if market_day is not True:
+            result.update(status="market_calendar_unavailable" if market_day is None else "not_a_market_day", saved=0)
+            _save_report(learning_store, result)
+            state["last_result"] = result
+            if market_day is False:
+                state["last_run_day"] = day
+            return result
+
+        try:
+            stored_rows = learning_store.load(AUDIT_STORE_LIMIT)
+            top = _top10_for_day(stored_rows, day, strategy_version)
+        except Exception as exc:
+            result.update(status="scanner_history_unavailable", error=type(exc).__name__, saved=0)
+            _save_report(learning_store, result)
+            state["last_result"] = result
+            return result
+        if not top:
+            result.update(status="no_scanner_history", scanner_top10_symbols=0, saved=0)
+            _save_report(learning_store, result)
+            state["last_result"] = result
+            return result
+
+        discovered, diag = await _sip_movers(core)
+        if diag.get("status") != "ok":
+            result.update(status="mover_feed_unavailable", discovery_diag=diag, scanner_top10_symbols=len(top), saved=0)
+            _save_report(learning_store, result)
+            state["last_result"] = result
+            return result
+
+        movers = [item for item in discovered if item["move_pct"] >= MOVE_THRESHOLD_PCT]
+        eligible_count = captured_count = verified_count = saved = 0
         missed = []
-        eligible_movers = 0
-        eligible_overlap = 0
+        captured = []
         excluded = {}
-        verified_count = 0
-        sql = '''INSERT OR REPLACE INTO missed_movers(trade_date,symbol,observed_at,move_pct,price,volume,was_top10,top10_best_rank,strategy_version,features,premarket_gap_pct,premarket_volume,premarket_high,premarket_low,premarket_last,first_seen_top10,discovery_source,verification_feed,verified,asset_name,instrument_type,eligible_common_stock,asset_status,tradable,asset_attributes) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'''
-        for item in movers[:max(1,min(limit,50))]:
-            symbol = item['symbol']
+        for item in movers:
+            symbol = item["symbol"]
             asset = await _asset(core, symbol)
-            itype = _instrument(asset, symbol)
-            eligible = _eligible(asset, itype)
+            instrument = _instrument(asset, symbol)
+            eligible = _eligible(asset, instrument)
+            if not eligible:
+                excluded[instrument] = excluded.get(instrument, 0) + 1
+                continue
+            eligible_count += 1
             hit = top.get(symbol)
-            if eligible:
-                eligible_movers += 1
-                if hit:
-                    eligible_overlap += 1
-            else:
-                excluded[itype] = excluded.get(itype, 0) + 1
-            snap = await _iex_snapshot(core, symbol)
-            verified = bool(snap)
+            if hit:
+                captured_count += 1
+            snapshot = await _iex_snapshot(core, symbol)
+            verified = _snapshot_is_for_day(snapshot, day)
             if verified:
                 verified_count += 1
-            pm = {}
-            if verified and eligible:
-                pm = await _premarket(core, symbol, day)
-            prev = _f((snap or {}).get('prevDailyBar',{}).get('c'))
-            pm_last = pm.get('last')
-            pmgap = ((pm_last / prev) - 1) * 100 if pm_last and prev else None
-            attrs = (asset or {}).get('attributes') or []
-            features = {'point_in_time_rule':'SIP discovers outcome movers; asset reference classifies instrument; only active tradable common/ordinary equity counts in stock capture rate','sip_mover':item['raw'],'asset':asset,'iex_snapshot':snap,'premarket':pm}
-            values = (day,symbol,now.isoformat(),item['move_pct'],item['price'],_f((snap or {}).get('dailyBar',{}).get('v')),1 if hit else 0,hit['rank'] if hit else None,STRATEGY_VERSION,json.dumps(features,ensure_ascii=False),pmgap,pm.get('volume'),pm.get('high'),pm.get('low'),pm_last,hit['first_seen'] if hit else None,'alpaca_sip_screener',core.ALPACA_FEED,1 if verified else 0,(asset or {}).get('name'),itype,1 if eligible else 0,(asset or {}).get('status'),1 if bool((asset or {}).get('tradable')) else 0,json.dumps(attrs))
-            con.execute(sql, values)
+            pm = await _premarket(core, symbol, day)
+            previous_close = _f(((snapshot or {}).get("prevDailyBar") or {}).get("c"))
+            pm_last = pm.get("last")
+            pm_gap = (pm_last / previous_close - 1) * 100 if pm_last and previous_close else None
+            row = {
+                "record_type": "missed_mover_observation",
+                "ticker": symbol,
+                "rank": len(missed) + 1,
+                "scan_id": f"missed-movers:{day}",
+                "signal_time": now.isoformat(),
+                "epoch": now.timestamp(),
+                "trade_date": day,
+                "strategy_version": strategy_version,
+                "move_pct": round(item["move_pct"], 3),
+                "price": item["price"],
+                "volume": _f(((snapshot or {}).get("dailyBar") or {}).get("v")),
+                "was_top10": bool(hit),
+                "top10_best_rank": hit["rank"] if hit else None,
+                "first_seen_top10": hit["first_seen"] if hit else None,
+                "verified_current_day": verified,
+                "asset_name": (asset or {}).get("name"),
+                "instrument_type": instrument,
+                "premarket_gap_pct": round(pm_gap, 3) if pm_gap is not None else None,
+                "premarket_volume": pm.get("volume"),
+                "premarket_high": pm.get("high"),
+                "premarket_low": pm.get("low"),
+                "premarket_last": pm_last,
+                "discovery_source": "alpaca_sip_market_movers",
+                "verification_feed": core.ALPACA_FEED,
+            }
+            learning_store.upsert(row)
             saved += 1
-            if eligible and not hit:
-                range_pct = None
-                if pm.get('high') and pm.get('low'):
-                    range_pct = round((pm['high'] / pm['low'] - 1) * 100, 2)
-                missed.append({'symbol':symbol,'name':(asset or {}).get('name'),'move_pct':round(item['move_pct'],2),'instrument_type':itype,'verified_iex':verified,'overnight_halted':'overnight_halted' in attrs,'premarket_gap_pct':round(pmgap,2) if pmgap is not None else None,'premarket_volume':pm.get('volume'),'premarket_range_pct':range_pct})
-        con.commit()
-        con.close()
-        eligible_missed = max(0, eligible_movers - eligible_overlap)
-        capture_rate = round(eligible_overlap / eligible_movers * 100, 1) if eligible_movers else None
-        return {'ok':True,'trade_date':day,'threshold_pct':threshold_pct,'raw_market_movers':len(movers),'eligible_stock_movers':eligible_movers,'eligible_top10_overlap':eligible_overlap,'eligible_false_negatives':eligible_missed,'eligible_capture_rate_pct':capture_rate,'excluded_instruments':excluded,'verified_iex':verified_count,'missed':missed[:25],'saved':saved,'strategy_version':STRATEGY_VERSION,'discovery_source':'alpaca_sip_screener','discovery_diag':diag,'verification_feed':core.ALPACA_FEED,'point_in_time':True}
+            observed = {
+                "symbol": symbol,
+                "name": row["asset_name"],
+                "move_pct": round(item["move_pct"], 2),
+                "rank": hit["rank"] if hit else None,
+                "verified_current_day": verified,
+                "premarket_gap_pct": row["premarket_gap_pct"],
+                "premarket_volume": row["premarket_volume"],
+                "premarket_high": row["premarket_high"],
+                "premarket_low": row["premarket_low"],
+            }
+            (captured if hit else missed).append(observed)
 
-    @app.get('/api/learning/missed-movers/summary')
-    async def missed_summary(days:int=30):
-        con = _db()
-        rows = con.execute('''SELECT trade_date,COUNT(*) raw_movers,SUM(CASE WHEN eligible_common_stock=1 THEN 1 ELSE 0 END) eligible_movers,SUM(CASE WHEN eligible_common_stock=1 AND was_top10=1 THEN 1 ELSE 0 END) captured,SUM(CASE WHEN eligible_common_stock=1 AND was_top10=0 THEN 1 ELSE 0 END) missed,SUM(CASE WHEN eligible_common_stock=0 THEN 1 ELSE 0 END) excluded,AVG(CASE WHEN eligible_common_stock=1 AND was_top10=0 THEN premarket_gap_pct END) missed_avg_pm_gap,AVG(CASE WHEN eligible_common_stock=1 AND was_top10=0 THEN premarket_volume END) missed_avg_pm_volume FROM missed_movers WHERE strategy_version=? GROUP BY trade_date ORDER BY trade_date DESC LIMIT ?''',(STRATEGY_VERSION,max(1,min(days,365)))).fetchall()
-        con.close()
-        out = [dict(r) for r in rows]
-        eligible = sum(int(x['eligible_movers'] or 0) for x in out)
-        captured = sum(int(x['captured'] or 0) for x in out)
-        return {'ok':True,'days':len(out),'eligible_movers':eligible,'captured':captured,'missed':eligible-captured,'capture_rate_pct':round(captured/eligible*100,1) if eligible else None,'daily':out,'strategy_version':STRATEGY_VERSION}
+        result.update(
+            status="complete",
+            threshold_pct=MOVE_THRESHOLD_PCT,
+            top_movers_observed=len(movers),
+            eligible_stock_movers=eligible_count,
+            eligible_top10_overlap=captured_count,
+            eligible_false_negatives=max(0, eligible_count - captured_count),
+            capture_rate_pct=round(captured_count / eligible_count * 100, 1) if eligible_count else None,
+            scanner_top10_symbols=len(top),
+            excluded_instruments=excluded,
+            verified_current_day=verified_count,
+            captured_movers=captured,
+            missed=missed,
+            feature_comparison={"captured": _feature_group(captured), "missed": _feature_group(missed)},
+            saved=saved,
+            discovery_diag=diag,
+            top10_capture_definition="Eligible Alpaca SIP gainers at or above threshold that appeared in any saved Top-10 scan for this trading date.",
+            verification_note="IEX snapshot verification is reported separately and does not remove SIP-identified movers from the denominator.",
+        )
+        _save_report(learning_store, result)
+        state.update(last_run_day=day, last_result=result, last_error=None)
+        return result
+
+    @app.post("/api/learning/missed-movers")
+    async def missed_movers():
+        now = datetime.now(timezone.utc)
+        day = now.astimezone(NY).date().isoformat()
+        return await run_audit(day, now)
+
+    @app.get("/api/learning/missed-movers/summary")
+    async def missed_summary(days: int = 30):
+        rows = learning_store.load(AUDIT_STORE_LIMIT)
+        reports = [
+            row for row in rows
+            if row.get("record_type") == "missed_mover_report"
+            and row.get("strategy_version") == strategy_version
+            and row.get("status") == "complete"
+        ]
+        reports.sort(key=lambda row: row.get("trade_date") or "", reverse=True)
+        selected = reports[:max(1, min(int(days or 30), 365))]
+        return {
+            **_summary_from_reports(selected),
+            "strategy_version": strategy_version,
+            "latest": selected[0] if selected else None,
+            "auto_audit": {"after_new_york_close": AUDIT_AFTER.strftime("%H:%M"), "state": state},
+        }
+
+    async def daily_loop():
+        state["auto_task_started"] = True
+        while True:
+            try:
+                now = datetime.now(timezone.utc)
+                local_now = now.astimezone(NY)
+                day = local_now.date().isoformat()
+                retry_ready = now.timestamp() - float(state.get("last_attempt_epoch") or 0) >= 300
+                if local_now.weekday() < 5 and local_now.time() >= AUDIT_AFTER and state.get("last_run_day") != day and retry_ready:
+                    await run_audit(day, now)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                state["last_error"] = type(exc).__name__
+            await asyncio.sleep(60)
+
+    @app.on_event("startup")
+    async def _start_missed_mover_audit():
+        if not state["auto_task_started"]:
+            asyncio.create_task(daily_loop())
+
+    return state
+
+
+def _save_report(learning_store, report):
+    learning_store.upsert(report)

@@ -5,7 +5,6 @@ import statistics
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-import httpx
 
 NY=ZoneInfo('America/New_York')
 
@@ -83,6 +82,8 @@ def _shadow_profile(row):
         'wide_or_unknown_spread':spread_bps is None or spread_bps>75,
         'sub_dollar_price':price is None or price<1,
     }
+
+
     opportunity_score=round(100*sum(opportunity_checks.values())/len(opportunity_checks))
     entry_risk_score=round(100*sum(risk_flags.values())/len(risk_flags))
     # A high-volume anomaly is useful evidence that a stock deserves attention,
@@ -106,6 +107,25 @@ def _shadow_profile(row):
         'research_eligible':opportunity_detected and entry_window_ok and stage_confirmed,
         'production_effect':False,
     }
+
+
+def _first_regular_top10(rows):
+    """First regular-session Top-10 observation per ticker and trading day."""
+    out=[];seen=set()
+    for row in sorted(rows,key=lambda x:_number(x.get('epoch')) or 0):
+        key=(row.get('trade_date'),row.get('ticker'))
+        rank=_number(row.get('rank'))
+        try:captured=datetime.fromtimestamp(float(row.get('epoch')),timezone.utc).astimezone(NY).time()
+        except (TypeError,ValueError,OverflowError):continue
+        if not (time(9,30)<=captured<time(16,0)):continue
+        if not row.get('ticker') or not row.get('trade_date') or rank is None or not 1<=rank<=10 or key in seen:continue
+        seen.add(key);out.append(row)
+    return out
+
+
+def _independent_top10_15m(rows):
+    """Evaluated first Top-10 observations, all at a fixed 15-minute horizon."""
+    return [(row,15,_number(row.get('ret15m_pct'))) for row in _first_regular_top10(rows) if _number(row.get('ret15m_pct')) is not None]
 
 
 def _checkpoint_due(ny, captured_labels):
@@ -139,6 +159,7 @@ async def _official_closes(symbols, trade_date):
     key=(os.getenv('ALPACA_API_KEY') or os.getenv('ALPACA_KEY') or '').strip()
     secret=(os.getenv('ALPACA_SECRET_KEY') or os.getenv('ALPACA_SECRET') or '').strip()
     if not key or not secret or not symbols:return {}
+    import httpx
     day=date.fromisoformat(str(trade_date));start=datetime.combine(day,time(0,0),NY).astimezone(timezone.utc)
     end=start+timedelta(days=1)
     headers={'APCA-API-KEY-ID':key,'APCA-API-SECRET-KEY':secret}
@@ -256,11 +277,17 @@ def install_scheduled_learning(app, scanner_engine, learning_store, strategy_ver
             values=[(m,_number(r.get(f'ret{m}m_pct'))) for m in HORIZONS]
             values=[x for x in values if x[1] is not None]
             if values:evaluated.append((r,values[-1][0],values[-1][1]))
+        # Repeated checkpoints can observe the same ticker several times in a
+        # day. Use its first Top-10 observation and a fixed 15-minute horizon
+        # for the headline success rate so frequent repeat scans do not inflate
+        # the sample or change its measurement window.
+        first_regular_top10=_first_regular_top10(rows)
+        independent_top10=[(r,15,_number(r.get('ret15m_pct'))) for r in first_regular_top10 if _number(r.get('ret15m_pct')) is not None]
         features=[]
         for key,label in [(x['key'],x['label']) for x in _criteria({})]:
-            vals=[ret for r,_,ret in evaluated if any(c.get('key')==key and c.get('passed') for c in r.get('criteria') or [])]
+            vals=[ret for r,_,ret in independent_top10 if any(c.get('key')==key and c.get('passed') for c in r.get('criteria') or [])]
             features.append({'feature':key,'label':label,'signals':len(vals),'success_pct':round(100*sum(v>0 for v in vals)/len(vals),1) if vals else None,'avg_return_pct':round(sum(vals)/len(vals),3) if vals else None})
-        n=len(evaluated); ready=n>=MIN_VALIDATION_SAMPLES
+        n=len(independent_top10); ready=n>=MIN_VALIDATION_SAMPLES
         def cohort(items):
             vals=[ret for _,_,ret in items]
             return {'signals':len(vals),'positive_rate_pct':round(100*sum(v>0 for v in vals)/len(vals),1) if vals else None,'target1_rate_pct':round(100*sum(v>=1 for v in vals)/len(vals),1) if vals else None,'target2_rate_pct':round(100*sum(v>=2 for v in vals)/len(vals),1) if vals else None,'stop_rate_pct':round(100*sum(v<=-1 for v in vals)/len(vals),1) if vals else None,'avg_return_pct':round(sum(vals)/len(vals),3) if vals else None}
@@ -293,7 +320,9 @@ def install_scheduled_learning(app, scanner_engine, learning_store, strategy_ver
             stock_performance.append(item)
         stock_performance.sort(key=lambda x:(x['signals'],x['day']['success_pct'] if x['day']['success_pct'] is not None else -1),reverse=True)
         missed=sum(sum(bool(r.get(f'missed{m}m')) for m in HORIZONS) for r in rows)
-        return {'has_data':bool(rows),'source':'scheduled_point_in_time_forward_validation','storage':learning_store.status(),'strategy_version':strategy_version,'signals':len(rows),'evaluated':n,'pending':len(rows)-n,'missed_measurement_windows':missed,'success_rate_pct':round(100*sum(v>0 for _,_,v in evaluated)/n,1) if n else None,'target1_rate_pct':round(100*sum(v>=1 for _,_,v in evaluated)/n,1) if n else None,'target2_rate_pct':round(100*sum(v>=2 for _,_,v in evaluated)/n,1) if n else None,'expectancy_r':round(sum(v for _,_,v in evaluated)/n,3) if n else None,'cohorts':{'predictive':cohort(predictive),'watch_fallback':cohort(fallback),'shadow_entry_eligible':cohort(shadow_eligible),'shadow_other':cohort(shadow_other)},'precision_research':{'target_positive_rate_pct':70,'measurement_horizon_minutes':15,'minimum_independent_samples':MIN_VALIDATION_SAMPLES,'independent_entry_signals':cohort(independent),'with_fresh_catalyst':cohort([x for x in independent if x[0].get('catalyst_present')]),'without_fresh_catalyst':cohort([x for x in independent if not x[0].get('catalyst_present')]),'opening_lane':cohort(opening_v3),'intraday_ignition_lane':cohort(ignition_v3),'independence_rule':'first eligible signal per ticker per trade date','ready':len(independent)>=MIN_VALIDATION_SAMPLES},'shadow_research':{'version':'shadow-opportunity-entry-v3','production_effect':False,'hypothesis':'Require reliable acceleration, tradable dollar liquidity and acceptable spread; measure fresh catalyst separately; keep extreme conditions observable but veto entry.'},'universe_size':len({r.get('ticker') for r in rows}),'feature_learning':features,'recent_signals':recent,'stock_performance':stock_performance,'horizons_minutes':list(HORIZONS),'periods':PERIOD_LABELS,'checkpoint_health':{'captured':state.get('last_capture'),'missed':state.get('missed_checkpoints'),'grace_minutes':CHECKPOINT_GRACE_MINUTES},'validation':{'ready':ready,'minimum_samples':MIN_VALIDATION_SAMPLES,'chronological_point_in_time':True,'measurement_grace_seconds':MEASUREMENT_GRACE_SECONDS,'weights_changed':False,'production_weights_unchanged':True,'legacy_records_excluded':len(all_rows)-len(rows)},'definitions':{'score':'התאמה לשיטה, לא הסתברות הצלחה','success_rate':'תשואה חיובית באופק הנמדד','target1':'עלייה של 1% לפחות','target2':'עלייה של 2% לפחות','day':'מחיר סגירה רשמי של יום המסחר','timing':'זמן מהאות עד לשיא ולשפל שנצפו במהלך חלון המסחר'}}
+        independent_cohort=cohort(independent_top10)
+        all_signal_cohort=cohort(evaluated)
+        return {'has_data':bool(rows),'source':'scheduled_point_in_time_forward_validation','storage':learning_store.status(),'strategy_version':strategy_version,'signals':len(rows),'evaluated':n,'all_checkpoint_evaluated':len(evaluated),'pending':len(first_regular_top10)-n,'missed_measurement_windows':missed,'success_rate_pct':independent_cohort['positive_rate_pct'],'target1_rate_pct':independent_cohort['target1_rate_pct'],'target2_rate_pct':independent_cohort['target2_rate_pct'],'expectancy_r':independent_cohort['avg_return_pct'],'all_checkpoint_metrics':all_signal_cohort,'headline_metric':{'cohort':'first Top-10 observation per ticker per trade date during regular trading','horizon_minutes':15,'independent_samples':n},'cohorts':{'predictive':cohort(predictive),'watch_fallback':cohort(fallback),'shadow_entry_eligible':cohort(shadow_eligible),'shadow_other':cohort(shadow_other),'independent_top10_15m':independent_cohort},'precision_research':{'target_positive_rate_pct':70,'measurement_horizon_minutes':15,'minimum_independent_samples':MIN_VALIDATION_SAMPLES,'independent_entry_signals':cohort(independent),'with_fresh_catalyst':cohort([x for x in independent if x[0].get('catalyst_present')]),'without_fresh_catalyst':cohort([x for x in independent if not x[0].get('catalyst_present')]),'opening_lane':cohort(opening_v3),'intraday_ignition_lane':cohort(ignition_v3),'independence_rule':'first eligible signal per ticker per trade date','ready':len(independent)>=MIN_VALIDATION_SAMPLES},'shadow_research':{'version':'shadow-opportunity-entry-v3','production_effect':False,'hypothesis':'Require reliable acceleration, tradable dollar liquidity and acceptable spread; measure fresh catalyst separately; keep extreme conditions observable but veto entry.'},'universe_size':len({r.get('ticker') for r in rows}),'feature_learning':features,'recent_signals':recent,'stock_performance':stock_performance,'horizons_minutes':list(HORIZONS),'periods':PERIOD_LABELS,'checkpoint_health':{'captured':state.get('last_capture'),'missed':state.get('missed_checkpoints'),'grace_minutes':CHECKPOINT_GRACE_MINUTES},'validation':{'ready':ready,'minimum_samples':MIN_VALIDATION_SAMPLES,'chronological_point_in_time':True,'measurement_grace_seconds':MEASUREMENT_GRACE_SECONDS,'weights_changed':False,'production_weights_unchanged':True,'legacy_records_excluded':len(all_rows)-len(rows)},'definitions':{'score':'התאמה לשיטה, לא הסתברות הצלחה','success_rate':'תשואה חיובית אחרי 15 דקות; האות הראשון לכל מניה בשעות המסחר','target1':'עלייה של 1% לפחות אחרי 15 דקות','target2':'עלייה של 2% לפחות אחרי 15 דקות','day':'מחיר סגירה רשמי של יום המסחר','timing':'זמן מהאות עד לשיא ולשפל שנצפו במהלך חלון המסחר'}}
 
     async def loop():
         while True:

@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from scheduled_learning import (
     NY,
     _checkpoint_due,
+    _independent_top10_15m,
     _session_close_utc,
     _shadow_profile,
 )
@@ -74,6 +75,23 @@ class ScheduledLearningTests(unittest.TestCase):
         self.assertFalse(profile['entry_window_ok'])
         self.assertFalse(profile['research_eligible'])
         self.assertIn('wide_or_unknown_spread',profile['entry_veto_reasons'])
+
+    def test_headline_success_sample_uses_first_regular_session_top10_signal(self):
+        rows=[
+            {'trade_date':'2026-09-29','ticker':'NVDA','rank':1,'epoch':1790688000,'ret15m_pct':4.0},
+            {'trade_date':'2026-09-29','ticker':'NVDA','rank':3,'epoch':1790689500,'ret15m_pct':1.0},
+            {'trade_date':'2026-09-29','ticker':'AAPL','rank':2,'epoch':1790690400,'ret15m_pct':-0.5},
+        ]
+        sample=_independent_top10_15m(rows)
+        self.assertEqual([item[0]['ticker'] for item in sample],['NVDA','AAPL'])
+        self.assertEqual([item[2] for item in sample],[1.0,-0.5])
+
+    def test_headline_sample_does_not_replace_pending_first_signal_with_later_repeat(self):
+        rows=[
+            {'trade_date':'2026-09-29','ticker':'NVDA','rank':1,'epoch':1790689500},
+            {'trade_date':'2026-09-29','ticker':'NVDA','rank':2,'epoch':1790690400,'ret15m_pct':3.0},
+        ]
+        self.assertEqual(_independent_top10_15m(rows),[])
 
 
 if __name__=='__main__':
