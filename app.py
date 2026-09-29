@@ -119,3 +119,8 @@ try:
  install_app_tail(globals())
 except ImportError:
  pass
+
+
+# STRATEGY_VALIDATION_V1
+from strategy_validation import install_strategy_validation
+install_strategy_validation(app)
