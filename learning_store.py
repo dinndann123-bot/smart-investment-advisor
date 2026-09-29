@@ -99,6 +99,19 @@ def upsert_long_daily(row):
                 VALUES(?,?,?,?) ON CONFLICT(trade_date,ticker) DO UPDATE
                 SET payload=excluded.payload,updated_at=CURRENT_TIMESTAMP""",args)
 
+def insert_long_daily_once(row):
+    """Keep the first daily snapshot immutable when multiple app sessions race."""
+    initialize();payload=json.dumps(row,ensure_ascii=False,separators=(",",":"))
+    args=(row.get("trade_date"),row.get("ticker"),float(row.get("epoch") or 0),payload)
+    if DATABASE_URL:
+        with _pg() as con:
+            con.execute("""INSERT INTO long_daily_predictions(trade_date,ticker,signal_epoch,payload)
+                VALUES(%s,%s,%s,%s::jsonb) ON CONFLICT(trade_date,ticker) DO NOTHING""",args)
+    else:
+        with sqlite3.connect(SQLITE_PATH) as con:
+            con.execute("""INSERT INTO long_daily_predictions(trade_date,ticker,signal_epoch,payload)
+                VALUES(?,?,?,?) ON CONFLICT(trade_date,ticker) DO NOTHING""",args)
+
 def status():
     try:
         rows=load(3000)

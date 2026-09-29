@@ -1150,6 +1150,17 @@ async function loadLongDailyLearning(){
   body.innerHTML=rows.map(r=>`<tr><td>${r.trade_date}</td><td><b>${r.ticker}</b></td><td>${r.long_term_score??"—"}/100</td><td>${pct(r.forecast_return_pct)}</td><td>${r.snapshot_price!=null&&Number.isFinite(+r.snapshot_price)?money(+r.snapshot_price):"אין צילום מאומת"}</td><td>${pct(r.actual_return_pct)}</td><td>${pct(r.forecast_error_pct_points)}</td></tr>`).join("")||'<tr><td colspan="7" class="empty">אין נתונים תקינים להצגה.</td></tr>';
  }catch(_){status.textContent="שירות מדידת התחזית אינו זמין כרגע.";}
 }
+async function captureLongDailyForecast(){
+ const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(new Date());
+ const clock=Object.fromEntries(parts.map(p=>[p.type,p.value]));
+ const minute=Number(clock.hour)*60+Number(clock.minute);
+ if(minute<256||minute>=960)return;
+ try{
+  const response=await fetch('/api/learning/long-daily/capture',{method:'POST',cache:'no-store'});
+  const data=await response.json();
+  if(response.ok&&data.ok)await loadLongDailyLearning();
+ }catch(_){/* Retry on the next five-minute cycle. */}
+}
 
 function renderHome(){
  document.getElementById("homePortfolioCount").textContent=holdings.length;
@@ -1995,9 +2006,9 @@ function saveOcrRows(){let n=0;document.querySelectorAll("#ocrRows tr").forEach(
 if(location.protocol==='file:'){
   document.body.innerHTML='<div style="max-width:760px;margin:80px auto;font-family:Arial;direction:rtl;padding:24px"><h1>האפליקציה נפתחה בצורה לא נכונה</h1><p>אין לפתוח את index.html ישירות. יש להפעיל את השרת ואז להיכנס דרך http://127.0.0.1:8000 כדי שהגרפים, הנתונים והעדכונים החיים יעבדו.</p></div>';
 }else{
-  initializeVisibleClocks();renderHome();renderTables();renderBacktests();renderWeekly();setחיBadge();checkBackendStatus();updateScannerButton();startAutoScanner();loadLearningSummary();loadLongDailyLearning();refreshHealth();loadLivePerformance(false);syncMarketClock();startDataWatchdog();loadMarketIndexes();refreshAll();
+  initializeVisibleClocks();renderHome();renderTables();renderBacktests();renderWeekly();setחיBadge();checkBackendStatus();updateScannerButton();startAutoScanner();loadLearningSummary();loadLongDailyLearning();captureLongDailyForecast();refreshHealth();loadLivePerformance(false);syncMarketClock();startDataWatchdog();loadMarketIndexes();refreshAll();
   document.querySelectorAll('[data-index-symbol]').forEach(card=>card.addEventListener('click',()=>openDetail('long',card.dataset.indexSymbol)));
-  setInterval(updateClockUI,1000);setInterval(syncMarketClock,60000);setInterval(refreshHealth,300000);setInterval(()=>loadLivePerformance(true),300000);setInterval(loadMarketIndexes,60000);
+  setInterval(updateClockUI,1000);setInterval(syncMarketClock,60000);setInterval(refreshHealth,300000);setInterval(()=>loadLivePerformance(true),300000);setInterval(loadMarketIndexes,60000);setInterval(captureLongDailyForecast,300000);
 }
 
 

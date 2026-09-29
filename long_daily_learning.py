@@ -62,6 +62,10 @@ def install_long_daily_learning(app, store, market_module, quote_fetcher=None):
         saver = getattr(store, "upsert_long_daily", None)
         (saver or store.upsert)(record)
 
+    def _save_first_snapshot(record):
+        saver = getattr(store, "insert_long_daily_once", None)
+        (saver or getattr(store, "upsert_long_daily", store.upsert))(record)
+
     @app.post("/api/learning/long-daily/capture")
     async def capture_long_daily():
         """Freeze today's ten displayed long-term picks and a daily baseline forecast."""
@@ -71,6 +75,8 @@ def install_long_daily_learning(app, store, market_module, quote_fetcher=None):
         now_et = now_utc.astimezone(ET)
         if not (4 <= now_et.hour < 16):
             raise HTTPException(425, "צילום התחזית היומי פתוח רק במהלך הפרה־מרקט/יום המסחר (04:00–15:59 ניו יורק)")
+        if now_et.hour == 4 and now_et.minute < 16:
+            raise HTTPException(425, "ממתינים 15 דקות לעדכון SIP לפני צילום הבוקר")
         trade_date = now_utc.astimezone(ET).date().isoformat()
         existing = {r.get("ticker"): r for r in _all_records() if r.get("trade_date") == trade_date}
         if len(existing) == 10:
@@ -128,10 +134,11 @@ def install_long_daily_learning(app, store, market_module, quote_fetcher=None):
             raise HTTPException(503, f"נמצאו נתונים תקינים רק ל־{len(merged)} מתוך 10 מניות; התחזית לא ננעלה")
         for ticker in TICKERS:
             if ticker not in existing:
-                _save(merged[ticker])
+                _save_first_snapshot(merged[ticker])
+        saved = {r.get("ticker"): r for r in _all_records() if r.get("trade_date") == trade_date}
         return {"ok": True, "created": len(created), "already_captured": False, "trade_date": trade_date,
                 "forecast_definition": "ממוצע תשואות הסגירה של 5 ימי המסחר המלאים הקודמים, מוגבל ל־±5%",
-                "records": created}
+                "records": [saved[t] for t in TICKERS if t in saved]}
 
     @app.post("/api/learning/long-daily/evaluate")
     async def evaluate_long_daily():
