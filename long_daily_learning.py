@@ -7,6 +7,7 @@ long-term score and from the day-trading scanner.
 from __future__ import annotations
 
 import asyncio
+import json
 import math
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -186,16 +187,25 @@ def install_long_daily_learning(app, store, market_module, quote_fetcher=None):
         while True:
             try:
                 now_et = datetime.now(timezone.utc).astimezone(ET)
-                if now_et.weekday() < 5 and (now_et.hour, now_et.minute) >= (16, 25):
-                    pending_dates = sorted({r.get("trade_date") for r in _all_records()
-                                            if r.get("trade_date") and not r.get("forecast_closed")
-                                            and r.get("trade_date") <= now_et.date().isoformat()})
-                    for trade_date in pending_dates:
-                        try:
-                            await _evaluate_trade_date(trade_date)
-                        except HTTPException as exc:
-                            if exc.status_code not in (409, 425):
-                                raise
+                cutoff_date = now_et.date()
+                if now_et.weekday() < 5 and (now_et.hour, now_et.minute) < (16, 25):
+                    cutoff_date -= timedelta(days=1)
+                pending_dates = sorted({r.get("trade_date") for r in _all_records()
+                                        if r.get("trade_date") and not r.get("forecast_closed")
+                                        and r.get("trade_date") <= cutoff_date.isoformat()})
+                for trade_date in pending_dates:
+                    try:
+                        result = await _evaluate_trade_date(trade_date)
+                        print("LONG_DAILY_AUTO_EVALUATED " + json.dumps({
+                            "trade_date": trade_date,
+                            "evaluated": result.get("evaluated"),
+                            "pending": result.get("pending"),
+                            "direction_accuracy_pct": result.get("direction_accuracy_pct"),
+                            "mean_absolute_forecast_error_pct_points": result.get("mean_absolute_forecast_error_pct_points"),
+                        }, separators=(",", ":")), flush=True)
+                    except HTTPException as exc:
+                        if exc.status_code not in (409, 425):
+                            raise
             except Exception as exc:
                 print(f"LONG_DAILY_AUTO_EVALUATE_ERROR {type(exc).__name__}: {exc}", flush=True)
             await asyncio.sleep(300)
