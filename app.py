@@ -208,6 +208,31 @@ try:
         }
         for day in _audit_long_detail_days for r in _audit_long_by_day[day]
     ]
+    _audit_checkpoint_detail_days = sorted(r.get("trade_date") for r in _audit_scheduled if r.get("trade_date"))
+    _audit_checkpoint_detail_day = _audit_checkpoint_detail_days[-1] if _audit_checkpoint_detail_days else None
+    _audit_all_checkpoint_details = [
+        {
+            "trade_date": r.get("trade_date"),
+            "ticker": r.get("ticker"),
+            "rank": r.get("rank"),
+            "checkpoint": r.get("checkpoint"),
+            "signal_time": r.get("signal_time"),
+            "score": r.get("score"),
+            "quality_tier": r.get("quality_tier"),
+            "stage": r.get("stage"),
+            "change_pct": r.get("change_pct"),
+            "gap_pct": r.get("gap_pct"),
+            "rvol": r.get("rvol"),
+            "dollar_volume": r.get("dollar_volume"),
+            "spread_bps": r.get("spread_bps"),
+            "catalyst_present": r.get("catalyst_present"),
+            "catalyst_headline": r.get("catalyst_headline"),
+            "ret15m_pct": r.get("ret15m_pct"),
+            "ret_day_pct": r.get("ret_day_pct"),
+        }
+        for r in _audit_scheduled
+        if r.get("trade_date") == _audit_checkpoint_detail_day
+    ]
     _audit_snapshot = {
         "strategy_version": ASYNC_STRATEGY_VERSION,
         "storage": _audit_store.status(),
@@ -215,6 +240,8 @@ try:
         "trade_dates": sorted({r.get("trade_date") for r in _audit_scheduled if r.get("trade_date")}),
         "scheduled_by_day": _audit_days,
         "signal_details": _audit_signal_details,
+        "all_checkpoints_latest_day": _audit_checkpoint_detail_day,
+        "all_checkpoint_details": _audit_all_checkpoint_details,
         "long_daily_details": _audit_long_details,
         "first_regular_top10_rows": len(_audit_top10),
         "evaluated_15m": len(_audit_15m),
