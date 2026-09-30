@@ -171,12 +171,49 @@ try:
     _audit_long_by_day = {}
     for _row in _audit_long_rows:
         _audit_long_by_day.setdefault(_row.get("trade_date"), []).append(_row)
+    _audit_detail_days = sorted(d for d in _audit_by_trade_date if d)[-3:]
+    _audit_signal_details = [
+        {
+            "trade_date": r.get("trade_date"),
+            "ticker": r.get("ticker"),
+            "rank": r.get("rank"),
+            "checkpoint": r.get("checkpoint"),
+            "signal_time": r.get("signal_time"),
+            "is_predictive_signal": r.get("is_predictive_signal"),
+            "quality_tier": r.get("quality_tier"),
+            "score": r.get("score"),
+            "stage": r.get("stage"),
+            "change_pct": r.get("change_pct"),
+            "gap_pct": r.get("gap_pct"),
+            "rvol": r.get("rvol"),
+            "dollar_volume": r.get("dollar_volume"),
+            "spread_bps": r.get("spread_bps"),
+            "catalyst_present": r.get("catalyst_present"),
+            "catalyst_headline": r.get("catalyst_headline"),
+            "ret15m_pct": r.get("ret15m_pct"),
+            "ret_day_pct": r.get("ret_day_pct"),
+            "missed15m": r.get("missed15m"),
+        }
+        for day in _audit_detail_days for r in _audit_by_trade_date[day]
+    ]
+    _audit_long_detail_days = sorted(d for d in _audit_long_by_day if d)[-3:]
+    _audit_long_details = [
+        {
+            "trade_date": r.get("trade_date"),
+            "ticker": r.get("ticker"),
+            "rank": r.get("rank"),
+            "forecast_return_pct": r.get("forecast_return_pct"),
+            "actual_return_pct": r.get("actual_return_pct"),
+            "forecast_direction_correct": r.get("forecast_direction_correct"),
+        }
+        for day in _audit_long_detail_days for r in _audit_long_by_day[day]
+    ]
     _audit_snapshot = {
         "strategy_version": ASYNC_STRATEGY_VERSION,
         "storage": _audit_store.status(),
         "checkpoint_rows": len(_audit_scheduled),
         "trade_dates": sorted({r.get("trade_date") for r in _audit_scheduled if r.get("trade_date")}),
-        "scheduled_by_day": _audit_days,
+        "scheduled_by_day": _audit_days,\n        "signal_details": _audit_signal_details,\n        "long_daily_details": _audit_long_details,
         "first_regular_top10_rows": len(_audit_top10),
         "evaluated_15m": len(_audit_15m),
         "success_15m_pct": round(100 * sum(v > 0 for v in _audit_15m) / len(_audit_15m), 1) if _audit_15m else None,
