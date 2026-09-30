@@ -119,3 +119,61 @@ try:
  install_app_tail(globals())
 except ImportError:
  pass
+
+# Emit a compact, read-only snapshot of persisted validation records into Render logs.
+# This lets operators verify database history without opening PostgreSQL to external IPs.
+try:
+    import json as _audit_json
+    import learning_store as _audit_store
+    from scheduled_learning import _first_regular_top10 as _audit_first_top10, _number as _audit_number
+
+    _audit_rows = _audit_store.load(3000)
+    _audit_scheduled = [r for r in _audit_rows
+                        if r.get("record_type") == "scheduled_checkpoint"
+                        and r.get("strategy_version") == ASYNC_STRATEGY_VERSION]
+    _audit_top10 = _audit_first_top10(_audit_scheduled)
+
+    def _audit_period(field):
+        _vals = [_audit_number(r.get(field)) for r in _audit_top10]
+        _vals = [v for v in _vals if v is not None]
+        return {
+            "samples": len(_vals),
+            "positive": sum(v > 0 for v in _vals),
+            "success_pct": round(100 * sum(v > 0 for v in _vals) / len(_vals), 1) if _vals else None,
+            "mean_return_pct": round(sum(_vals) / len(_vals), 3) if _vals else None,
+        }
+
+    _audit_15m = [_audit_number(r.get("ret15m_pct")) for r in _audit_top10]
+    _audit_15m = [v for v in _audit_15m if v is not None]
+    _audit_long_loader = getattr(_audit_store, "load_long_daily", None)
+    _audit_long_rows = _audit_long_loader(10000) if _audit_long_loader else []
+    _audit_long_rows = [r for r in _audit_long_rows if r.get("record_type") == "long_daily_prediction"]
+    _audit_long_done = [r for r in _audit_long_rows if r.get("forecast_closed")
+                        and _audit_number(r.get("actual_return_pct")) is not None]
+    _audit_long_by_day = {}
+    for _row in _audit_long_rows:
+        _audit_long_by_day.setdefault(_row.get("trade_date"), []).append(_row)
+    _audit_snapshot = {
+        "strategy_version": ASYNC_STRATEGY_VERSION,
+        "storage": _audit_store.status(),
+        "checkpoint_rows": len(_audit_scheduled),
+        "trade_dates": sorted({r.get("trade_date") for r in _audit_scheduled if r.get("trade_date")}),
+        "first_regular_top10_rows": len(_audit_top10),
+        "evaluated_15m": len(_audit_15m),
+        "success_15m_pct": round(100 * sum(v > 0 for v in _audit_15m) / len(_audit_15m), 1) if _audit_15m else None,
+        "day": _audit_period("ret_day_pct"),
+        "week": _audit_period("ret_week_pct"),
+        "month": _audit_period("ret_month_pct"),
+        "long_daily_saved_rows": len(_audit_long_rows),
+        "long_daily_evaluated_rows": len(_audit_long_done),
+        "long_daily_direction_accuracy_pct": round(100 * sum(bool(r.get("forecast_direction_correct")) for r in _audit_long_done) / len(_audit_long_done), 1) if _audit_long_done else None,
+        "long_daily_days": [{
+            "trade_date": _day,
+            "selected": len(_audit_long_by_day[_day]),
+            "evaluated": sum(1 for r in _audit_long_by_day[_day] if r.get("forecast_closed") and _audit_number(r.get("actual_return_pct")) is not None),
+            "direction_accuracy_pct": (round(100 * sum(bool(r.get("forecast_direction_correct")) for r in _audit_long_by_day[_day] if r.get("forecast_closed") and _audit_number(r.get("actual_return_pct")) is not None) / sum(1 for r in _audit_long_by_day[_day] if r.get("forecast_closed") and _audit_number(r.get("actual_return_pct")) is not None), 1) if any(r.get("forecast_closed") and _audit_number(r.get("actual_return_pct")) is not None for r in _audit_long_by_day[_day]) else None),
+        } for _day in sorted(d for d in _audit_long_by_day if d)[-30:]],
+    }
+    print("LEARNING_AUDIT_IMPORT_SNAPSHOT " + _audit_json.dumps(_audit_snapshot, ensure_ascii=False, separators=(",", ":")), flush=True)
+except Exception as _audit_error:
+    print(f"LEARNING_AUDIT_IMPORT_ERROR {type(_audit_error).__name__}", flush=True)
