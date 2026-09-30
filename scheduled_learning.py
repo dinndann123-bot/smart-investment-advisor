@@ -1,4 +1,5 @@
 import asyncio
+import json
 import math
 import os
 import statistics
@@ -339,6 +340,67 @@ def install_scheduled_learning(app, scanner_engine, learning_store, strategy_ver
     @app.on_event('startup')
     async def _start_learning_scheduler():
         asyncio.create_task(loop())
+
+    async def audit_learning_store_on_startup():
+        try:
+            point_in_time = summary()
+            stored = learning_store.load(3000)
+            by_horizon = {}
+            for horizon, field in (("day", "ret_day_pct"), ("week", "ret_week_pct"), ("month", "ret_month_pct")):
+                vals = [_number(row.get(field)) for row in stored
+                        if row.get("record_type") == "scheduled_checkpoint"
+                        and row.get("strategy_version") == strategy_version]
+                vals = [value for value in vals if value is not None]
+                by_horizon[horizon] = {
+                    "samples": len(vals),
+                    "positive": sum(value > 0 for value in vals),
+                    "success_pct": round(100 * sum(value > 0 for value in vals) / len(vals), 1) if vals else None,
+                    "mean_return_pct": round(sum(vals) / len(vals), 3) if vals else None,
+                }
+
+            long_loader = getattr(learning_store, "load_long_daily", None)
+            long_rows = [row for row in (long_loader(10000) if long_loader else stored)
+                         if row.get("record_type") == "long_daily_prediction"]
+            by_day = {}
+            for row in long_rows:
+                by_day.setdefault(row.get("trade_date"), []).append(row)
+            long_days = []
+            for trade_date in sorted(day for day in by_day if day)[-30:]:
+                records = by_day[trade_date]
+                done = [row for row in records
+                        if row.get("forecast_closed") and _number(row.get("actual_return_pct")) is not None]
+                long_days.append({
+                    "trade_date": trade_date,
+                    "selected": len(records),
+                    "evaluated": len(done),
+                    "direction_correct": sum(bool(row.get("forecast_direction_correct")) for row in done),
+                    "direction_accuracy_pct": round(100 * sum(bool(row.get("forecast_direction_correct")) for row in done) / len(done), 1) if done else None,
+                    "mean_actual_return_pct": round(sum(_number(row.get("actual_return_pct")) for row in done) / len(done), 3) if done else None,
+                })
+            long_done = [row for row in long_rows
+                         if row.get("forecast_closed") and _number(row.get("actual_return_pct")) is not None]
+            snapshot = {
+                "strategy_version": strategy_version,
+                "storage": point_in_time.get("storage"),
+                "saved_checkpoint_rows": point_in_time.get("signals"),
+                "evaluated_independent_15m": point_in_time.get("headline_metric", {}).get("independent_samples"),
+                "positive_independent_15m": point_in_time.get("headline_metric", {}).get("positive_signals"),
+                "success_rate_15m_pct": point_in_time.get("success_rate_pct"),
+                "target1_15m_pct": point_in_time.get("target1_rate_pct"),
+                "target2_15m_pct": point_in_time.get("target2_rate_pct"),
+                "scheduled_return_by_horizon": by_horizon,
+                "long_daily_saved_rows": len(long_rows),
+                "long_daily_evaluated_rows": len(long_done),
+                "long_daily_direction_accuracy_pct": round(100 * sum(bool(row.get("forecast_direction_correct")) for row in long_done) / len(long_done), 1) if long_done else None,
+                "long_daily_days": long_days,
+                "missed_measurement_windows": point_in_time.get("missed_measurement_windows"),
+                "checkpoint_health": point_in_time.get("checkpoint_health"),
+            }
+            print("LEARNING_AUDIT_SNAPSHOT " + json.dumps(snapshot, ensure_ascii=False, separators=(",", ":")), flush=True)
+        except Exception as exc:
+            print(f"LEARNING_AUDIT_SNAPSHOT_ERROR {type(exc).__name__}", flush=True)
+
+    app.add_event_handler("startup", audit_learning_store_on_startup)
 
     @app.get('/api/learning/scheduled-status')
     async def scheduled_status():return state
