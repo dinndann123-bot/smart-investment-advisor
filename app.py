@@ -133,8 +133,9 @@ try:
                         and r.get("strategy_version") == ASYNC_STRATEGY_VERSION]
     _audit_top10 = _audit_first_top10(_audit_scheduled)
 
-    def _audit_period(field):
-        _vals = [_audit_number(r.get(field)) for r in _audit_top10]
+    def _audit_period(field, rows=None):
+        _source = _audit_top10 if rows is None else rows
+        _vals = [_audit_number(r.get(field)) for r in _source]
         _vals = [v for v in _vals if v is not None]
         return {
             "samples": len(_vals),
@@ -143,6 +144,23 @@ try:
             "mean_return_pct": round(sum(_vals) / len(_vals), 3) if _vals else None,
         }
 
+    _audit_by_trade_date = {}
+    for _row in _audit_top10:
+        _audit_by_trade_date.setdefault(_row.get("trade_date"), []).append(_row)
+    _audit_days = []
+    for _day in sorted(day for day in _audit_by_trade_date if day):
+        _rows = _audit_by_trade_date[_day]
+        _day15 = [_audit_number(r.get("ret15m_pct")) for r in _rows]
+        _day15 = [v for v in _day15 if v is not None]
+        _audit_days.append({
+            "trade_date": _day,
+            "first_regular_top10": len(_rows),
+            "evaluated_15m": len(_day15),
+            "positive_15m": sum(v > 0 for v in _day15),
+            "success_15m_pct": round(100 * sum(v > 0 for v in _day15) / len(_day15), 1) if _day15 else None,
+            "day": _audit_period("ret_day_pct", _rows),
+            "week": _audit_period("ret_week_pct", _rows),
+        })
     _audit_15m = [_audit_number(r.get("ret15m_pct")) for r in _audit_top10]
     _audit_15m = [v for v in _audit_15m if v is not None]
     _audit_long_loader = getattr(_audit_store, "load_long_daily", None)
@@ -158,6 +176,7 @@ try:
         "storage": _audit_store.status(),
         "checkpoint_rows": len(_audit_scheduled),
         "trade_dates": sorted({r.get("trade_date") for r in _audit_scheduled if r.get("trade_date")}),
+        "scheduled_by_day": _audit_days,
         "first_regular_top10_rows": len(_audit_top10),
         "evaluated_15m": len(_audit_15m),
         "success_15m_pct": round(100 * sum(v > 0 for v in _audit_15m) / len(_audit_15m), 1) if _audit_15m else None,
