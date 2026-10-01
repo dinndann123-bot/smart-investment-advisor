@@ -1,5 +1,5 @@
 (()=>{'use strict';
-const ENDPOINT='/api/scanner/day?top=10&candidates=40';
+const ENDPOINT='/api/scanner/day?top=10&candidates=200';
 let active=null,seq=0;
 const state={status:'idle',error:null,scanId:null,generatedAt:null,count:0,integrity:false};
 function emit(detail={}){window.__V5_DAY_SCAN_STATE__={...state,...detail};window.dispatchEvent(new CustomEvent('smartadvisor:day-scan',{detail:window.__V5_DAY_SCAN_STATE__}))}
