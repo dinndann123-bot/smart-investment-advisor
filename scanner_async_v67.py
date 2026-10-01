@@ -44,6 +44,8 @@ def install_async_scanner(app, scanner_engine):
                 waiting_for_delay = False
         if failures:
             quality = "feed_failure"
+        elif payload.get("session") == "closed":
+            quality = "market_closed"
         elif live_rows:
             quality = "current_market_data"
         elif waiting_for_delay:
@@ -56,6 +58,7 @@ def install_async_scanner(app, scanner_engine):
             quality = "mixed_or_unknown"
         descriptions = {
             "waiting_for_delayed_feed": "ממתין לחלוף עיכוב ה־SIP לפני דירוג מניות; צילומים מהסשן הקודם לא יוצגו כהמלצות.",
+            "market_closed": "המסחר סגור; אין כרגע מחירים תוך־יומיים טריים לדירוג.",
             "stale_or_waiting": "לא התקבלו ציטוטים טריים מספיק; לא נציג בחירות כאילו אומתו.",
             "no_session_trades": "המקור מחובר, אך אין עסקאות בסשן הנוכחי למדידה.",
             "current_market_data": "נמצאו נתונים טריים מהסשן הנוכחי.",
@@ -140,4 +143,4 @@ def install_async_scanner(app, scanner_engine):
     async def status():
         return JSONResponse({"scanner_job":public_state(),"result":state.get("result") if state.get("status")=="complete" else None},headers={"Cache-Control":"no-store"})
 
-    return {"day":day,"start":start,"status":status,"state":state,"strategy_version":STRATEGY_VERSION}
+    return {"day":day,"start":start,"status":status,"state":state,"strategy_version":STRATEGY_VERSION,"classify_market_data":classify_market_data}

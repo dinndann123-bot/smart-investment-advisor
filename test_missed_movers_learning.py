@@ -35,6 +35,12 @@ class FakeStore:
     def load(self, _limit):
         return list(self.rows)
 
+    def load_by_type(self, record_type, limit=None, since_epoch=None):
+        rows=[row for row in self.rows
+              if row.get("record_type", "scanner_signal")==record_type
+              and (since_epoch is None or float(row.get("epoch") or 0)>=since_epoch)]
+        return rows[:limit] if limit is not None else rows
+
     def upsert(self, row):
         self.rows.append(dict(row))
 

@@ -303,7 +303,13 @@ def install_missed_movers_learning(app, core, learning_store, strategy_version):
             return result
 
         try:
-            stored_rows = learning_store.load(AUDIT_STORE_LIMIT)
+            loader = getattr(learning_store, "load_by_type", None)
+            if callable(loader):
+                day_start = datetime.combine(datetime.fromisoformat(day).date(), time.min, NY).timestamp()
+                stored_rows = loader("scanner_signal", since_epoch=day_start)
+                stored_rows.extend(loader("scheduled_checkpoint", since_epoch=day_start))
+            else:
+                stored_rows = learning_store.load(AUDIT_STORE_LIMIT)
             top = _top10_for_day(stored_rows, day, strategy_version)
         except Exception as exc:
             result.update(status="scanner_history_unavailable", error=type(exc).__name__, saved=0)
@@ -420,7 +426,8 @@ def install_missed_movers_learning(app, core, learning_store, strategy_version):
 
     @app.get("/api/learning/missed-movers/summary")
     async def missed_summary(days: int = 30):
-        rows = learning_store.load(AUDIT_STORE_LIMIT)
+        loader = getattr(learning_store, "load_by_type", None)
+        rows = loader("missed_mover_report", since_epoch=datetime.now(timezone.utc).timestamp() - 366 * 86400) if callable(loader) else learning_store.load(AUDIT_STORE_LIMIT)
         reports = [
             row for row in rows
             if row.get("record_type") == "missed_mover_report"

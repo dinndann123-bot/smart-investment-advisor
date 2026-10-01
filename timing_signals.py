@@ -34,10 +34,22 @@ def _entry_gate(row):
     return all(checks.values()),checks
 
 
+def _timing_history(learning_store, day=None, limit=None):
+    loader=getattr(learning_store,'load_by_type',None)
+    if callable(loader):
+        since_epoch=None
+        if day:
+            midnight=datetime.fromisoformat(day).replace(tzinfo=NY)
+            since_epoch=midnight.timestamp()
+        return loader('timing_event',limit=limit,since_epoch=since_epoch)
+    rows=learning_store.load(1000000)
+    return [x for x in rows if x.get('record_type')=='timing_event' and (not day or x.get('trade_date')==day)][-limit:] if limit else [x for x in rows if x.get('record_type')=='timing_event' and (not day or x.get('trade_date')==day)]
+
+
 def annotate_and_record(rows, learning_store, scan_id, observed_at=None):
     now=observed_at or datetime.now(timezone.utc);day=now.astimezone(NY).date().isoformat()
-    history=learning_store.load(3000)
-    prior=[x for x in history if x.get('record_type')=='timing_event' and x.get('trade_date')==day and x.get('version')==VERSION]
+    history=_timing_history(learning_store,day)
+    prior=[x for x in history if x.get('version')==VERSION]
     by_symbol={}
     for event in prior:by_symbol.setdefault(event.get('ticker'),[]).append(event)
     recorded=[]
@@ -76,8 +88,8 @@ def annotate_and_record(rows, learning_store, scan_id, observed_at=None):
 def monitor_active_positions(rows, learning_store, scan_id, observed_at=None):
     """Keep target/stop monitoring alive after a ticker leaves the displayed Top-10."""
     now=observed_at or datetime.now(timezone.utc);day=now.astimezone(NY).date().isoformat()
-    history=learning_store.load(3000)
-    today=[x for x in history if x.get('record_type')=='timing_event' and x.get('trade_date')==day and x.get('version')==VERSION]
+    history=_timing_history(learning_store,day)
+    today=[x for x in history if x.get('version')==VERSION]
     entries={x.get('ticker'):x for x in today if x.get('event_type')=='entry'}
     closed={x.get('ticker') for x in today if x.get('event_type')=='exit'}
     market={str(x.get('ticker') or '').upper():x for x in rows}
@@ -98,7 +110,7 @@ def monitor_active_positions(rows, learning_store, scan_id, observed_at=None):
 def install_timing_routes(app, learning_store):
     @app.get('/api/learning/timing-events')
     async def timing_events(limit:int=200):
-        rows=[x for x in learning_store.load(3000) if x.get('record_type')=='timing_event']
+        rows=_timing_history(learning_store,limit=500)
         rows=list(reversed(rows[-max(1,min(limit,500)):]))
         entries=sum(x.get('event_type')=='entry' for x in rows);exits=sum(x.get('event_type')=='exit' for x in rows)
         return {'ok':True,'version':VERSION,'entries':entries,'exits':exits,'events':rows,'production_effect':False,'storage':learning_store.status()}

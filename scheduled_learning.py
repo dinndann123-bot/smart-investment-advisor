@@ -180,8 +180,13 @@ async def _official_closes(symbols, trade_date):
 def install_scheduled_learning(app, scanner_engine, learning_store, strategy_version, price_fetcher=None):
     state={'installed':True,'strategy_version':strategy_version,'checkpoints':list(CHECKPOINTS.values()),'checkpoint_grace_minutes':CHECKPOINT_GRACE_MINUTES,'horizons_minutes':list(HORIZONS),'periods':PERIOD_LABELS,'minimum_validation_samples':MIN_VALIDATION_SAMPLES,'last_capture':{},'missed_checkpoints':[],'last_evaluation':None,'last_market_sample_epoch':0,'last_error':None}
 
+    def checkpoint_rows():
+        loader=getattr(learning_store,'load_by_type',None)
+        if callable(loader):return loader('scheduled_checkpoint')
+        return [r for r in learning_store.load(1000000) if r.get('record_type')=='scheduled_checkpoint']
+
     def captured_for_day(day):
-        return {r.get('checkpoint') for r in learning_store.load(3000) if r.get('record_type')=='scheduled_checkpoint' and r.get('strategy_version')==strategy_version and r.get('trade_date')==day and r.get('checkpoint')}
+        return {r.get('checkpoint') for r in checkpoint_rows() if r.get('strategy_version')==strategy_version and r.get('trade_date')==day and r.get('checkpoint')}
 
     def refresh_checkpoint_state(ny):
         day=ny.date().isoformat();captured=captured_for_day(day)
@@ -214,7 +219,7 @@ def install_scheduled_learning(app, scanner_engine, learning_store, strategy_ver
 
     async def evaluate_due():
         if not price_fetcher:return
-        now=datetime.now(timezone.utc); rows=learning_store.load(3000); due=[]; active=[]
+        now=datetime.now(timezone.utc); rows=checkpoint_rows(); due=[]; active=[]
         for rec in rows:
             if rec.get('record_type')!='scheduled_checkpoint' or rec.get('strategy_version')!=strategy_version:continue
             elapsed=now.timestamp()-float(rec.get('epoch') or 0)
@@ -271,8 +276,8 @@ def install_scheduled_learning(app, scanner_engine, learning_store, strategy_ver
         state['last_evaluation']=now.isoformat()
 
     def summary():
-        all_rows=learning_store.load(3000)
-        rows=[r for r in all_rows if r.get('record_type')=='scheduled_checkpoint' and r.get('strategy_version')==strategy_version]
+        all_rows=checkpoint_rows()
+        rows=[r for r in all_rows if r.get('strategy_version')==strategy_version]
         evaluated=[]
         for r in rows:
             values=[(m,_number(r.get(f'ret{m}m_pct'))) for m in HORIZONS]
@@ -344,7 +349,7 @@ def install_scheduled_learning(app, scanner_engine, learning_store, strategy_ver
     async def audit_learning_store_on_startup():
         try:
             point_in_time = summary()
-            stored = learning_store.load(3000)
+            stored = checkpoint_rows()
             by_horizon = {}
             for horizon, field in (("day", "ret_day_pct"), ("week", "ret_week_pct"), ("month", "ret_month_pct")):
                 vals = [_number(row.get(field)) for row in stored
@@ -422,7 +427,7 @@ def install_scheduled_learning(app, scanner_engine, learning_store, strategy_ver
     @app.get('/api/learning/stock/{symbol}')
     async def scheduled_stock_learning(symbol:str):
         await evaluate_due();symbol=symbol.upper().strip();data=summary()
-        rows=[r for r in learning_store.load(3000) if r.get('record_type')=='scheduled_checkpoint' and r.get('strategy_version')==strategy_version and r.get('ticker')==symbol]
+        rows=[r for r in checkpoint_rows() if r.get('strategy_version')==strategy_version and r.get('ticker')==symbol]
         profile=next((x for x in data.get('stock_performance') or [] if x.get('symbol')==symbol),None)
         return {'has_data':bool(rows),'symbol':symbol,'signals':len(rows),'profile':profile,'rows':[{'date':r.get('trade_date'),'score':r.get('score'),'gap_pct':r.get('gap_pct'),'rvol_open':r.get('rvol'),'day_return_pct':_number(r.get('ret_day_pct')),'week_return_pct':_number(r.get('ret_week_pct')),'month_return_pct':_number(r.get('ret_month_pct')),'minutes_to_peak':_number(r.get('minutes_to_peak')),'minutes_to_trough':_number(r.get('minutes_to_trough'))} for r in reversed(rows[-50:])],'validation':data.get('validation'),'definitions':data.get('definitions')}
 

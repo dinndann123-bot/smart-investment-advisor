@@ -16,7 +16,9 @@ def install(app, learning_store):
 
     @app.get("/api/live-signals/summary")
     async def canonical_live_summary(refresh: bool = False):
-        rows=learning_store.load(3000);now=datetime.now(timezone.utc);recent=[]
+        now=datetime.now(timezone.utc);loader=getattr(learning_store,"load_by_type",None)
+        rows=loader("scanner_signal",since_epoch=(now-timedelta(days=30)).timestamp()) if callable(loader) else learning_store.load(3000)
+        recent=[]
         for row in rows:
             # Timing entry/exit events share the same store but are not scanner
             # recommendations and do not carry a strategy score.  Mixing them
