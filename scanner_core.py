@@ -218,18 +218,19 @@ def install_local_scanner(app):
   # Re-rank after bounded catalyst/extension adjustments so the displayed Top
   # 10 and the learning journal use exactly the same canonical ordering.
   sel.sort(key=lambda x:(x.get('quality_tier')=='predictive',f(x.get('score')),f(x.get('forward_rank'))),reverse=True)
-   # Stable compatibility aliases consumed by the existing UI.  These do not
-   # change layout; they make the already-present columns show canonical data.
-   x['change']=x.get('change_pct');x['gap_pct']=x.get('snapshot_gap_pct')
-   x['volume']=x.get('day_volume');x['catalyst']=x.get('catalyst_headline') or 'לא נמצא קטליזטור חדשותי עדכני'
-   # Risk must reflect liquidity/spread/price, not merely a high scanner rank.
-   price=f(x.get('price'));volume=f(x.get('day_volume'));spread=f(x.get('spread_bps'))
-   if price<2 or volume<20000 or spread>100:x['risk']=5
-   elif price<5 or volume<50000 or spread>60:x['risk']=4
-   elif x.get('quality_tier')!='predictive' or not x.get('rvol_reliable') or volume<100000:x['risk']=3
-   else:x['risk']=2
-   x['score']=min(94,max(0,int(round(f(x.get('score'))))))
-   if x.get('quality_tier')!='predictive':x['score']=min(x['score'],72)
+  for x in sel:
+    # Stable compatibility aliases consumed by the existing UI.  These do not
+    # change layout; they make the already-present columns show canonical data.
+    x['change']=x.get('change_pct');x['gap_pct']=x.get('snapshot_gap_pct')
+    x['volume']=x.get('day_volume');x['catalyst']=x.get('catalyst_headline') or 'לא נמצא קטליזטור חדשותי עדכני'
+    # Risk must reflect liquidity/spread/price, not merely a high scanner rank.
+    price=f(x.get('price'));volume=f(x.get('day_volume'));spread=f(x.get('spread_bps'))
+    if price<2 or volume<20000 or spread>100:x['risk']=5
+    elif price<5 or volume<50000 or spread>60:x['risk']=4
+    elif x.get('quality_tier')!='predictive' or not x.get('rvol_reliable') or volume<100000:x['risk']=3
+    else:x['risk']=2
+    x['score']=min(94,max(0,int(round(f(x.get('score'))))))
+    if x.get('quality_tier')!='predictive':x['score']=min(x['score'],72)
    x['strategy_fit_score']=x['score'];x['score_semantics']='strategy_fit_not_success_probability'
   for position,x in enumerate(sel,1):x['rank']=position
   timing_events=[]
