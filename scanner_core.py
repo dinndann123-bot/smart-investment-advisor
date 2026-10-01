@@ -65,7 +65,12 @@ def install_local_scanner(app):
   return {**m,'price':round(p,4),'prev_close':prev,'change_pct':round(ch,2),'snapshot_gap_pct':round(gap,2),'day_volume':vol,'dollar_volume':round(p*vol,2),'prev_day_volume':pv,'snapshot_volume_ratio':round(vr,3) if vr else None,'snapshot_range_position':round(rp,3),'day_open':o,'day_high':hi,'day_low':lo,'minute_volume':f(mb.get('v')),'bid':bid or None,'ask':ask or None,'spread_bps':round(spread_bps,1) if spread_bps is not None else None,'market_timestamp':mts,'data_source':'Alpaca','data_feed':feed,'bars_feed':bars_feed(feed),'data_delay_minutes':15 if feed=='delayed_sip' else 0}
  def qrank(r):
   ch=f(r.get('change_pct'));gap=f(r.get('snapshot_gap_pct'));vr=f(r.get('snapshot_volume_ratio'));rp=f(r.get('snapshot_range_position'),.5);dv=f(r.get('price'))*max(f(r.get('day_volume')),1)
-  # Discovery must not become a "top gainers" list. Reward early movement,\n  # but keep enough gappers in the deep pool to audit them instead of silently\n  # losing them before the strategy stage can classify them as extended.\n  early_move=min(max(ch,0),6)*2.5\n  extension_penalty=max(ch-8,0)*3.0+max(abs(gap)-10,0)*2.0\n  return min(math.log10(max(dv,1)),10)*3+min(vr,5)*8+rp*8+early_move-extension_penalty
+  # Discovery must not become a "top gainers" list. Reward early movement,
+  # but keep enough gappers in the deep pool to audit them instead of silently
+  # losing them before the strategy stage can classify them as extended.
+  early_move=min(max(ch,0),6)*2.5
+  extension_penalty=max(ch-8,0)*3.0+max(abs(gap)-10,0)*2.0
+  return min(math.log10(max(dv,1)),10)*3+min(vr,5)*8+rp*8+early_move-extension_penalty
  async def batch_bars(symbols,c,snapshot_feed):
   out={s:([],None) for s in symbols};end=datetime.now(timezone.utc);start=end-timedelta(days=8);bf=bars_feed(snapshot_feed)
   # Free/basic accounts may query consolidated SIP historical data when end is outside
@@ -149,12 +154,22 @@ def install_local_scanner(app):
  def stage(r):
   if not r.get('rvol_reliable'):return 'watch'
   ch=f(r.get('change_pct'));rv=f(r.get('rvol'));used=f(r.get('intraday_move_used_pct'),50);rp=f(r.get('current_range_position'),.5);burst=f(r.get('minute_volume_burst'));gap=f(r.get('snapshot_gap_pct'))
-  # A large pre-market move is evidence of attention, not evidence of future\n  # upside. Once too much of the move is already consumed, keep it for learning\n  # and diagnostics but never promote it as a forward trade candidate.\n  if ch>=10 or gap>=10 or (ch>=6 and used>=90):return 'already_extended'
+  # A large pre-market move is evidence of attention, not evidence of future
+  # upside. Once too much of the move is already consumed, keep it for learning
+  # and diagnostics but never promote it as a forward trade candidate.
+  if ch>=10 or gap>=10 or (ch>=6 and used>=90):return 'already_extended'
   if rv>=1.15 and .55<=rp<=.90 and used<90 and -3<=ch<7:return 'pre_breakout'
   if .5<=ch<8 and rv>=1.2 and .65<=rp<=.94 and used<92 and (burst>=1.0 or burst==0):return 'early_breakout'
   return 'watch'
  def rank(r):
-  st=stage(r);rv=f(r.get('rvol'));ch=f(r.get('change_pct'));gap=f(r.get('snapshot_gap_pct'));rp=f(r.get('current_range_position'),.5);used=f(r.get('intraday_move_used_pct'),50);burst=f(r.get('minute_volume_burst'))\n  # Balanced forward score: favor abnormal participation BEFORE extension.\n  # 2-6% gaps get a modest setup bonus; large gaps and consumed intraday range\n  # are penalized progressively so a stock cannot score highly merely because\n  # it already exploded in pre-market.\n  gap_bonus=6 if 2<=gap<=6 else (2 if 0<gap<8 else 0)\n  extension_penalty=max(ch-5,0)*7+max(gap-7,0)*8+max(used-82,0)*1.4\n  score=35+min(max(rv-1,0),8)*6+rp*10+min(burst,5)*2+gap_bonus+{'pre_breakout':25,'early_breakout':16,'watch':-20,'already_extended':-100}[st]-extension_penalty
+  st=stage(r);rv=f(r.get('rvol'));ch=f(r.get('change_pct'));gap=f(r.get('snapshot_gap_pct'));rp=f(r.get('current_range_position'),.5);used=f(r.get('intraday_move_used_pct'),50);burst=f(r.get('minute_volume_burst'))
+  # Balanced forward score: favor abnormal participation BEFORE extension.
+  # 2-6% gaps get a modest setup bonus; large gaps and consumed intraday range
+  # are penalized progressively so a stock cannot score highly merely because
+  # it already exploded in pre-market.
+  gap_bonus=6 if 2<=gap<=6 else (2 if 0<gap<8 else 0)
+  extension_penalty=max(ch-5,0)*7+max(gap-7,0)*8+max(used-82,0)*1.4
+  score=35+min(max(rv-1,0),8)*6+rp*10+min(burst,5)*2+gap_bonus+{'pre_breakout':25,'early_breakout':16,'watch':-20,'already_extended':-100}[st]-extension_penalty
   if r.get('rvol_capped'):score-=8
   return score,st
  async def scanner(top:int=10,candidates:int=40):
