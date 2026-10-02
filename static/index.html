@@ -249,7 +249,7 @@ button:focus-visible,.btn:focus-visible,input:focus-visible,select:focus-visible
     <div class="card metric"><b id="lastSessionPeakTime">—</b><span>זמן חציוני לשיא</span></div>
   </div>
   <div class="chart-wrap" style="margin-top:12px"><canvas id="lastSessionChart" height="300" aria-label="ביצועי עשר הבחירות האחרונות"></canvas></div>
-  <div class="table-wrap" style="margin-top:12px"><table class="compact-table"><thead><tr><th>#</th><th>מניה</th><th>ציון</th><th>תוצאה יומית</th><th>שיא מהאות</th><th>זמן לשיא</th></tr></thead><tbody id="lastSessionRows"></tbody></table></div>
+  <div class="table-wrap" style="margin-top:12px"><table class="compact-table"><thead><tr><th>#</th><th>מניה</th><th>ציון</th><th>תוצאה יומית</th><th>MFE</th><th>MAE</th><th>3 דק׳</th><th>5 דק׳</th><th>10 דק׳</th><th>זמן לשיא</th></tr></thead><tbody id="lastSessionRows"></tbody></table></div>
   <div id="lastSessionNote" class="note" style="margin-top:8px">הנתונים נטענים מיומן התחזיות שנשמר בזמן אמת.</div>
 </div>
 
@@ -930,7 +930,8 @@ async function loadLastSessionPerformance(){
     document.getElementById("lastSessionCount").textContent=measured.length+"/10";
     document.getElementById("lastSessionAvg").textContent=avg==null?"—":(avg>=0?"+":"")+avg.toFixed(2)+"%";
     document.getElementById("lastSessionPeakTime").textContent=med==null?"—":Math.round(med)+" דק׳";
-    document.getElementById("lastSessionRows").innerHTML=rows.map((x,i)=>{const d=Number(x.day_return_pct),peak=Number(x.close_return_pct);return `<tr><td>${i+1}</td><td><b>${x.symbol||"—"}</b></td><td>${Number.isFinite(Number(x.score))?Number(x.score).toFixed(0)+"%":"—"}</td><td class="${d>=0?'positive':'negative'}">${Number.isFinite(d)?(d>=0?'+':'')+d.toFixed(2)+'%':'ממתין'}</td><td>${Number.isFinite(peak)?(peak>=0?'+':'')+peak.toFixed(2)+'%':'—'}</td><td>${Number.isFinite(Number(x.minutes_to_peak))?Math.round(Number(x.minutes_to_peak))+' דק׳':'—'}</td></tr>`}).join("")||'<tr><td colspan="6" class="empty">עדיין אין יום מסחר שמור עם תוצאות.</td></tr>';
+    const pct=v=>Number.isFinite(Number(v))?`${Number(v)>=0?"+":""}${Number(v).toFixed(2)}%`:"—";
+    document.getElementById("lastSessionRows").innerHTML=rows.map((x,i)=>{const d=Number(x.day_return_pct);return `<tr><td>${i+1}</td><td><b>${x.symbol||"—"}</b></td><td>${Number.isFinite(Number(x.score))?Number(x.score).toFixed(0)+"%":"—"}</td><td class="${d>=0?'positive':'negative'}">${Number.isFinite(d)?pct(d):"ממתין"}</td><td>${pct(x.mfe_pct)}</td><td>${pct(x.mae_pct)}</td><td>${pct(x.ret3m_pct)}</td><td>${pct(x.ret5m_pct)}</td><td>${pct(x.ret10m_pct)}</td><td>${Number.isFinite(Number(x.minutes_to_peak))?Math.round(Number(x.minutes_to_peak))+" דק׳":"—"}</td></tr>`}).join("")||'<tr><td colspan="10" class="empty">עדיין אין יום מסחר שמור עם תוצאות.</td></tr>';
     note.textContent=last?`יום מסחר: ${last} · מקור: snapshot שנשמר בזמן אמת. הצלחה = תשואה חיובית בסגירה; ימים ללא מדידה אינם נספרים.`:"עדיין אין נתונים שמורים.";
     drawLastSessionChart(rows);
   }catch(e){note.textContent="לא ניתן לטעון כרגע את סיכום יום המסחר האחרון."}
