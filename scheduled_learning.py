@@ -21,6 +21,7 @@ CHECKPOINTS={
 }
 CHECKPOINT_GRACE_MINUTES=3
 HORIZONS=(1,3,5,10,15)
+CONFIRMATION_WINDOWS=(3,5,10)
 PERIODS={'day':24*60*60,'week':7*24*60*60,'month':30*24*60*60}
 PERIOD_LABELS={'day':'יום','week':'שבוע','month':'חודש'}
 MIN_VALIDATION_SAMPLES=50
@@ -107,6 +108,7 @@ def _shadow_profile(row):
         'stage_confirmed':stage_confirmed,
         'research_eligible':opportunity_detected and entry_window_ok and stage_confirmed,
         'production_effect':False,
+        'research_metrics_version':'entry-confirmation-v1',
     }
 
 
@@ -178,7 +180,7 @@ async def _official_closes(symbols, trade_date):
 
 
 def install_scheduled_learning(app, scanner_engine, learning_store, strategy_version, price_fetcher=None):
-    state={'installed':True,'strategy_version':strategy_version,'checkpoints':list(CHECKPOINTS.values()),'checkpoint_grace_minutes':CHECKPOINT_GRACE_MINUTES,'horizons_minutes':list(HORIZONS),'periods':PERIOD_LABELS,'minimum_validation_samples':MIN_VALIDATION_SAMPLES,'last_capture':{},'missed_checkpoints':[],'last_evaluation':None,'last_market_sample_epoch':0,'last_error':None}
+    state={'installed':True,'strategy_version':strategy_version,'checkpoints':list(CHECKPOINTS.values()),'checkpoint_grace_minutes':CHECKPOINT_GRACE_MINUTES,'horizons_minutes':list(HORIZONS),'confirmation_windows_minutes':list(CONFIRMATION_WINDOWS),'periods':PERIOD_LABELS,'minimum_validation_samples':MIN_VALIDATION_SAMPLES,'last_capture':{},'missed_checkpoints':[],'last_evaluation':None,'last_market_sample_epoch':0,'last_error':None}
 
     def checkpoint_rows():
         loader=getattr(learning_store,'load_by_type',None)
@@ -255,6 +257,9 @@ def install_scheduled_learning(app, scanner_engine, learning_store, strategy_ver
             if price is None or signal is None or signal<=0:continue
             if kind=='minute':
                 rec[f'p{horizon}m']=round(price,4);rec[f'ret{horizon}m_pct']=round((price/signal-1)*100,3)
+                if horizon in CONFIRMATION_WINDOWS:
+                    ret=rec[f'ret{horizon}m_pct']; gap=_number(rec.get('gap_pct')); risk=_number((rec.get('shadow_profile') or {}).get('entry_risk_score'))
+                    rec[f'confirmation_{horizon}m']={'return_pct':ret,'held_signal_price':ret>=0,'continuation_1pct':ret>=1,'gap_pct':gap,'entry_risk_score':risk,'research_only':True}
             else:
                 rec[f'p_{horizon}']=round(price,4);rec[f'ret_{horizon}_pct']=round((price/signal-1)*100,3);rec[f'evaluated_{horizon}_at']=now.isoformat()
                 if kind=='day_close':rec['day_evaluation_source']='alpaca_iex_completed_daily_bar'
