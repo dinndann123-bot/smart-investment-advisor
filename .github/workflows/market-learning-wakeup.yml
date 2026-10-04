@@ -36,6 +36,24 @@ jobs:
         shell: bash
         run: |
           base='https://smart-investment-advisor-yjtz.onrender.com'
+          curl --fail --silent --show-error --retry 2 --retry-delay 5 --max-time 45 "$base/" >/dev/null
+          scanner_status="$(curl --fail --silent --show-error --retry 2 --retry-delay 5 --max-time 45 \
+            "$base/api/scanner/async-status")"
+          python -c 'import json,sys; d=json.load(sys.stdin); assert d.get("auto_scan_enabled") is True and d.get("strategy_version"), f"scanner not ready: {d}"; print("scanner service: %s" % d["strategy_version"])' <<<"$scanner_status"
+
+          scan=''
+          for attempt in $(seq 1 15); do
+            if scan="$(curl --fail --silent --max-time 25 \
+              "$base/api/scanner/day?top=10&candidates=120")" && \
+              python -c 'import json,sys; d=json.load(sys.stdin); j=d.get("scanner_job") or {}; assert j.get("status")=="complete" and not d.get("scan_pending")' <<<"$scan"; then
+              break
+            fi
+            scan=''
+            sleep 10
+          done
+          test -n "$scan" || { echo 'scanner did not complete within 150 seconds'; exit 1; }
+          python -c 'import json,sys; d=json.load(sys.stdin); j=d.get("scanner_job") or {}; h=d.get("market_data_health") or j.get("market_data_health") or {}; q=h.get("quality"); allowed={"market_closed","current_market_data","no_session_trades","stale_or_waiting","waiting_for_delayed_feed"}; assert d.get("data_source")=="Alpaca" and q in allowed, "scanner data health invalid: "+str(d.get("session"))+" "+str(h); rows=d.get("results") or []; assert d.get("session")!="regular" or (len(rows)==10 and all(x.get("price") and x.get("market_timestamp") for x in rows)), "regular-session rows incomplete: "+str(len(rows)); print("scanner: session=%s health=%s rows=%s" % (d.get("session"),q,len(rows)))' <<<"$scan"
+
           status=''
           for attempt in $(seq 1 12); do
             if status="$(curl --fail --silent --max-time 20 \
