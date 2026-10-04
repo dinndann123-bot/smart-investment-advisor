@@ -27,7 +27,15 @@ jobs:
       - name: Wake scheduler and request evaluation
         shell: bash
         run: |
-          curl --fail --silent --show-error --retry 3 --retry-delay 10 --max-time 90 \
-            'https://smart-investment-advisor-yjtz.onrender.com/api/learning/scheduled-status'
-          curl --fail --silent --show-error --retry 2 --retry-delay 10 --max-time 90 \
-            'https://smart-investment-advisor-yjtz.onrender.com/api/learning/summary'
+          base='https://smart-investment-advisor-yjtz.onrender.com'
+          status="$(curl --fail --silent --show-error --retry 3 --retry-delay 10 --max-time 90 \
+            "$base/api/learning/scheduled-status")"
+          python -c 'import json,sys; d=json.load(sys.stdin); assert d.get("installed") is True, f"scheduler not installed: {d}"; print("scheduler: installed")' <<<"$status"
+
+          chart="$(curl --fail --silent --show-error --retry 2 --retry-delay 10 --max-time 60 \
+            "$base/api/market/chart/SPY?range=1D")"
+          python -c 'import json,sys; d=json.load(sys.stdin); assert d.get("source")=="Alpaca" and d.get("count",0)>0 and d.get("last_bar_at"), "chart data invalid"; print("chart: %s Alpaca bars, last=%s" % (d["count"], d["last_bar_at"]))' <<<"$chart"
+
+          summary="$(curl --fail --silent --show-error --retry 2 --retry-delay 10 --max-time 90 \
+            "$base/api/learning/summary")"
+          python -c 'import json,sys; d=json.load(sys.stdin); s=d.get("storage") or {}; assert s.get("durable") is True and s.get("connected") is True, "learning storage unavailable"; print("learning: %s signals, strategy=%s" % (d.get("signals", 0), d.get("strategy_version")))' <<<"$summary"

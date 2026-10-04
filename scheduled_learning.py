@@ -351,6 +351,7 @@ def install_scheduled_learning(app, scanner_engine, learning_store, strategy_ver
     async def _start_learning_scheduler():
         asyncio.create_task(loop())
 
+    @app.on_event('startup')
     async def audit_learning_store_on_startup():
         try:
             point_in_time = summary()
@@ -409,8 +410,6 @@ def install_scheduled_learning(app, scanner_engine, learning_store, strategy_ver
             print("LEARNING_AUDIT_SNAPSHOT " + json.dumps(snapshot, ensure_ascii=False, separators=(",", ":")), flush=True)
         except Exception as exc:
             print(f"LEARNING_AUDIT_SNAPSHOT_ERROR {type(exc).__name__}", flush=True)
-
-    app.add_event_handler("startup", audit_learning_store_on_startup)
 
     @app.get('/api/learning/scheduled-status')
     async def scheduled_status():return state

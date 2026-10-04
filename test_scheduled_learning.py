@@ -7,10 +7,28 @@ from scheduled_learning import (
     _independent_top10_15m,
     _session_close_utc,
     _shadow_profile,
+    install_scheduled_learning,
 )
 
 
 class ScheduledLearningTests(unittest.TestCase):
+    def test_scheduler_routes_and_startup_hooks_register_on_fastapi(self):
+        from fastapi import FastAPI
+
+        app=FastAPI()
+        state=install_scheduled_learning(
+            app,
+            scanner_engine=lambda **kwargs: None,
+            learning_store=object(),
+            strategy_version='test-strategy',
+        )
+        paths={route.path for route in app.routes}
+        self.assertTrue(state['installed'])
+        self.assertIn('/api/learning/scheduled-status',paths)
+        self.assertIn('/api/learning/summary',paths)
+        self.assertIn('/api/learning/forward-validation',paths)
+        self.assertEqual(len(app.router.on_startup),2)
+
     def test_checkpoint_accepts_small_scheduler_delay(self):
         now=datetime(2026,9,24,9,27,tzinfo=NY)
         self.assertEqual(_checkpoint_due(now,set()),'09:25_pre_open')

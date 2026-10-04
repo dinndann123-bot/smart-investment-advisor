@@ -89,8 +89,9 @@ try:
  from timing_signals import install_timing_routes
  TIMING_SIGNALS=install_timing_routes(app,learning_store)
 except Exception as _scheduled_error:
- SCHEDULED_LEARNING={'installed':False,'error':f'{type(_scheduled_error).__name__}: {_scheduled_error}'}
- TIMING_SIGNALS={'installed':False,'error':f'{type(_scheduled_error).__name__}: {_scheduled_error}'}
+    SCHEDULED_LEARNING={'installed':False,'error':f'{type(_scheduled_error).__name__}: {_scheduled_error}'}
+    TIMING_SIGNALS={'installed':False,'error':f'{type(_scheduled_error).__name__}: {_scheduled_error}'}
+    print(f"SCHEDULED_LEARNING_INSTALL_ERROR {type(_scheduled_error).__name__}: {_scheduled_error}",flush=True)
 
 try:
  from missed_movers_learning import install_missed_movers_learning

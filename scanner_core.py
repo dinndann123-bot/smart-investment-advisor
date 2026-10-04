@@ -231,7 +231,7 @@ def install_local_scanner(app):
     else:x['risk']=2
     x['score']=min(94,max(0,int(round(f(x.get('score'))))))
     if x.get('quality_tier')!='predictive':x['score']=min(x['score'],72)
-   x['strategy_fit_score']=x['score'];x['score_semantics']='strategy_fit_not_success_probability'
+    x['strategy_fit_score']=x['score'];x['score_semantics']='strategy_fit_not_success_probability'
   for position,x in enumerate(sel,1):x['rank']=position
   timing_events=[]
   try:
