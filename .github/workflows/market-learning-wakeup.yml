@@ -1,8 +1,16 @@
 name: Keep market learning awake
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'app.py'
+      - 'scanner_core.py'
+      - 'scheduled_learning.py'
+      - 'chart_api_v7.py'
+      - '.github/workflows/market-learning-wakeup.yml'
   schedule:
-    # New York is UTC-4 during the current September session.  These short
+    # New York is UTC-4 while daylight time is in effect. These short
     # windows wake the free Render service before and around each checkpoint.
     - cron: '55 11 * * 1-5'
     - cron: '0 12 * * 1-5'
@@ -28,8 +36,17 @@ jobs:
         shell: bash
         run: |
           base='https://smart-investment-advisor-yjtz.onrender.com'
-          status="$(curl --fail --silent --show-error --retry 3 --retry-delay 10 --max-time 90 \
-            "$base/api/learning/scheduled-status")"
+          status=''
+          for attempt in $(seq 1 12); do
+            if status="$(curl --fail --silent --max-time 20 \
+              "$base/api/learning/scheduled-status")" && \
+              python -c 'import json,sys; d=json.load(sys.stdin); assert d.get("installed") is True' <<<"$status"; then
+              break
+            fi
+            status=''
+            sleep 15
+          done
+          test -n "$status" || { echo 'scheduler endpoint did not become ready with installed=true'; exit 1; }
           python -c 'import json,sys; d=json.load(sys.stdin); assert d.get("installed") is True, f"scheduler not installed: {d}"; print("scheduler: installed")' <<<"$status"
 
           chart="$(curl --fail --silent --show-error --retry 2 --retry-delay 10 --max-time 60 \
