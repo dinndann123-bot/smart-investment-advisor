@@ -39,7 +39,7 @@ jobs:
           curl --fail --silent --show-error --retry 2 --retry-delay 5 --max-time 45 "$base/" >/dev/null
           scanner_status="$(curl --fail --silent --show-error --retry 2 --retry-delay 5 --max-time 45 \
             "$base/api/scanner/async-status")"
-          python -c 'import json,sys; d=json.load(sys.stdin); assert d.get("auto_scan_enabled") is True and d.get("strategy_version"), f"scanner not ready: {d}"; print("scanner service: %s" % d["strategy_version"])' <<<"$scanner_status"
+          python -c 'import json,sys; d=json.load(sys.stdin); s=d.get("scheduled_learning") or {}; assert d.get("installed") is True and d.get("live_market_source")=="Alpaca" and s.get("installed") is True, "scanner or scheduler not ready: "+str(d); print("scanner service: installed; source=Alpaca; scheduler=installed")' <<<"$scanner_status"
 
           scan=''
           for attempt in $(seq 1 15); do
