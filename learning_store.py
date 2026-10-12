@@ -4,7 +4,8 @@ import os
 import sqlite3
 from pathlib import Path
 
-DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+# Prefer the verified Neon database while retaining the Render URL as a rollback fallback.
+DATABASE_URL = os.getenv("NEON_MIGRATION_URL", "").strip() or os.getenv("DATABASE_URL", "").strip()
 SQLITE_PATH = Path(__file__).with_name("learning_signals.sqlite3")
 
 def _signal_id(row):
