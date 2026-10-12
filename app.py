@@ -160,6 +160,13 @@ except Exception as _live_signals_error:
  LIVE_SIGNALS_CANONICAL={'installed':False,'error':f'{type(_live_signals_error).__name__}: {_live_signals_error}'}
 
 try:
+ from long_strategy import install_long_strategy
+ LONG_STRATEGY=install_long_strategy(app)
+except Exception as _long_strategy_error:
+ LONG_STRATEGY={'installed':False,'error':f'{type(_long_strategy_error).__name__}: {_long_strategy_error}'}
+ print(f"LONG_STRATEGY_INSTALL_ERROR {type(_long_strategy_error).__name__}: {_long_strategy_error}",flush=True)
+
+try:
  from long_daily_learning import install_long_daily_learning
  LONG_DAILY_LEARNING=install_long_daily_learning(app,learning_store,_scanner_core,quote_fetcher=CHART_API_V7['quote'])
 except Exception as _long_daily_error:
