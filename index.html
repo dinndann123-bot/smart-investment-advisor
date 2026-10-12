@@ -338,11 +338,11 @@ img,svg,canvas{max-width:100%;height:auto}
 
     <section id="page-long" class="page">
       <div class="section-head">
-        <div><h2>עשרת המניות המובילות להשקעה</h2><p>דירוג חי לפי מגמה, חוזק יחסי מול השוק והענף, תנודתיות והתרחקות מממוצעים. המודל מבוסס מחיר ומחזור ואינו כולל ניתוח פונדמנטלי.</p></div>
-        <button class="btn btn-secondary" onclick="refreshAll(true)">חשב מחדש לפי נתוני השוק</button>
+        <div><h2>עשרת המניות המובילות להשקעה</h2><p>דירוג לטווח בינוני–ארוך לפי מגמה, חוזק יחסי לשוק ולענף, תנודתיות, מומנטום והתרחקות מממוצעים.</p></div>
+        <button class="btn btn-secondary" onclick="refreshAll(true)">רענון נתונים</button>
       </div>
-      <div id="longStrategyStatus" class="note" style="margin:0 0 10px">טוען את בחירות השיטה; רשימה קודמת לא תוצג כבחירה עדכנית.</div>
-      <div class="table-wrap"><table><thead><tr><th>#</th><th>חברה</th><th>מחיר</th><th>שינוי</th><th>ציון</th><th>סיכון</th><th>נתוני שיטה</th><th>למה היא כאן?</th><th>גרף</th><th>פעולה</th></tr></thead><tbody id="longTable"></tbody></table></div>
+      <div id="longStrategyStatus" class="note" style="display:none;margin:0 0 10px">טוען את בחירות השיטה; רשימה קודמת לא תוצג כבחירה עדכנית.</div>
+      <div class="table-wrap"><table><thead><tr><th>#</th><th>חברה</th><th>מחיר</th><th>שינוי</th><th>ציון</th><th>סיכון</th><th>תקשורת</th><th>למה היא כאן?</th><th>גרף</th><th>פעולה</th></tr></thead><tbody id="longTable"></tbody></table></div>
       <div class="card" style="margin-top:16px;padding:16px">
         <h3 style="margin-top:0">בדיקת התחזית היומית לעשר המניות</h3>
         <div class="note" id="longDailyStatus">ממתין לצילום נתונים תקין בפרה־מרקט. התחזית תינעל פעם אחת ביום.</div>
@@ -1090,13 +1090,13 @@ async function loadLongInvestmentPicks(force=false){
    if(cards.length!==10||new Set(symbols).size!==10||cards.some(x=>!x.ticker||!Number.isFinite(x.score)||!Number.isFinite(x.price)||x.price<=0||!x.strategyAsOfDate))throw new Error("השיטה לא החזירה עשר בחירות מלאות וייחודיות");
    longData.splice(0,longData.length,...cards);longStrategyLoadedAt=Date.now();
    window.__LONG_STRATEGY_PICKS__={symbols,as_of_trade_date:cards[0].strategyAsOfDate,generated_at:data.generated_at,cached:!!data.cached,method:data.method};
-   if(status)status.textContent=`10/10 מניות נבחרו לפי השיטה · נתוני סגירה ${cards[0].strategyAsOfDate} · ${data.cached?"תוצאה שמורה בשרת":"סריקה חדשה"} · מחיר/מחזור בלבד; ללא נתוני יסוד וחדשות.`;
+   if(status){status.textContent=`10/10 מניות נבחרו לפי השיטה · נתוני סגירה ${cards[0].strategyAsOfDate} · ${data.cached?"תוצאה שמורה בשרת":"סריקה חדשה"}`;status.style.display="none"}
    renderTables();renderHome();
    return longData;
   }catch(error){
    longData.splice(0,longData.length);longStrategyLoadedAt=0;
    window.__LONG_STRATEGY_PICKS__={symbols:[],error:String(error?.message||error)};
-   if(status)status.textContent=`לא התקבל דירוג תקין מהשיטה: ${error?.message||"שגיאה"}. הרשימה הישנה הוסרה כדי לא להציג בחירות לא עדכניות.`;
+   if(status){status.textContent=`לא התקבל דירוג תקין מהשיטה: ${error?.message||"שגיאה"}. הרשימה הישנה הוסרה כדי לא להציג בחירות לא עדכניות.`;status.style.display="block"}
    renderTables();renderHome();return [];
   }finally{longStrategyLoadPromise=null}
  })();
@@ -1122,7 +1122,7 @@ async function loadLongDailyLearning(){
   status.textContent=legacyToday
    ?`צילום ${latestDay.trade_date} ננעל לפני חיבור הרשימה לשיטה הנוכחית. הוא נשמר כהיסטוריה ואינו מיוחס לעשרת המניות שמוצגות עכשיו.`
    :`מדידה מאז ${latestDay.trade_date}: ${data.sample_size} תוצאות סגירה מתוך 10 ליום; ${latestDay.selected} נבחרו ביום האחרון. ${data.direction_accuracy_pct==null?"דיוק הכיוון יופיע אחרי סגירה.":`דיוק כיוון מצטבר ${data.direction_accuracy_pct.toFixed(1)}%`}${data.mean_absolute_forecast_error_pct_points==null?".":`; שגיאה מוחלטת ממוצעת ${data.mean_absolute_forecast_error_pct_points.toFixed(2)} נקודות אחוז.`}`;
-  body.innerHTML=rows.map(r=>`<tr><td>${r.trade_date}</td><td><b>${r.ticker}</b></td><td>${r.long_term_score??"—"}/100</td><td>${pct(r.forecast_return_pct)}</td><td>${r.snapshot_price!=null&&Number.isFinite(+r.snapshot_price)?money(+r.snapshot_price):"אין צילום מאומת"}</td><td>${pct(r.actual_return_pct)}</td><td>${pct(r.forecast_error_pct_points)}</td></tr>`).join("")||'<tr><td colspan="7" class="empty">אין נתונים תקינים להצגה.</td></tr>';
+  body.innerHTML=legacyToday?'<tr><td colspan="7" class="empty">צילום היום שייך לרשימה הישנה ולכן אינו מוצג כאות של השיטה הנוכחית.</td></tr>':rows.map(r=>`<tr><td>${r.trade_date}</td><td><b>${r.ticker}</b></td><td>${r.long_term_score??"—"}/100</td><td>${pct(r.forecast_return_pct)}</td><td>${r.snapshot_price!=null&&Number.isFinite(+r.snapshot_price)?money(+r.snapshot_price):"אין צילום מאומת"}</td><td>${pct(r.actual_return_pct)}</td><td>${pct(r.forecast_error_pct_points)}</td></tr>`).join("")||'<tr><td colspan="7" class="empty">אין נתונים תקינים להצגה.</td></tr>';
  }catch(_){status.textContent="שירות מדידת התחזית אינו זמין כרגע.";}
 }
 async function captureLongDailyForecast(){
