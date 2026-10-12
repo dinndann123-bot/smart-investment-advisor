@@ -21,7 +21,7 @@ def _market_session(ny):
  return 'afterhours'
 
 RANGES={
- '1D':('5Min',timedelta(days=2),600),
+ '1D':('5Min',timedelta(days=7),1000),
  '1W':('15Min',timedelta(days=9),700),
  '1M':('1Hour',timedelta(days=35),900),
  '3M':('1Day',timedelta(days=110),500),
@@ -42,7 +42,9 @@ def install_chart_api(app):
   regular=570<=minute<960
   configured=(os.getenv('ALPACA_FEED') or 'iex').strip().lower()
   live_feed='sip' if configured=='sip' else 'iex'
-  feed=live_feed if regular and range=='1D' else 'sip'
+  # Historical bars must use the feed configured for this account; forcing SIP
+  # outside regular hours can silently produce an empty series for IEX accounts.
+  feed=live_feed
   delayed_minutes=0 if regular and range=='1D' else 16
   end=now-timedelta(minutes=delayed_minutes); start=end-delta
   params={'timeframe':tf,'start':start.isoformat().replace('+00:00','Z'),'end':end.isoformat().replace('+00:00','Z'),'adjustment':'split','feed':feed,'limit':limit,'sort':'asc'}
