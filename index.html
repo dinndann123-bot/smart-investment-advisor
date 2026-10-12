@@ -40,10 +40,14 @@ body{margin:0;background:radial-gradient(circle at 50% -10%,#17303c 0,#071017 30
 .market-index-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px}
 .market-index-name b{display:block;color:#f2ce76;font-size:14px}.market-index-name small{color:var(--muted);font-size:10px}
 .market-index-value{text-align:left;direction:ltr}.market-index-value b{display:block;font-size:19px}.market-index-value span{font-size:11px}
-.market-index-chart{height:92px!important;min-height:92px!important;border:0;background:transparent;border-radius:8px}
+.market-index-chart{height:116px!important;min-height:116px!important;border:0;background:transparent;border-radius:8px}
+.learning-curve-chart{display:block;width:100%!important;height:260px!important;min-height:260px!important;max-width:100%;background:#07151d;border:1px solid var(--line);border-radius:12px}
+.learning-curve-legend{display:flex;gap:14px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin:6px 0 10px}
+.learning-curve-legend span{display:inline-flex;align-items:center;gap:6px}.learning-curve-legend i{width:14px;height:3px;border-radius:3px;display:inline-block}
+@media(max-width:520px){.learning-curve-chart{height:230px!important;min-height:230px!important}}
 .market-index-meta{display:flex;justify-content:space-between;gap:8px;color:var(--muted);font-size:9px;margin-top:6px}
 @media(max-width:980px){.market-index-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:520px){.market-index-grid{grid-template-columns:1fr 1fr;gap:8px}.market-index-card{padding:10px}.market-index-chart{height:72px!important;min-height:72px!important}.market-index-value b{font-size:16px}}
+@media(max-width:520px){.market-index-grid{grid-template-columns:1fr 1fr;gap:8px}.market-index-card{padding:10px}.market-index-chart{height:96px!important;min-height:96px!important}.market-index-value b{font-size:16px}}
 .table-wrap{overflow:auto;border-radius:16px;border:1px solid var(--line);background:#08151c}
 table{width:100%;border-collapse:collapse;min-width:1050px}
 th,td{padding:12px 10px;border-bottom:1px solid var(--line);text-align:right;vertical-align:middle;font-size:13px}
@@ -248,6 +252,18 @@ img,svg,canvas{max-width:100%;height:auto}
       </div>
     
 
+<div class="card" id="learningCurvePanel" style="margin-top:16px">
+  <div class="section-head">
+    <div><h2 style="margin:0">📈 עקומת הלמידה</h2><p>שיעור התחזיות שהסתיימו בתשואה חיובית ביום, בשבוע ובחודש שאחרי האות.</p></div>
+    <button class="btn btn-secondary" onclick="loadLearningCurve()">רענן גרף</button>
+  </div>
+  <div class="learning-curve-legend" aria-label="מקרא עקומת הלמידה">
+    <span><i style="background:#e2b657"></i>יומי</span><span><i style="background:#48c7a1"></i>שבועי</span><span><i style="background:#75aaff"></i>חודשי</span>
+  </div>
+  <canvas id="learningCurveChart" class="learning-curve-chart" aria-label="עקומת הצלחה יומית שבועית וחודשית"></canvas>
+  <div id="learningCurveStatus" class="note" style="margin-top:8px">טוען את תוצאות הלמידה השמורות…</div>
+</div>
+
 <div class="card" id="livePerformancePanel" style="margin-top:16px">
   <div class="section-head">
     <div>
@@ -264,7 +280,7 @@ img,svg,canvas{max-width:100%;height:auto}
   </div>
   <div class="cards" style="margin-top:10px">
     <div class="card metric"><b id="liveWeekSignals">—</b><span>אותות ב־7 ימים</span></div>
-    <div class="card metric"><b id="liveMonthSignals">—</b><span>אותות ב־30 יום</span></div>
+    
     <div class="card metric"><b id="liveMonthStops">—</b><span>Stop ב־30 יום</span></div>
     <div class="card metric"><b id="liveVsBacktest">—</b><span>חי מול Backtest</span></div>
   </div>
@@ -340,14 +356,6 @@ img,svg,canvas{max-width:100%;height:auto}
   </table>
 </div>
 <div class="note" id="featureLearningNote" style="margin-top:8px">הטבלה משתמשת רק בפרופיל שהיה קיים לפני יום האות.</div>
-<h3 style="margin-top:16px">הצלחת השיטה לכל מניה לפי זמן</h3>
-<div class="table-wrap">
-  <table class="compact-table">
-    <thead><tr><th>מניה</th><th>אותות</th><th>יום</th><th>שבוע</th><th>חודש</th><th>זמן ממוצע לעלייה</th><th>זמן ממוצע לירידה</th></tr></thead>
-    <tbody id="learningStocksTable"></tbody>
-  </table>
-</div>
-<div class="note" style="margin-top:8px">הצלחה = תשואה חיובית ביחס למחיר האות. הזמן נמדד מהאות עד לשיא ולשפל שנצפו. נדרש מדגם של 50 תוצאות לפני שינוי משקלי השיטה.</div>
 <h3 style="margin-top:16px">מניות שהשיטה סימנה</h3>
     <div class="table-wrap">
       <table>
@@ -944,7 +952,6 @@ async function loadLivePerformance(force=false){
     document.getElementById("liveMonthHit").textContent=pctOrDash(m.hit1_pct);
     document.getElementById("liveMonthR").textContent=m.avg_r==null?"—":Number(m.avg_r).toFixed(2)+"R";
     document.getElementById("liveWeekSignals").textContent=w.signals??0;
-    document.getElementById("liveMonthSignals").textContent=m.signals??0;
     document.getElementById("liveMonthStops").textContent=pctOrDash(m.stop_pct);
 
     let bt=null;
@@ -957,11 +964,11 @@ async function loadLivePerformance(force=false){
       vs.className=diff>=-5?"positive":"negative";
       const enough=m.signals>=20;
       note.textContent=enough
-        ?`ב־30 הימים האחרונים: ${m.signals} אותות. הצלחת זמן אמת ${Number(m.hit1_pct).toFixed(1)}% לעומת ${Number(bt.recent.hit1).toFixed(1)}% בבדיקה ההיסטורית. ${diff<-10?'יש פער שלילי שמצדיק בדיקה לפני שינוי משקלים.':'אין כרגע סטייה חריגה.'}`
-        :`נצברו ${m.signals} אותות ב־30 יום. עדיין אין מדגם מספיק גדול לשינוי השיטה; יעד ראשוני: לפחות 20–30 אותות.`;
+        ?`הצלחת זמן אמת ${Number(m.hit1_pct).toFixed(1)}% לעומת ${Number(bt.recent.hit1).toFixed(1)}% בבדיקה ההיסטורית. ${diff<-10?'יש פער שלילי שמצדיק בדיקה לפני שינוי משקלים.':'אין כרגע סטייה חריגה.'}`
+        :'נדרש עוד מדגם לפני שינוי משקלי השיטה; הנתונים ממשיכים להישמר ולהיבדק.';
     }else{
       vs.textContent="—";
-      note.textContent=`נצברו ${m.signals||0} אותות ב־30 יום. הנתונים נשמרים אוטומטית מהסורק.`;
+      note.textContent='הנתונים נשמרים אוטומטית לצורך למידת השיטה.';
     }
     const body=document.getElementById("liveSignalsBody");
     if(body)body.innerHTML=(j.recent||[]).slice(0,20).map(x=>`<tr>
@@ -1055,9 +1062,8 @@ async function loadLearningSummary(){
     }
     if(!j.has_data){
       empty.style.display="block";
-      empty.textContent="מערכת הלמידה פעילה. המדידות החדשות של יום, שבוע וחודש יתמלאו לאחר קליטת האותות ובמועדי הבדיקה המתאימים.";
+      empty.textContent="מערכת הלמידה פעילה. עקומת ההצלחה היומית, השבועית והחודשית מתעדכנת לאחר הבשלת המדידות.";
       content.style.display="block";
-      const stocks=document.getElementById("learningStocksTable");
       if(stocks)stocks.innerHTML='<tr><td colspan="7" class="empty">ממתין לאותות חדשים: אחוזי יום, שבוע וחודש וזמני העלייה והירידה יוצגו כאן לאחר המדידה.</td></tr>';
       document.getElementById("learnSuccess").textContent="ממתין למדגם";
       document.getElementById("learnCorrect").textContent=`0/${j.headline_metric?.independent_samples||0}`;
@@ -1070,7 +1076,6 @@ async function loadLearningSummary(){
     const pct=v=>Number.isFinite(+v)?(+v).toFixed(1)+"%":"—";
     const dec=(v,suffix="")=>Number.isFinite(+v)?(+v).toFixed(2)+suffix:"—";
     const ready=j.validation?.ready===true;
-    const stocks=document.getElementById("learningStocksTable");
     if(stocks)stocks.innerHTML=(j.stock_performance||[]).map(x=>`<tr><td><b>${heText(x.symbol)}</b></td><td>${x.signals}</td><td>${periodStatHe(x.day)}</td><td>${periodStatHe(x.week)}</td><td>${periodStatHe(x.month)}</td><td>${durationHe(x.median_minutes_to_peak)}</td><td>${durationHe(x.median_minutes_to_trough)}</td></tr>`).join("")||'<tr><td colspan="7" class="empty">המדידה התחילה; תוצאות יום, שבוע וחודש יתמלאו במועדים המתאימים.</td></tr>';
     document.getElementById("learnSuccess").textContent=ready?pct(j.success_rate_pct):"ממתין למדגם";
     document.getElementById("learnCorrect").textContent=`${j.headline_metric?.positive_signals||0}/${j.headline_metric?.independent_samples||0}`;
@@ -1296,7 +1301,7 @@ async function loadMarketIndexes(){
   try{
    const [q,bundle]=await Promise.all([getQuote(symbol),getCanonicalChart(symbol,"1D")]);
    const bars=bundle.points.map(b=>({d:b.t,o:+b.o,h:+b.h,l:+b.l,v:+b.c,volume:+(b.v||0)})).filter(b=>Number.isFinite(b.v));
-   const price=q.price,change=q.change;
+   const price=q.price,change=q.change;item.chartBars=bars;
    item.price=price;item.change=change;item.quoteStatus=q.freshness;item.quoteAt=q.quoteAt;
    const priceEl=document.getElementById(`idx-${symbol}-price`),changeEl=document.getElementById(`idx-${symbol}-change`);
    if(priceEl)priceEl.textContent=price!=null?money(price):"—";
@@ -1305,9 +1310,39 @@ async function loadMarketIndexes(){
    const source=document.getElementById(`idx-${symbol}-source`),time=document.getElementById(`idx-${symbol}-time`);
    if(source)source.textContent=`Alpaca ${q.feed||'—'} · ${q.freshness||'לא זמין'}${q.session==='premarket'?' · פרה־מרקט':''}`;
    if(time)time.textContent=q.quoteAt?fmtMarketTimestamp(q.quoteAt):bars.length?fmtMarketTimestamp(bars.at(-1).d):'—';
-  }catch(e){const source=document.getElementById(`idx-${symbol}-source`);if(source)source.textContent='הנתון אינו זמין כרגע';draw(`idx-${symbol}-chart`,null,null,{compact:true})}
+  }catch(e){item.chartBars=[];const source=document.getElementById(`idx-${symbol}-source`);if(source)source.textContent='הנתון אינו זמין כרגע';draw(`idx-${symbol}-chart`,null,null,{compact:true})}
  }));
 }
+function drawLearningCurve(points){
+ const canvas=document.getElementById("learningCurveChart");if(!canvas)return;
+ const rect=canvas.getBoundingClientRect(),width=Math.max(260,Math.round(rect.width||canvas.clientWidth||320)),height=Math.max(190,Math.round(rect.height||260));
+ const dpr=Math.min(window.devicePixelRatio||1,2);canvas.width=Math.round(width*dpr);canvas.height=Math.round(height*dpr);canvas.style.height=height+"px";
+ const ctx=canvas.getContext("2d");ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,width,height);
+ const left=42,right=14,top=16,bottom=34,plotW=Math.max(1,width-left-right),plotH=Math.max(1,height-top-bottom);
+ const xAt=i=>left+(points.length<=1?plotW/2:plotW*i/(points.length-1)),yAt=v=>top+(100-Math.max(0,Math.min(100,Number(v))))/100*plotH;
+ ctx.font="11px Arial";ctx.textAlign="right";ctx.textBaseline="middle";ctx.fillStyle="#91a4ac";ctx.strokeStyle="rgba(145,164,172,.18)";ctx.lineWidth=1;
+ [0,25,50,75,100].forEach(v=>{const y=yAt(v);ctx.beginPath();ctx.moveTo(left,y);ctx.lineTo(width-right,y);ctx.stroke();ctx.fillText(v+"%",left-8,y)});
+ const series=[{key:"day",color:"#e2b657"},{key:"week",color:"#48c7a1"},{key:"month",color:"#75aaff"}];
+ for(const lane of series){let drawing=false;ctx.beginPath();ctx.strokeStyle=lane.color;ctx.lineWidth=2.5;ctx.lineJoin="round";ctx.lineCap="round";
+  points.forEach((point,i)=>{const value=point?.[lane.key]?.success_pct;if(value==null||!Number.isFinite(Number(value))){drawing=false;return}const x=xAt(i),y=yAt(value);if(drawing)ctx.lineTo(x,y);else{ctx.moveTo(x,y);drawing=true}});
+  ctx.stroke();points.forEach((point,i)=>{const value=point?.[lane.key]?.success_pct;if(value==null||!Number.isFinite(Number(value)))return;ctx.beginPath();ctx.fillStyle=lane.color;ctx.arc(xAt(i),yAt(value),3,0,Math.PI*2);ctx.fill()});
+ }
+ ctx.textAlign="center";ctx.textBaseline="alphabetic";ctx.fillStyle="#91a4ac";ctx.font="10px Arial";
+ if(points.length){const ticks=[...new Set([0,Math.floor((points.length-1)/3),Math.floor((points.length-1)*2/3),points.length-1])];ticks.forEach(i=>ctx.fillText(String(points[i].date||"").slice(5).replace("-","/"),xAt(i),height-9))}
+ else{ctx.textBaseline="middle";ctx.fillStyle="#aab8bd";ctx.font="13px Arial";ctx.fillText("אין עדיין מספיק תוצאות להצגת עקומה",width/2,height/2)}
+}
+async function loadLearningCurve(){
+ const status=document.getElementById("learningCurveStatus");
+ try{
+  const response=await fetch("/api/learning/curve",{cache:"no-store"}),data=await response.json();
+  if(!response.ok)throw new Error(data.detail||"learning curve");
+  const points=Array.isArray(data.points)?data.points:[];drawLearningCurve(points);
+  const samples={day:0,week:0,month:0};points.forEach(p=>["day","week","month"].forEach(k=>samples[k]+=Number(p[k]?.samples||0)));
+  if(status)status.textContent=`מבוסס על ${data.evaluated_signals||0} אותות ראשונים לכל מניה ביום. תוצאה שבועית וחודשית מוצגת רק אחרי הבשלת המדידה; מדגם שהבשיל: ${samples.day} יומי, ${samples.week} שבועי ו־${samples.month} חודשי.`;
+ }catch(error){drawLearningCurve([]);if(status)status.textContent="לא ניתן לטעון כרגע את עקומת הלמידה."}
+}
+let _indexChartResizeTimer=null;
+window.addEventListener("resize",()=>{clearTimeout(_indexChartResizeTimer);_indexChartResizeTimer=setTimeout(()=>marketIndexes.forEach(item=>{const color=Number.isFinite(item.change)&&item.change<0?"#ff6472":"#dcb352";draw(`idx-${item.ticker}-chart`,item.chartBars||[],null,{compact:true,lineColor:color})}),120)},{passive:true});
 async function getQuote(symbol){
  const response=await fetch(`/api/market/quote/${encodeURIComponent(symbol)}`,{cache:"no-store"});
  const quote=await response.json();
@@ -1333,9 +1368,9 @@ async function getNews(symbol){
 function draw(canvas,pts,markers=null,options={}){
  const c=document.getElementById(canvas); if(!c)return;
  const rect=c.getBoundingClientRect();
- const cssW=Math.max(320,Math.round(rect.width||c.clientWidth||900));
  const compact=!!options.compact;
- const cssH=compact?Math.max(70,Math.round(rect.height||90)):300;
+ const cssW=Math.max(compact?120:320,Math.round(rect.width||c.clientWidth||(compact?160:900)));
+ const cssH=compact?Math.max(70,Math.round(rect.height||96)):300;
  const dpr=Math.min(window.devicePixelRatio||1,2);
  c.width=Math.round(cssW*dpr); c.height=Math.round(cssH*dpr);
  c.style.height=cssH+"px";
@@ -2019,9 +2054,9 @@ function saveOcrRows(){let n=0;document.querySelectorAll("#ocrRows tr").forEach(
 if(location.protocol==='file:'){
   document.body.innerHTML='<div style="max-width:760px;margin:80px auto;font-family:Arial;direction:rtl;padding:24px"><h1>האפליקציה נפתחה בצורה לא נכונה</h1><p>אין לפתוח את index.html ישירות. יש להפעיל את השרת ואז להיכנס דרך http://127.0.0.1:8000 כדי שהגרפים, הנתונים והעדכונים החיים יעבדו.</p></div>';
 }else{
-  initializeVisibleClocks();renderHome();renderTables();renderBacktests();renderWeekly();setחיBadge();checkBackendStatus();updateScannerButton();startAutoScanner();loadLearningSummary();loadLongDailyLearning();captureLongDailyForecast();refreshHealth();loadLivePerformance(false);syncMarketClock();startDataWatchdog();loadMarketIndexes();refreshAll();
+  initializeVisibleClocks();renderHome();renderTables();renderBacktests();renderWeekly();setחיBadge();checkBackendStatus();updateScannerButton();startAutoScanner();loadLearningSummary();loadLongDailyLearning();captureLongDailyForecast();refreshHealth();loadLivePerformance(false);syncMarketClock();startDataWatchdog();loadMarketIndexes();loadLearningCurve();refreshAll();
   document.querySelectorAll('[data-index-symbol]').forEach(card=>card.addEventListener('click',()=>openDetail('long',card.dataset.indexSymbol)));
-  setInterval(updateClockUI,1000);setInterval(syncMarketClock,60000);setInterval(refreshHealth,300000);setInterval(()=>loadLivePerformance(true),300000);setInterval(loadMarketIndexes,60000);setInterval(refreshAll,300000);setInterval(captureLongDailyForecast,300000);
+  setInterval(updateClockUI,1000);setInterval(syncMarketClock,60000);setInterval(refreshHealth,300000);setInterval(()=>loadLivePerformance(true),300000);setInterval(loadMarketIndexes,60000);setInterval(loadLearningCurve,300000);setInterval(refreshAll,300000);setInterval(captureLongDailyForecast,300000);
 }
 
 
