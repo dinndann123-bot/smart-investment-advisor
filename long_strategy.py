@@ -226,9 +226,16 @@ def install_long_strategy(app, namespace=None):
     # The FastAPI instance's __module__ is fastapi.applications, not app.py.
     # Pass app.py globals explicitly so the route can access configured Alpaca credentials.
     mod=namespace or sys.modules.get("app") or sys.modules.get("__main__")
+    def setting(name, default=None):
+        return mod.get(name, default) if isinstance(mod,dict) else getattr(mod,name,default)
     async def fetch_all(years):
-        if not (mod.ALPACA_KEY and mod.ALPACA_SECRET):raise HTTPException(503,"Alpaca לא מוגדר")
-        headers={"APCA-API-KEY-ID":mod.ALPACA_KEY,"APCA-API-SECRET-KEY":mod.ALPACA_SECRET};feed=mod.ALPACA_FEED if mod.ALPACA_FEED in {"iex","sip","delayed_sip"} else "iex";sem=asyncio.Semaphore(8)
+        key=setting("ALPACA_KEY")
+        secret=setting("ALPACA_SECRET")
+        if not (key and secret):raise HTTPException(503,"Alpaca לא מוגדר")
+        headers={"APCA-API-KEY-ID":key,"APCA-API-SECRET-KEY":secret}
+        configured_feed=setting("ALPACA_FEED","iex")
+        feed=configured_feed if configured_feed in {"iex","sip","delayed_sip"} else "iex"
+        sem=asyncio.Semaphore(8)
         async with httpx.AsyncClient(timeout=45) as client:
             async def one(s):
                 async with sem:return s,await _fetch_symbol(client,s,headers,feed,years)
