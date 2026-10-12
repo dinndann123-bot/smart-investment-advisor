@@ -221,9 +221,11 @@ def _sector_limited(rows,top=10,max_per_sector=3):
         if len(chosen)>=top:break
     return chosen
 
-def install_long_strategy(app):
+def install_long_strategy(app, namespace=None):
     import sys
-    mod=sys.modules.get(app.__module__) or sys.modules.get("app")
+    # The FastAPI instance's __module__ is fastapi.applications, not app.py.
+    # Pass app.py globals explicitly so the route can access configured Alpaca credentials.
+    mod=namespace or sys.modules.get("app") or sys.modules.get("__main__")
     async def fetch_all(years):
         if not (mod.ALPACA_KEY and mod.ALPACA_SECRET):raise HTTPException(503,"Alpaca לא מוגדר")
         headers={"APCA-API-KEY-ID":mod.ALPACA_KEY,"APCA-API-SECRET-KEY":mod.ALPACA_SECRET};feed=mod.ALPACA_FEED if mod.ALPACA_FEED in {"iex","sip","delayed_sip"} else "iex";sem=asyncio.Semaphore(8)
