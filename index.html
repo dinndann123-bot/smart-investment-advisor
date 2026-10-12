@@ -1115,8 +1115,13 @@ async function loadLongDailyLearning(){
    body.innerHTML='<tr><td colspan="7" class="empty">עדיין אין מדגם יומי. אין שחזור בדיעבד.</td></tr>';return;
   }
   const pct=v=>v!=null&&Number.isFinite(+v)?`${(+v>=0?"+":"")}${(+v).toFixed(2)}%`:"ממתין לסגירה";
-  status.textContent=`מדידה מאז ${latestDay.trade_date}: ${data.sample_size} תוצאות סגירה מתוך 10 ליום; ${latestDay.selected} נבחרו ביום האחרון. ${data.direction_accuracy_pct==null?"דיוק הכיוון יופיע אחרי סגירה.":`דיוק כיוון מצטבר ${data.direction_accuracy_pct.toFixed(1)}%`}${data.mean_absolute_forecast_error_pct_points==null?".":`; שגיאה מוחלטת ממוצעת ${data.mean_absolute_forecast_error_pct_points.toFixed(2)} נקודות אחוז.`}`;
   const rows=records.filter(r=>r.trade_date===latestDay.trade_date).sort((a,b)=>a.rank-b.rank);
+  const dateParts=Object.fromEntries(new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date()).map(p=>[p.type,p.value]));
+  const todayEt=`${dateParts.year}-${dateParts.month}-${dateParts.day}`;
+  const legacyToday=latestDay.trade_date===todayEt&&rows.some(r=>r.strategy_version!=="long_strategy_point_in_time_v1"||!r.long_strategy_as_of_trade_date);
+  status.textContent=legacyToday
+   ?`צילום ${latestDay.trade_date} ננעל לפני חיבור הרשימה לשיטה הנוכחית. הוא נשמר כהיסטוריה ואינו מיוחס לעשרת המניות שמוצגות עכשיו.`
+   :`מדידה מאז ${latestDay.trade_date}: ${data.sample_size} תוצאות סגירה מתוך 10 ליום; ${latestDay.selected} נבחרו ביום האחרון. ${data.direction_accuracy_pct==null?"דיוק הכיוון יופיע אחרי סגירה.":`דיוק כיוון מצטבר ${data.direction_accuracy_pct.toFixed(1)}%`}${data.mean_absolute_forecast_error_pct_points==null?".":`; שגיאה מוחלטת ממוצעת ${data.mean_absolute_forecast_error_pct_points.toFixed(2)} נקודות אחוז.`}`;
   body.innerHTML=rows.map(r=>`<tr><td>${r.trade_date}</td><td><b>${r.ticker}</b></td><td>${r.long_term_score??"—"}/100</td><td>${pct(r.forecast_return_pct)}</td><td>${r.snapshot_price!=null&&Number.isFinite(+r.snapshot_price)?money(+r.snapshot_price):"אין צילום מאומת"}</td><td>${pct(r.actual_return_pct)}</td><td>${pct(r.forecast_error_pct_points)}</td></tr>`).join("")||'<tr><td colspan="7" class="empty">אין נתונים תקינים להצגה.</td></tr>';
  }catch(_){status.textContent="שירות מדידת התחזית אינו זמין כרגע.";}
 }
