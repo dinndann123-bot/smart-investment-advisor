@@ -9,14 +9,14 @@ from __future__ import annotations
 import asyncio
 import json
 import math
+import re
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import httpx
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 
-TICKERS = ["TSSI", "NVTS", "CTRI", "CRMD", "POET", "RKLB", "PLTR", "APP", "SMCI", "MYRG"]
-SCORES = {"TSSI":86,"NVTS":85,"CTRI":83,"CRMD":82,"POET":78,"RKLB":77,"PLTR":76,"APP":75,"SMCI":74,"MYRG":73}
+LONG_PICK_COUNT = 10
 ET = ZoneInfo("America/New_York")
 
 
@@ -68,10 +68,39 @@ def install_long_daily_learning(app, store, market_module, quote_fetcher=None):
         (saver or getattr(store, "upsert_long_daily", store.upsert))(record)
 
     @app.post("/api/learning/long-daily/capture")
-    async def capture_long_daily():
+    async def capture_long_daily(request: Request):
         """Freeze today's ten displayed long-term picks and a daily baseline forecast."""
         if not (getattr(market_module, "ALPACA_KEY", None) and getattr(market_module, "ALPACA_SECRET", None)):
             raise HTTPException(503, "Alpaca data is not configured")
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
+        requested = payload.get("picks") if isinstance(payload, dict) else None
+        if not isinstance(requested, list) or len(requested) != LONG_PICK_COUNT:
+            raise HTTPException(422, "צריך להעביר בדיוק 10 בחירות מהדירוג הנוכחי")
+        picks = []
+        for rank, item in enumerate(requested, 1):
+            if not isinstance(item, dict):
+                raise HTTPException(422, "מבנה בחירה לא תקין")
+            ticker = str(item.get("ticker") or "").strip().upper()
+            score = _finite(item.get("score"))
+            as_of = str(item.get("as_of_trade_date") or "").strip()
+            if not re.fullmatch(r"[A-Z]{1,5}", ticker) or score is None or not 0 <= score <= 100 or not as_of:
+                raise HTTPException(422, "סימול, ציון או תאריך שיטה לא תקינים")
+            picks.append({"ticker": ticker, "score": round(score, 1), "as_of_trade_date": as_of, "rank": rank})
+        ordered_tickers = [item["ticker"] for item in picks]
+        if len(set(ordered_tickers)) != LONG_PICK_COUNT:
+            raise HTTPException(422, "יש כפילות בסימולי הבחירות")
+        try:
+            from long_strategy import CORE_UNIVERSE, ETF_SYMBOLS
+            eligible = set(CORE_UNIVERSE) - set(ETF_SYMBOLS)
+            if any(ticker not in eligible for ticker in ordered_tickers):
+                raise HTTPException(422, "הבחירות חייבות להיות מניות שהמודל מדרג")
+        except ImportError:
+            pass
+        score_by_ticker = {item["ticker"]: item["score"] for item in picks}
+        as_of_by_ticker = {item["ticker"]: item["as_of_trade_date"] for item in picks}
         now_utc = datetime.now(timezone.utc)
         now_et = now_utc.astimezone(ET)
         if not (4 <= now_et.hour < 16):
@@ -80,9 +109,9 @@ def install_long_daily_learning(app, store, market_module, quote_fetcher=None):
             raise HTTPException(425, "ממתינים 15 דקות לעדכון SIP לפני צילום הבוקר")
         trade_date = now_utc.astimezone(ET).date().isoformat()
         existing = {r.get("ticker"): r for r in _all_records() if r.get("trade_date") == trade_date}
-        if len(existing) == 10:
+        if len(existing) == LONG_PICK_COUNT:
             return {"ok": True, "created": 0, "already_captured": True, "trade_date": trade_date,
-                    "records": [existing[t] for t in TICKERS if t in existing],
+                    "records": [existing[t] for t in ordered_tickers if t in existing],
                     "message": "התחזית היומית כבר ננעלה; לא מחליפים תחזית קיימת."}
 
         headers = {"APCA-API-KEY-ID": market_module.ALPACA_KEY,
@@ -91,15 +120,15 @@ def install_long_daily_learning(app, store, market_module, quote_fetcher=None):
         if feed not in {"iex", "sip", "delayed_sip"}:
             feed = "iex"
         async with httpx.AsyncClient(timeout=25) as client:
-            batches = await asyncio.gather(*[_bars(client, s, headers, feed) for s in TICKERS])
+            batches = await asyncio.gather(*[_bars(client, s, headers, feed) for s in ordered_tickers])
         if quote_fetcher:
-            fetched_quotes = await asyncio.gather(*[quote_fetcher(s) for s in TICKERS], return_exceptions=True)
-            quotes = {s:(q if not isinstance(q,Exception) else {}) for s,q in zip(TICKERS,fetched_quotes)}
+            fetched_quotes = await asyncio.gather(*[quote_fetcher(s) for s in ordered_tickers], return_exceptions=True)
+            quotes = {s:(q if not isinstance(q,Exception) else {}) for s,q in zip(ordered_tickers,fetched_quotes)}
         else:
             quotes = {}
 
         created = []
-        for ticker, raw_bars in zip(TICKERS, batches):
+        for ticker, raw_bars in zip(ordered_tickers, batches):
             parsed = [{"d": str(b.get("t", ""))[:10], "c": _finite(b.get("c")),
                        "h": _finite(b.get("h")), "l": _finite(b.get("l"))}
                       for b in raw_bars if str(b.get("t", ""))[:10] < trade_date]
@@ -115,9 +144,9 @@ def install_long_daily_learning(app, store, market_module, quote_fetcher=None):
             live_price = _finite(quote.get("price")) if freshness.get("usable_as_current_price") else None
             row = {
                 "record_type": "long_daily_prediction",
-                "scan_id": f"long-daily:{trade_date}", "ticker": ticker, "rank": TICKERS.index(ticker) + 1,
+                "scan_id": f"long-daily:{trade_date}", "ticker": ticker, "rank": ordered_tickers.index(ticker) + 1,
                 "trade_date": trade_date, "epoch": now_utc.timestamp(), "captured_at": now_utc.isoformat(),
-                "strategy_version": "displayed-long-list-v1", "long_term_score": SCORES[ticker], "forecast_method": "mean_previous_5_completed_daily_returns_capped_5pct",
+                "strategy_version": "long_strategy_point_in_time_v1", "long_strategy_as_of_trade_date": as_of_by_ticker[ticker], "long_term_score": score_by_ticker[ticker], "forecast_method": "mean_previous_5_completed_daily_returns_capped_5pct",
                 "forecast_return_pct": prediction, "forecast_close": round(prior_close * (1 + prediction / 100), 4),
                 "prior_close": round(prior_close, 4), "snapshot_price": round(live_price, 4) if live_price else None,
                 "snapshot_price_source": quote.get("source") if live_price else None,
@@ -131,24 +160,25 @@ def install_long_daily_learning(app, store, market_module, quote_fetcher=None):
             created.append(row)
         merged = dict(existing)
         merged.update({r["ticker"]: r for r in created})
-        if len(merged) != 10:
-            raise HTTPException(503, f"נמצאו נתונים תקינים רק ל־{len(merged)} מתוך 10 מניות; התחזית לא ננעלה")
-        for ticker in TICKERS:
+        if len(merged) != LONG_PICK_COUNT or any(t not in merged for t in ordered_tickers):
+            valid_count = sum(t in merged for t in ordered_tickers)
+            raise HTTPException(503, f"נמצאו נתונים תקינים רק ל־{valid_count} מתוך 10 מניות שנבחרו; התחזית לא ננעלה")
+        for ticker in ordered_tickers:
             if ticker not in existing:
                 _save_first_snapshot(merged[ticker])
         saved = {r.get("ticker"): r for r in _all_records() if r.get("trade_date") == trade_date}
         return {"ok": True, "created": len(created), "already_captured": False, "trade_date": trade_date,
                 "forecast_definition": "ממוצע תשואות הסגירה של 5 ימי המסחר המלאים הקודמים, מוגבל ל־±5%",
-                "records": [saved[t] for t in TICKERS if t in saved]}
+                "records": [saved[t] for t in ordered_tickers if t in saved]}
 
     async def _evaluate_trade_date(trade_date):
         if not (getattr(market_module, "ALPACA_KEY", None) and getattr(market_module, "ALPACA_SECRET", None)):
             raise HTTPException(503, "Alpaca data is not configured")
         records = [r for r in _all_records() if r.get("trade_date") == trade_date]
-        if len(records) != 10:
+        if len(records) != LONG_PICK_COUNT:
             raise HTTPException(409, "לא נמצאה תחזית נעולה של 10 מניות להיום")
         if all(r.get("forecast_closed") for r in records):
-            return {"ok": True, "trade_date": trade_date, "evaluated": 10, "pending": 0, "already_evaluated": True, "records": records}
+            return {"ok": True, "trade_date": trade_date, "evaluated": LONG_PICK_COUNT, "pending": 0, "already_evaluated": True, "records": records}
         headers = {"APCA-API-KEY-ID": market_module.ALPACA_KEY,
                    "APCA-API-SECRET-KEY": market_module.ALPACA_SECRET}
         feed = records[0].get("data_feed", "iex")
@@ -171,7 +201,7 @@ def install_long_daily_learning(app, store, market_module, quote_fetcher=None):
             _save(record)
             updated.append(record)
         valid = [r for r in updated if r.get("forecast_closed")]
-        return {"ok": True, "trade_date": trade_date, "evaluated": len(valid), "pending": 10-len(valid),
+        return {"ok": True, "trade_date": trade_date, "evaluated": len(valid), "pending": LONG_PICK_COUNT-len(valid),
                 "direction_accuracy_pct": round(100 * sum(bool(r["forecast_direction_correct"]) for r in valid) / len(valid), 1) if valid else None,
                 "mean_absolute_forecast_error_pct_points": round(sum(abs(r["forecast_error_pct_points"]) for r in valid)/len(valid), 3) if valid else None,
                 "records": updated}
@@ -243,4 +273,4 @@ def install_long_daily_learning(app, store, market_module, quote_fetcher=None):
                 "mean_absolute_forecast_error_pct_points": round(sum(abs(r["forecast_error_pct_points"]) for r in evaluated)/total, 3) if total else None,
                 "records": records}
 
-    return {"installed": True, "ticker_count": len(TICKERS), "forecast": "prior five completed daily returns", "automatic_capture_after_sip_delay": True, "automatic_close_evaluation": True}
+    return {"installed": True, "ticker_count": LONG_PICK_COUNT, "forecast": "prior five completed daily returns", "captures_current_strategy_picks": True, "automatic_capture_after_sip_delay": True, "automatic_close_evaluation": True}
