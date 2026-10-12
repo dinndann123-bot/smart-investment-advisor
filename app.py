@@ -317,3 +317,34 @@ try:
     print("LEARNING_AUDIT_IMPORT_SNAPSHOT " + _audit_json.dumps(_audit_snapshot, ensure_ascii=False, separators=(",", ":")), flush=True)
 except Exception as _audit_error:
     print(f"LEARNING_AUDIT_IMPORT_ERROR {type(_audit_error).__name__}", flush=True)
+
+@app.get('/api/learning/curve')
+async def learning_curve():
+    import learning_store as _curve_store
+    from scheduled_learning import _first_regular_top10 as _curve_first_regular_top10, _number as _curve_number
+    rows=_curve_store.load_by_type('scheduled_checkpoint',limit=100000)
+    rows=[row for row in rows if row.get('strategy_version')==ASYNC_STRATEGY_VERSION]
+    first=_curve_first_regular_top10(rows)
+    by_date={}
+    for row in first:
+        trade_date=row.get('trade_date')
+        if trade_date:
+            by_date.setdefault(trade_date,[]).append(row)
+    points=[]
+    for trade_date in sorted(by_date):
+        point={'date':trade_date}
+        for horizon,field in (('day','ret_day_pct'),('week','ret_week_pct'),('month','ret_month_pct')):
+            values=[_curve_number(row.get(field)) for row in by_date[trade_date]]
+            values=[value for value in values if value is not None]
+            point[horizon]={
+                'success_pct':round(100*sum(value>0 for value in values)/len(values),1) if values else None,
+                'samples':len(values),
+            }
+        points.append(point)
+    return {
+        'points':points,
+        'evaluated_signals':len(first),
+        'method':'first regular-session top-10 signal per ticker per trading day',
+        'success_definition':'positive return at the end of each horizon',
+    }
+
