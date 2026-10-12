@@ -264,34 +264,7 @@ img,svg,canvas{max-width:100%;height:auto}
   <div id="learningCurveStatus" class="note" style="margin-top:8px">טוען את תוצאות הלמידה השמורות…</div>
 </div>
 
-<div class="card" id="livePerformancePanel" style="margin-top:16px">
-  <div class="section-head">
-    <div>
-      <h2 style="margin:0">📡 ביצועי האותות בזמן אמת</h2>
-      <p>מה קרה בפועל למניות שהשיטה סימנה — לא Backtest אלא אותות שנשמרו בזמן אמת.</p>
-    </div>
-    <button class="btn btn-secondary" onclick="loadLivePerformance(true)">רענן תוצאות</button>
-  </div>
-  <div class="cards">
-    <div class="card metric"><b id="liveDayHit">—</b><span>הצלחה היום</span></div>
-    <div class="card metric"><b id="liveWeekHit">—</b><span>הצלחה 7 ימים</span></div>
-    <div class="card metric"><b id="liveMonthHit">—</b><span>הצלחה 30 יום</span></div>
-    <div class="card metric"><b id="liveMonthR">—</b><span>R ממוצע 30 יום</span></div>
-  </div>
-  <div class="cards" style="margin-top:10px">
-    <div class="card metric"><b id="liveWeekSignals">—</b><span>אותות ב־7 ימים</span></div>
-    
-    <div class="card metric"><b id="liveMonthStops">—</b><span>Stop ב־30 יום</span></div>
-    <div class="card metric"><b id="liveVsBacktest">—</b><span>חי מול Backtest</span></div>
-  </div>
-  <div id="livePerformanceNote" class="note" style="margin-top:10px">המערכת מתחילה לצבור נתונים מהאותות החדשים. ככל שיצטבר מדגם גדול יותר, ההשוואה תהיה אמינה יותר.</div>
-  <div class="table-wrap" style="margin-top:12px">
-    <table>
-      <thead><tr><th>זמן</th><th>מניה</th><th>ציון</th><th>כניסה</th><th>מחיר אחרון</th><th>תשואה</th><th>מצב</th><th>R</th></tr></thead>
-      <tbody id="liveSignalsBody"></tbody>
-    </table>
-  </div>
-</div>
+
 
 <div class="card" id="systemHealthPanel" style="margin-top:16px">
   <div class="section-head">
@@ -933,47 +906,6 @@ function liveStatusHe(x){
   if(x==="stopped")return "❌ עצירת הפסד";
   return "⏳ פתוח";
 }
-async function loadLivePerformance(force=false){
-  try{
-    const url=`/api/live-signals/summary?refresh=${force?'true':'false'}`;
-    const r=await fetch(url,{cache:"no-store"});
-    const j=await r.json();
-    if(!r.ok)throw new Error(j.detail||"live signals");
-    const d=j.day||{},w=j.week||{},m=j.month||{};
-    document.getElementById("liveDayHit").textContent=pctOrDash(d.hit1_pct);
-    document.getElementById("liveWeekHit").textContent=pctOrDash(w.hit1_pct);
-    document.getElementById("liveMonthHit").textContent=pctOrDash(m.hit1_pct);
-    document.getElementById("liveMonthR").textContent=m.avg_r==null?"—":Number(m.avg_r).toFixed(2)+"R";
-    document.getElementById("liveWeekSignals").textContent=w.signals??0;
-    document.getElementById("liveMonthStops").textContent=pctOrDash(m.stop_pct);
-
-    let bt=null;
-    try{const br=await fetch("/api/strategy/health",{cache:"no-store"});bt=await br.json()}catch(e){}
-    const vs=document.getElementById("liveVsBacktest");
-    const note=document.getElementById("livePerformanceNote");
-    if(bt?.has_data && m.hit1_pct!=null && bt.recent?.hit1!=null){
-      const diff=Number(m.hit1_pct)-Number(bt.recent.hit1);
-      vs.textContent=(diff>=0?"+":"")+diff.toFixed(1)+" נק׳";
-      vs.className=diff>=-5?"positive":"negative";
-      const enough=m.signals>=20;
-      note.textContent=enough
-        ?`הצלחת זמן אמת ${Number(m.hit1_pct).toFixed(1)}% לעומת ${Number(bt.recent.hit1).toFixed(1)}% בבדיקה ההיסטורית. ${diff<-10?'יש פער שלילי שמצדיק בדיקה לפני שינוי משקלים.':'אין כרגע סטייה חריגה.'}`
-        :'נדרש עוד מדגם לפני שינוי משקלי השיטה; הנתונים ממשיכים להישמר ולהיבדק.';
-    }else{
-      vs.textContent="—";
-      note.textContent='הנתונים נשמרים אוטומטית לצורך למידת השיטה.';
-    }
-    const body=document.getElementById("liveSignalsBody");
-    if(body)body.innerHTML=(j.recent||[]).slice(0,20).map(x=>`<tr>
-      <td>${new Date(x.created_at).toLocaleString("he-IL")}</td><td><b>${x.symbol}</b></td><td>${Number(x.score||0).toFixed(0)}/100</td>
-      <td>${money(x.entry)}</td><td>${x.last_price?money(x.last_price):"—"}</td>
-      <td class="${(+x.current_return_pct)>=0?'positive':'negative'}">${x.current_return_pct==null?'—':((+x.current_return_pct)>=0?'+':'')+(+x.current_return_pct).toFixed(2)+'%'}</td>
-      <td>${liveStatusHe(x.status)}</td><td>${x.result_r==null?'—':Number(x.result_r).toFixed(2)+'R'}</td></tr>`).join("") || '<tr><td colspan="8" class="empty">עדיין אין אותות חיים שנשמרו. הסריקה האוטומטית תתחיל לצבור אותם.</td></tr>';
-  }catch(e){
-    const note=document.getElementById("livePerformanceNote");if(note)note.textContent="לא ניתן לטעון כרגע את מעקב האותות החיים.";
-  }
-}
-
 async function refreshHealth(){
   try{
     const [s,h]=await Promise.all([
@@ -1173,7 +1105,7 @@ function applyCanonicalDaySnapshot(results,payload){
  const symbols=snapshot.map(x=>String(x.ticker||"").trim().toUpperCase());
  if(snapshot.length!==10||symbols.some(x=>!x)||new Set(symbols).size!==10)throw new Error("Scanner snapshot integrity failed");
  dayData=snapshot;
- renderTables();renderHome();loadLivePerformance(false);
+ renderTables();renderHome();
  const scanId=payload?.scan_id||"";
  document.getElementById("dayTable")?.setAttribute("data-scan-id",scanId);
  document.getElementById("homeDay")?.setAttribute("data-scan-id",scanId);
@@ -1513,7 +1445,7 @@ async function recordTechnicalSignal(sig,plan,current,s){
     u.searchParams.set("entry",current);u.searchParams.set("stop",plan.stop);u.searchParams.set("target1",plan.t1);u.searchParams.set("target2",plan.t2);
     u.searchParams.set("source","אישור טכני חי");
     const r=await fetch(u,{method:"POST"});if(!r.ok)throw new Error("save");
-    loadLivePerformance(false);
+    
   }catch(e){recordedTechnicalSignals.delete(key)}
 }
 function calculateEntrySignal(plan,current,s){
@@ -2037,9 +1969,9 @@ function saveOcrRows(){let n=0;document.querySelectorAll("#ocrRows tr").forEach(
 if(location.protocol==='file:'){
   document.body.innerHTML='<div style="max-width:760px;margin:80px auto;font-family:Arial;direction:rtl;padding:24px"><h1>האפליקציה נפתחה בצורה לא נכונה</h1><p>אין לפתוח את index.html ישירות. יש להפעיל את השרת ואז להיכנס דרך http://127.0.0.1:8000 כדי שהגרפים, הנתונים והעדכונים החיים יעבדו.</p></div>';
 }else{
-  initializeVisibleClocks();renderHome();renderTables();renderBacktests();renderWeekly();setחיBadge();checkBackendStatus();updateScannerButton();startAutoScanner();loadLearningSummary();loadLongDailyLearning();captureLongDailyForecast();refreshHealth();loadLivePerformance(false);syncMarketClock();startDataWatchdog();loadMarketIndexes();loadLearningCurve();refreshAll();
+  initializeVisibleClocks();renderHome();renderTables();renderBacktests();renderWeekly();setחיBadge();checkBackendStatus();updateScannerButton();startAutoScanner();loadLearningSummary();loadLongDailyLearning();captureLongDailyForecast();refreshHealth();syncMarketClock();startDataWatchdog();loadMarketIndexes();loadLearningCurve();refreshAll();
   document.querySelectorAll('[data-index-symbol]').forEach(card=>card.addEventListener('click',()=>openDetail('long',card.dataset.indexSymbol)));
-  setInterval(updateClockUI,1000);setInterval(syncMarketClock,60000);setInterval(refreshHealth,300000);setInterval(()=>loadLivePerformance(true),300000);setInterval(loadMarketIndexes,60000);setInterval(loadLearningCurve,300000);setInterval(refreshAll,300000);setInterval(captureLongDailyForecast,300000);
+  setInterval(updateClockUI,1000);setInterval(syncMarketClock,60000);setInterval(refreshHealth,300000);setInterval(loadMarketIndexes,60000);setInterval(loadLearningCurve,300000);setInterval(refreshAll,300000);setInterval(captureLongDailyForecast,300000);
 }
 
 
