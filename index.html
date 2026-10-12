@@ -964,6 +964,7 @@ function startDataWatchdog(){
 }
 
 async function loadLearningSummary(){
+  const learningStockBody=document.getElementById("learningStockBody");
   const empty=document.getElementById("learningEmpty");
   const content=document.getElementById("learningContent");
   if(!empty||!content)return;
@@ -989,7 +990,7 @@ async function loadLearningSummary(){
       empty.style.display="block";
       empty.textContent="מערכת הלמידה פעילה. עקומת ההצלחה היומית, השבועית והחודשית מתעדכנת לאחר הבשלת המדידות.";
       content.style.display="block";
-      if(stocks)stocks.innerHTML='<tr><td colspan="7" class="empty">ממתין לאותות חדשים: אחוזי יום, שבוע וחודש וזמני העלייה והירידה יוצגו כאן לאחר המדידה.</td></tr>';
+      if(learningStockBody)learningStockBody.innerHTML='<tr><td colspan="7" class="empty">ממתין לאותות חדשים: אחוזי יום, שבוע וחודש וזמני העלייה והירידה יוצגו כאן לאחר המדידה.</td></tr>';
       document.getElementById("learnSuccess").textContent="ממתין למדגם";
       document.getElementById("learnCorrect").textContent=`0/${j.headline_metric?.independent_samples||0}`;
       document.getElementById("learnSignals").textContent=j.headline_metric?.independent_samples||0;
@@ -1001,7 +1002,7 @@ async function loadLearningSummary(){
     const pct=v=>Number.isFinite(+v)?(+v).toFixed(1)+"%":"—";
     const dec=(v,suffix="")=>Number.isFinite(+v)?(+v).toFixed(2)+suffix:"—";
     const ready=j.validation?.ready===true;
-    if(stocks)stocks.innerHTML=(j.stock_performance||[]).map(x=>`<tr><td><b>${heText(x.symbol)}</b></td><td>${x.signals}</td><td>${periodStatHe(x.day)}</td><td>${periodStatHe(x.week)}</td><td>${periodStatHe(x.month)}</td><td>${durationHe(x.median_minutes_to_peak)}</td><td>${durationHe(x.median_minutes_to_trough)}</td></tr>`).join("")||'<tr><td colspan="7" class="empty">המדידה התחילה; תוצאות יום, שבוע וחודש יתמלאו במועדים המתאימים.</td></tr>';
+    if(learningStockBody)learningStockBody.innerHTML=(j.stock_performance||[]).map(x=>`<tr><td><b>${heText(x.symbol)}</b></td><td>${x.signals}</td><td>${periodStatHe(x.day)}</td><td>${periodStatHe(x.week)}</td><td>${periodStatHe(x.month)}</td><td>${durationHe(x.median_minutes_to_peak)}</td><td>${durationHe(x.median_minutes_to_trough)}</td></tr>`).join("")||'<tr><td colspan="7" class="empty">המדידה התחילה; תוצאות יום, שבוע וחודש יתמלאו במועדים המתאימים.</td></tr>';
     document.getElementById("learnSuccess").textContent=ready?pct(j.success_rate_pct):"ממתין למדגם";
     document.getElementById("learnCorrect").textContent=`${j.headline_metric?.positive_signals||0}/${j.headline_metric?.independent_samples||0}`;
     document.getElementById("learnSignals").textContent=j.headline_metric?.independent_samples||0;
