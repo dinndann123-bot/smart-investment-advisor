@@ -161,7 +161,7 @@ except Exception as _live_signals_error:
 
 try:
  from long_strategy import install_long_strategy
- LONG_STRATEGY=install_long_strategy(app)
+ LONG_STRATEGY=install_long_strategy(app,globals())
 except Exception as _long_strategy_error:
  LONG_STRATEGY={'installed':False,'error':f'{type(_long_strategy_error).__name__}: {_long_strategy_error}'}
  print(f"LONG_STRATEGY_INSTALL_ERROR {type(_long_strategy_error).__name__}: {_long_strategy_error}",flush=True)
