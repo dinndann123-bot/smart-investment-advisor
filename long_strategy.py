@@ -234,9 +234,9 @@ def install_long_strategy(app):
         return dict(fetched),feed
 
     @app.get("/api/strategy/long/validate")
-    async def validate_long_strategy(years:int=Query(6,ge=4,le=10),symbols:int=Query(len(CORE_UNIVERSE),ge=10,le=len(CORE_UNIVERSE))):
+    async def validate_long_strategy(years:int=Query(6,ge=4,le=10),symbols:int=Query(len(CORE_UNIVERSE),ge=10,le=len(CORE_UNIVERSE)),refresh:bool=Query(False)):
         now=datetime.now(timezone.utc)
-        if _CACHE.get("value") and _CACHE.get("at") and (now-_CACHE["at"]).total_seconds()<_CACHE_TTL:
+        if not refresh and _CACHE.get("value") and _CACHE.get("at") and (now-_CACHE["at"]).total_seconds()<_CACHE_TTL:
             out=dict(_CACHE["value"]);out["cached"]=True;return out
         data,feed=await fetch_all(years);spy=data.get("SPY",[]);events=[];current=[]
         eligible=CORE_UNIVERSE[:symbols]
