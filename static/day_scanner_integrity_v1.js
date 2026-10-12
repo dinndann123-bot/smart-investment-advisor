@@ -23,11 +23,11 @@ async function strictRefreshDayScanner(manual=false){
   const st=document.getElementById('scannerStatus');
   if(st){st.textContent='סורק את השוק...';st.className='live-badge live-delayed';}
   try{
-    const r=await fetch('/api/scanner/day?top=10&candidates=40',{cache:'no-store'});
+    const r=await fetch('/api/scanner/day?top=10&candidates=200',{cache:'no-store'});
     const j=await r.json();
     if(!r.ok)throw new Error(j.detail||'Scanner error');
     if(!validPayload(j)){
-      clearDay('הסריקה אינה מסונכרנת — לא מוצגות מניות ישנות');
+      clearDay(Array.isArray(j?.results)&&j.results.length===0 ? 'הסריקה הסתיימה ללא מועמדות מאומתות — בדוק סינון ומקור נתונים' : 'הסריקה אינה מסונכרנת — לא מוצגות מניות ישנות');
       console.error('DAY_TOP10_INTEGRITY_FAIL',j?.scan_id,j?.results?.length);
       return;
     }
