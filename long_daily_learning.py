@@ -110,6 +110,18 @@ def install_long_daily_learning(app, store, market_module, quote_fetcher=None):
         trade_date = now_utc.astimezone(ET).date().isoformat()
         existing = {r.get("ticker"): r for r in _all_records() if r.get("trade_date") == trade_date}
         if len(existing) == LONG_PICK_COUNT:
+            saved_order = sorted(existing.values(), key=lambda r: int(_finite(r.get("rank")) or 999))
+            matches_current = all(
+                row.get("ticker") == pick["ticker"]
+                and int(_finite(row.get("rank")) or 0) == pick["rank"]
+                and row.get("strategy_version") == "long_strategy_point_in_time_v1"
+                and row.get("long_strategy_as_of_trade_date") == pick["as_of_trade_date"]
+                and _finite(row.get("long_term_score")) is not None
+                and round(_finite(row.get("long_term_score")), 1) == pick["score"]
+                for row, pick in zip(saved_order, picks)
+            )
+            if not matches_current:
+                raise HTTPException(409, "התחזית היומית כבר ננעלה תחת רשימה או שיטה אחרת; היא נשמרה כהיסטוריה ולא תיוחס לבחירות העדכניות.")
             return {"ok": True, "created": 0, "already_captured": True, "trade_date": trade_date,
                     "records": [existing[t] for t in ordered_tickers if t in existing],
                     "message": "התחזית היומית כבר ננעלה; לא מחליפים תחזית קיימת."}
