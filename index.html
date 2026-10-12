@@ -246,10 +246,7 @@ img,svg,canvas{max-width:100%;height:auto}
         <div class="card metric"><b id="homePortfolioCount">0</b><span>פוזיציות בתיק שלך</span></div>
         <div class="card metric"><b id="homeBestScore">—</b><span>הציון הגבוה ביותר</span></div>
       </div>
-      <div class="home-grid">
-        <div class="card"><div class="section-head"><div><h2 style="font-size:19px">5 המובילות להשקעה</h2><p>החברות החזקות ביותר לפי השיטה.</p></div><button class="btn btn-secondary" onclick="go('long')">לכל ה־10</button></div><div id="homeLong"></div></div>
-        <div class="card"><div class="section-head"><div><h2 style="font-size:19px">5 המובילות למסחר יומי</h2><p>המועמדות החזקות ביותר כרגע.</p></div><button class="btn btn-secondary" onclick="go('day')">לכל ה־10</button></div><div id="homeDay"></div></div>
-      </div>
+
     
 
 <div class="card" id="learningCurvePanel" style="margin-top:16px">
@@ -1147,7 +1144,8 @@ function renderHome(){
   <div class="top-card" data-ticker="${s.ticker}" onclick="openDetail('${page}','${s.ticker}')"><div class="rank">${i+1}</div>${logoHtml(s)}
   <div class="grow"><b>${s.ticker} · ${s.name}</b><div class="small">${s.summary||s.catalyst||""}</div></div>
   <div><div class="score ${scoreClass(s.score)}" title="${page==='day'?'אחוז התאמה לקריטריונים של השיטה — לא אחוז הצלחה':'ציון התאמה לשיטה מתוך 100'}">${s.score}${page==='day'?'%':'/100'}</div><div class="small">${s.price?money(s.price):""}</div></div></div>`).join("");
- renderTop(longData,"homeLong","long");renderTop(dayData,"homeDay","day");
+ if(document.getElementById("homeLong"))renderTop(longData,"homeLong","long");
+ if(document.getElementById("homeDay"))renderTop(dayData,"homeDay","day");
 }
 
 function formatVolume(v){
@@ -1167,10 +1165,8 @@ function applyCanonicalDaySnapshot(results,payload){
  renderTables();renderHome();
  const scanId=payload?.scan_id||"";
  document.getElementById("dayTable")?.setAttribute("data-scan-id",scanId);
- document.getElementById("homeDay")?.setAttribute("data-scan-id",scanId);
  const tableSymbols=[...document.querySelectorAll("#dayTable tr[data-ticker]")].map(x=>x.dataset.ticker);
- const homeSymbols=[...document.querySelectorAll("#homeDay [data-ticker]")].map(x=>x.dataset.ticker);
- if(tableSymbols.join(",")!==symbols.join(",")||homeSymbols.join(",")!==symbols.slice(0,5).join(",")){
+ if(tableSymbols.join(",")!==symbols.join(",")){
    renderTables();renderHome();console.warn("DAY_UI_SYNC_REPAINT",scanId);
  }
  window.__CANONICAL_DAY_SNAPSHOT__={scan_id:scanId,symbols,generated_at:payload?.generated_at||null};
