@@ -356,14 +356,7 @@ img,svg,canvas{max-width:100%;height:auto}
   </table>
 </div>
 <div class="note" id="featureLearningNote" style="margin-top:8px">הטבלה משתמשת רק בפרופיל שהיה קיים לפני יום האות.</div>
-<h3 style="margin-top:16px">מניות שהשיטה סימנה</h3>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>תאריך</th><th>מניה</th><th>ציון</th><th>Gap</th><th>RVOL</th><th>תוצאה</th><th>T1</th><th>T2</th><th>תשואה לסגירה</th></tr></thead>
-        <tbody id="learningSignalsTable"></tbody>
-      </table>
-    </div>
-    <div id="learningNote" class="note" style="margin-top:10px"></div>
+<div id="learningNote" class="note" style="margin-top:10px"></div>
 <div id="learn5yNote" class="note" style="margin-top:8px">פרופיל 5 השנים נטען אוטומטית בכל מניה ומשמש לזיהוי דפוסי תנודתיות, Gap וימי פיצוץ. הוא אינו מוכנס לאות היסטורי אם המידע לא היה זמין בזמן אמת באותו תאריך.</div>
   </div>
 </div>
@@ -1117,22 +1110,7 @@ async function loadLearningSummary(){
       if(useful.length)fn.textContent=`המאפיין החזק כרגע: ${featureNames[useful[0].feature]||useful[0].feature} · ${pct(useful[0].success_pct)} הצלחה · ${pct(useful[0].avg_return_pct)} תשואה ממוצעת. נדרש מדגם מספיק גדול לפני שינוי משקל.`;
     }
 
-document.getElementById("learningSignalsTable").innerHTML=(j.recent_signals||[]).map(x=>{
-      const ok=!!x.hit1, t2=!!x.hit2, ret=Number(x.close_return_pct);
-      const pending=!Number.isFinite(ret), stopped=Number.isFinite(ret)&&ret<=-1;
-      const resultText=ok?'✅ יעד 1':pending?'⏳ ממתין':stopped?'❌ Stop':ret>0?'↗ חיובי, ללא יעד':'↘ ללא יעד';
-      const resultClass=ok||ret>0?'positive':pending?'':'negative';
-      return `<tr>
-        <td>${x.date}</td><td><b>${x.symbol}</b></td><td>${Number(x.score).toFixed(0)}/100</td>
-        <td>${Number.isFinite(+x.gap_pct)?(+x.gap_pct).toFixed(1)+"%":"—"}</td>
-        <td>${Number.isFinite(+x.rvol_open)?(+x.rvol_open).toFixed(2)+"×":"—"}</td>
-        <td><span class="${resultClass}">${resultText}</span></td>
-        <td>${ok?'✅':'—'}</td><td>${t2?'✅':'—'}</td>
-        <td class="${(+x.close_return_pct)>=0?'positive':'negative'}">${Number.isFinite(+x.close_return_pct)?((+x.close_return_pct)>=0?'+':'')+(+x.close_return_pct).toFixed(2)+'%':'—'}</td>
-      </tr>`;
-    }).join("");
-
-    const when=j.created_at?new Date(j.created_at).toLocaleString("he-IL"):"כעת";
+const when=j.created_at?new Date(j.created_at).toLocaleString("he-IL"):"כעת";
     document.getElementById("learningNote").textContent=
       `${ready?'מדגם אימות פעיל':'איסוף מדגם — אין שינוי משקלים'} · ${j.evaluated||0}/${j.validation?.minimum_samples||50} תוצאות · עודכן ${when}. המדידה היא forward בלבד ואינה הבטחת תשואה.`;
   }catch(e){
@@ -1299,8 +1277,13 @@ async function loadMarketIndexes(){
  await Promise.all(marketIndexes.map(async item=>{
   const symbol=item.ticker;
   try{
-   const [q,bundle]=await Promise.all([getQuote(symbol),getCanonicalChart(symbol,"1D")]);
-   const bars=bundle.points.map(b=>({d:b.t,o:+b.o,h:+b.h,l:+b.l,v:+b.c,volume:+(b.v||0)})).filter(b=>Number.isFinite(b.v));
+   const [q,dayBundle]=await Promise.all([getQuote(symbol),getCanonicalChart(symbol,"1D").catch(()=>null)]);
+   let bundle=dayBundle,chartPeriod="1D";
+   if(!bundle||!Array.isArray(bundle.points)||bundle.points.length<2){
+    bundle=await getCanonicalChart(symbol,"1W");
+    chartPeriod="1W";
+   }
+   const bars=(bundle.points||[]).map(b=>({d:b.t,o:+b.o,h:+b.h,l:+b.l,v:+b.c,volume:+(b.v||0)})).filter(b=>Number.isFinite(b.v));
    const price=q.price,change=q.change;item.chartBars=bars;
    item.price=price;item.change=change;item.quoteStatus=q.freshness;item.quoteAt=q.quoteAt;
    const priceEl=document.getElementById(`idx-${symbol}-price`),changeEl=document.getElementById(`idx-${symbol}-change`);
@@ -1308,7 +1291,7 @@ async function loadMarketIndexes(){
    if(changeEl){changeEl.textContent=Number.isFinite(change)?`${change>=0?'+':''}${change.toFixed(2)}%`:'—';changeEl.className=Number.isFinite(change)?(change>=0?'positive':'negative'):''}
    draw(`idx-${symbol}-chart`,bars,null,{compact:true,lineColor:Number.isFinite(change)&&change<0?'#ff6472':'#dcb352'});
    const source=document.getElementById(`idx-${symbol}-source`),time=document.getElementById(`idx-${symbol}-time`);
-   if(source)source.textContent=`Alpaca ${q.feed||'—'} · ${q.freshness||'לא זמין'}${q.session==='premarket'?' · פרה־מרקט':''}`;
+   if(source)source.textContent=`Alpaca ${q.feed||'—'} · ${q.freshness||'לא זמין'}${q.session==='premarket'?' · פרה־מרקט':''}${chartPeriod==='1W'?' · תצוגת שבוע':''}`;
    if(time)time.textContent=q.quoteAt?fmtMarketTimestamp(q.quoteAt):bars.length?fmtMarketTimestamp(bars.at(-1).d):'—';
   }catch(e){item.chartBars=[];const source=document.getElementById(`idx-${symbol}-source`);if(source)source.textContent='הנתון אינו זמין כרגע';draw(`idx-${symbol}-chart`,null,null,{compact:true})}
  }));
