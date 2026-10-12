@@ -84,6 +84,60 @@ app.add_api_route('/api/scanner/day/status',_async['status'],methods=['GET'],nam
 
 try:
  import learning_store
+ import os as _neon_os
+ def _copy_learning_to_neon():
+     target_url=_neon_os.getenv("NEON_MIGRATION_URL","").strip()
+     source_url=getattr(learning_store,"DATABASE_URL","").strip()
+     if not target_url:
+         return None
+     if not source_url:
+         raise RuntimeError("source DATABASE_URL is missing")
+     if target_url==source_url:
+         return {"skipped":"source_equals_target"}
+     import json as _neon_json
+     import psycopg as _neon_psycopg
+     from psycopg.types.json import Jsonb as _NeonJsonb
+     with _neon_psycopg.connect(source_url,connect_timeout=8) as _source, _neon_psycopg.connect(target_url,connect_timeout=8) as _target:
+         with _source.cursor() as _cur:
+             _cur.execute("SELECT signal_id,scan_id,ticker,signal_epoch,signal_time,record_type,payload,updated_at FROM strategy_learning_signals")
+             _signals=_cur.fetchall()
+             _cur.execute("SELECT trade_date,ticker,signal_epoch,payload,updated_at FROM long_daily_predictions")
+             _long_daily=_cur.fetchall()
+         _target.execute("""CREATE TABLE IF NOT EXISTS strategy_learning_signals (
+             signal_id TEXT PRIMARY KEY, scan_id TEXT, ticker TEXT NOT NULL,
+             signal_epoch DOUBLE PRECISION NOT NULL, signal_time TEXT,
+             record_type TEXT NOT NULL DEFAULT '', payload JSONB NOT NULL,
+             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())""")
+         _target.execute("CREATE INDEX IF NOT EXISTS idx_learning_ticker_epoch ON strategy_learning_signals(ticker,signal_epoch DESC)")
+         _target.execute("CREATE INDEX IF NOT EXISTS idx_learning_type_epoch ON strategy_learning_signals(record_type,signal_epoch DESC)")
+         _target.execute("""CREATE TABLE IF NOT EXISTS long_daily_predictions (
+             trade_date TEXT NOT NULL, ticker TEXT NOT NULL, signal_epoch DOUBLE PRECISION NOT NULL,
+             payload JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+             PRIMARY KEY (trade_date,ticker))""")
+         _target.execute("CREATE INDEX IF NOT EXISTS idx_long_daily_epoch ON long_daily_predictions(signal_epoch DESC)")
+         with _target.cursor() as _cur:
+             _cur.executemany("""INSERT INTO strategy_learning_signals
+                 (signal_id,scan_id,ticker,signal_epoch,signal_time,record_type,payload,updated_at)
+                 VALUES(%s,%s,%s,%s,%s,%s,%s,%s)
+                 ON CONFLICT(signal_id) DO UPDATE SET scan_id=EXCLUDED.scan_id,ticker=EXCLUDED.ticker,
+                 signal_epoch=EXCLUDED.signal_epoch,signal_time=EXCLUDED.signal_time,
+                 record_type=EXCLUDED.record_type,payload=EXCLUDED.payload,updated_at=EXCLUDED.updated_at""",
+                 [(*row[:6],_NeonJsonb(row[6] if isinstance(row[6],dict) else _neon_json.loads(row[6])),row[7]) for row in _signals])
+             _cur.executemany("""INSERT INTO long_daily_predictions
+                 (trade_date,ticker,signal_epoch,payload,updated_at) VALUES(%s,%s,%s,%s,%s)
+                 ON CONFLICT(trade_date,ticker) DO UPDATE SET signal_epoch=EXCLUDED.signal_epoch,
+                 payload=EXCLUDED.payload,updated_at=EXCLUDED.updated_at""",
+                 [(row[0],row[1],row[2],_NeonJsonb(row[3] if isinstance(row[3],dict) else _neon_json.loads(row[3])),row[4]) for row in _long_daily])
+         _counts={}
+         for _table in ("strategy_learning_signals","long_daily_predictions"):
+             _counts[_table]=_target.execute("SELECT COUNT(*) FROM "+_table).fetchone()[0]
+     return {"source_signals":len(_signals),"source_long_daily":len(_long_daily),"target_counts":_counts}
+ try:
+     _copy_result=_copy_learning_to_neon()
+     if _copy_result is not None:
+         print("NEON_MIGRATION_COMPLETE "+__import__("json").dumps(_copy_result,separators=(",",":")),flush=True)
+ except Exception as _copy_error:
+     print(f"NEON_MIGRATION_FAILED {type(_copy_error).__name__}: {_copy_error}",flush=True)
  from scheduled_learning import install_scheduled_learning
  SCHEDULED_LEARNING=install_scheduled_learning(app,_v66_scanner_engine,learning_store,ASYNC_STRATEGY_VERSION,price_fetcher=getattr(_scanner_core,'_future_prices',None))
  from timing_signals import install_timing_routes
