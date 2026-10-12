@@ -1083,6 +1083,8 @@ async function loadLongInvestmentPicks(force=false){
  longStrategyLoadPromise=(async()=>{
   try{
    const response=await fetch(`/api/strategy/long/validate?years=6${force?"&refresh=true":""}`,{cache:"no-store"});
+   const contentType=response.headers.get("content-type")||"";
+   if(!contentType.includes("application/json"))throw new Error(`שירות הדירוג החזיר שגיאה (${response.status})`);
    const data=await response.json();
    if(!response.ok||data.ok!==true)throw new Error(data.detail||"שירות הדירוג לא החזיר תוצאה תקינה");
    const candidates=Array.isArray(data.current_candidates)?data.current_candidates.slice(0,10):[];
