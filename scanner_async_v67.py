@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 
 STRATEGY_VERSION = "strategy-learning-v6.8.5-session-aware"
 SCAN_TIMEOUT_SEC = 75
-AUTO_SCAN_INTERVAL_SEC = 60
+AUTO_SCAN_INTERVAL_SEC = 300
 MIN_DEEP_CANDIDATES = 80
 
 NO_TRADE_STATES = {"no_premarket_sip_trades", "insufficient_clock_baseline"}

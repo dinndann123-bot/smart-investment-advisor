@@ -36,6 +36,9 @@ class LearningStoreHistoryTests(unittest.TestCase):
                 self.assertEqual(learning_store.count("scanner_signal"),1602)
                 self.assertEqual(learning_store.status()["stored_signals"],3205)
                 self.assertEqual(learning_store.status()["scheduled_checkpoints"],1603)
+                learning_store.insert_long_daily_once({"trade_date":"2026-10-13","ticker":"AAA","epoch":4000})
+                learning_store.insert_long_daily_once({"trade_date":"2026-10-13","ticker":"BBB","epoch":4001})
+                self.assertEqual(learning_store.count_long_daily(),2)
             finally:
                 learning_store.SQLITE_PATH=previous_path
 

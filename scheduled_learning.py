@@ -184,7 +184,9 @@ def install_scheduled_learning(app, scanner_engine, learning_store, strategy_ver
 
     def checkpoint_rows():
         loader=getattr(learning_store,'load_by_type',None)
-        if callable(loader):return loader('scheduled_checkpoint')
+        if callable(loader):
+            since=(datetime.now(timezone.utc)-timedelta(days=60)).timestamp()
+            return loader('scheduled_checkpoint',limit=6000,since_epoch=since)
         return [r for r in learning_store.load(1000000) if r.get('record_type')=='scheduled_checkpoint']
 
     def captured_for_day(day):

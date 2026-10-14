@@ -7,6 +7,7 @@ from pathlib import Path
 # Prefer the verified Neon database while retaining the Render URL as a rollback fallback.
 DATABASE_URL = os.getenv("NEON_MIGRATION_URL", "").strip() or os.getenv("DATABASE_URL", "").strip()
 SQLITE_PATH = Path(__file__).with_name("learning_signals.sqlite3")
+_INITIALIZED_FOR = None
 
 def _signal_id(row):
     return f"{row.get('scan_id') or 'scan'}:{row.get('ticker') or 'UNKNOWN'}:{row.get('rank') or 0}"
@@ -19,6 +20,9 @@ def _pg():
     return psycopg.connect(DATABASE_URL, connect_timeout=8)
 
 def initialize():
+    global _INITIALIZED_FOR
+    initialized_for=(DATABASE_URL,str(SQLITE_PATH))
+    if _INITIALIZED_FOR==initialized_for:return
     if DATABASE_URL:
         with _pg() as con:
             con.execute("""CREATE TABLE IF NOT EXISTS strategy_learning_signals (
@@ -51,6 +55,7 @@ def initialize():
                 payload TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (trade_date, ticker))""")
             con.execute("CREATE INDEX IF NOT EXISTS idx_long_daily_epoch ON long_daily_predictions(signal_epoch DESC)")
+    _INITIALIZED_FOR=initialized_for
 
 def load(limit=3000):
     initialize()
@@ -124,6 +129,13 @@ def load_long_daily(limit=10000):
         try:out.append(payload if isinstance(payload,dict) else json.loads(payload))
         except Exception:continue
     return out
+
+def count_long_daily():
+    """Count long-horizon rows without transferring every JSON payload."""
+    initialize()
+    with (_pg() if DATABASE_URL else sqlite3.connect(SQLITE_PATH)) as con:
+        row=con.execute("SELECT COUNT(*) FROM long_daily_predictions").fetchone()
+    return int(row[0] or 0)
 
 def upsert_long_daily(row):
     initialize();payload=json.dumps(row,ensure_ascii=False,separators=(",",":"))
