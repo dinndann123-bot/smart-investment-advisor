@@ -18,6 +18,8 @@ import httpx
 
 _local_scanner_engine=install_local_scanner(app)
 CHART_API_V7=install_chart_api(app)
+from canonical_bundle_api import install as _install_canonical_bundle
+CANONICAL_STOCK_BUNDLE=_install_canonical_bundle(app,CHART_API_V7)
 
 # News providers return English headlines.  Translation is presentation-only:
 # market data and scanner decisions always continue to use the original payload.
@@ -174,7 +176,7 @@ except Exception as _long_daily_error:
 
 @app.get('/api/scanner/async-status')
 async def scanner_async_status():
-    return {'installed':True,'strategy_version':ASYNC_STRATEGY_VERSION,'engine':'local-full-market-predictive-shortlist-progressive-top10','live_market_source':'Alpaca','cache_scope':'last-scanner-result-only','canonical_top10_contract':True,'canonical_ui':'index.html','ui_recovery':'complete-navigation-and-data-shell','canonical_chart_api':'/api/market/chart/{symbol}','canonical_quote_api':'/api/market/quote/{symbol}','long_daily_learning':LONG_DAILY_LEARNING if 'LONG_DAILY_LEARNING' in globals() else {'installed':False},'scheduled_learning':SCHEDULED_LEARNING,'missed_movers_learning':MISSED_MOVERS_LEARNING if 'MISSED_MOVERS_LEARNING' in globals() else {'installed':False},'session_data_fix':SCANNER_SESSION_DATA_FIX,'local_scanner_core':True}
+    return {'installed':True,'strategy_version':ASYNC_STRATEGY_VERSION,'engine':'local-full-market-predictive-shortlist-progressive-top10','live_market_source':'Alpaca','cache_scope':'last-scanner-result-only','canonical_top10_contract':True,'canonical_ui':'index.html','ui_recovery':'complete-navigation-and-data-shell','canonical_chart_api':'/api/market/chart/{symbol}','canonical_quote_api':'/api/market/quote/{symbol}','canonical_stock_bundle':'/api/stock/{symbol}/bundle','bundle_chart_quote_source_aligned':True,'long_daily_learning':LONG_DAILY_LEARNING if 'LONG_DAILY_LEARNING' in globals() else {'installed':False},'scheduled_learning':SCHEDULED_LEARNING,'missed_movers_learning':MISSED_MOVERS_LEARNING if 'MISSED_MOVERS_LEARNING' in globals() else {'installed':False},'session_data_fix':SCANNER_SESSION_DATA_FIX,'local_scanner_core':True}
 
 try:
  from app_tail import install_app_tail

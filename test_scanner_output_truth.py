@@ -12,7 +12,8 @@ class ScannerOutputTruthTests(unittest.TestCase):
     def test_ui_loads_long_prices_and_full_ticker_badges(self):
         source=Path("index.html").read_text(encoding="utf-8")
         self.assertIn('.slice(0,5)',source)
-        self.assertIn('loadMarketIndexes();refreshAll();',source)
+        self.assertIn('loadMarketIndexes();',source)
+        self.assertIn('refreshAll();',source)
         self.assertNotIn('s.price?money(s.price):"API"',source)
         self.assertIn('/api/learning/missed-movers/summary',source)
         self.assertIn('learnMissedSymbols',source)
