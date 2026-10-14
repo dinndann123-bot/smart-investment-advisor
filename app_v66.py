@@ -1,29 +1,23 @@
 import urllib.request
 _STABLE='https://raw.githubusercontent.com/dinndann123-bot/smart-investment-advisor/13fe48cbb4886fe2ad95a37712562c03a17fc035/app_v66.py'
 _code=urllib.request.urlopen(_STABLE,timeout=30).read().decode('utf-8')
-# The wrapper loads a pinned intermediate app_v66.py, which then loads the
-# actual websocket implementation in app.py. Patch at the second level.
-_nested_marker="exec(compile(_code, _STABLE, 'exec'), globals(), globals())"
-_nested_patch='''_ws_old="""            async def keep_client():
+# The pinned upstream websocket handler leaves a disconnected client task exception
+# unobserved. Make the smallest possible source-level correction before compiling.
+_ws_old='''            async def keep_client():
                 while True:
                     # We do not need commands from the browser yet, but reading detects disconnects.
-                    await client_ws.receive_text()"""
-_ws_new="""            async def keep_client():
+                    await client_ws.receive_text()'''
+_ws_new='''            async def keep_client():
                 try:
                     while True:
                         # We do not need commands from the browser yet, but reading detects disconnects.
                         await client_ws.receive_text()
                 except WebSocketDisconnect:
-                    return"""
+                    return'''
 if _ws_old in _code:
     _code=_code.replace(_ws_old,_ws_new,1)
-    print("WEBSOCKET_DISCONNECT_PATCH_APPLIED",flush=True)
 else:
-    print("WEBSOCKET_DISCONNECT_PATCH_NOT_APPLIED",flush=True)
-exec(compile(_code, _STABLE, 'exec'), globals(), globals())'''
-if _nested_marker not in _code:
-    raise RuntimeError("Pinned upstream loader changed; refusing unpatched startup")
-_code=_code.replace(_nested_marker,_nested_patch,1)
+    print('WEBSOCKET_DISCONNECT_PATCH_NOT_APPLIED: upstream source changed',flush=True)
 exec(compile(_code,_STABLE,'exec'),globals(),globals())
 
 # v6.6.7: forward-validation journal. Records every Top-10 signal and measures subsequent live prices.
