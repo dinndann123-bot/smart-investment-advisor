@@ -880,6 +880,11 @@ let liveReconnectAttempts=0;
 
 function freshnessText(f){
   if(!f)return {text:"לא ידוע",cls:"live-eod"};
+  if(f.state==="current")return {text:"חי",cls:"live-on"};
+  if(f.state==="current_delayed")return {text:"מושהה 15 דק׳",cls:"live-delayed"};
+  if(f.state==="market_closed")return {text:"שוק סגור",cls:"live-eod"};
+  if(f.state==="previous_session")return {text:"מסשן קודם",cls:"live-error"};
+  if(f.state==="unavailable"||f.state==="no_current_trade")return {text:"לא זמין",cls:"live-error"};
   if(f.state==="live_or_near_live")return {text:"חי",cls:"live-on"};
   if(f.state==="delayed")return {text:"מושהה",cls:"live-delayed"};
   if(f.state==="stale")return {text:"ישן",cls:"live-error"};
@@ -1165,6 +1170,14 @@ function formatVolume(v){
   if(!Number.isFinite(+v))return "—";
   const n=+v;if(n>=1e9)return (n/1e9).toFixed(1)+"B";if(n>=1e6)return (n/1e6).toFixed(1)+"M";if(n>=1e3)return (n/1e3).toFixed(0)+"K";return String(n);
 }
+function scanFreshnessLabel(s){
+ const state=String(s?.data_freshness_status||'').toLowerCase();
+ if(state.includes('stale')||state.includes('previous_session'))return 'נתון ישן';
+ if(state.includes('delayed_sip')||state.includes('premarket'))return 'SIP מושהה';
+ if(state.includes('no_')||state.includes('unavailable'))return 'אין עסקה עדכנית';
+ if(state.includes('current_session'))return 'נתון עדכני';
+ return 'זמן מקור לא זמין';
+}
 function applyCanonicalDaySnapshot(results,payload){
  const snapshot=(Array.isArray(results)?results:[]).slice(0,10).map((x,i)=>({
    ...x,scanner_rank:i+1,canonical_scan_id:payload?.scan_id||null,
@@ -1245,7 +1258,7 @@ function renderTables(){
  document.getElementById("dayTable").innerHTML=dayData.map((s,i)=>`
  <tr class="stock-row ${s.timing_signal==='entry'?'timing-entry-row':s.timing_signal==='exit'?'timing-exit-row':s.timing_signal==='active'?'timing-active-row':''}" data-ticker="${s.ticker}" data-timing-signal="${s.timing_signal||'watch'}" title="${(s.timing_reason||'').replace(/"/g,"'")}" onclick="openDetail('day','${s.ticker}')">
  <td>${i+1}</td><td><div class="company">${logoHtml(s)}<div><b>${s.ticker}</b><div class="small">${s.name||s.ticker}</div></div></div></td>
- <td>${money(s.price)}</td><td>${Number.isFinite(s.change)?`<span class="${s.change>=0?'positive':'negative'}">${s.change>=0?'+':''}${s.change.toFixed(1)}%</span>`:"—"}</td>
+ <td title="מקור: ${s.data_feed||s.data_source||'—'} · זמן נתון: ${s.market_timestamp||'—'}">${money(s.price)}<div class="small">${scanFreshnessLabel(s)}${s.market_timestamp?' · '+fmtMarketTimestamp(s.market_timestamp):''}</div></td><td>${Number.isFinite(s.change)?`<span class="${s.change>=0?'positive':'negative'}">${s.change>=0?'+':''}${s.change.toFixed(1)}%</span>`:"—"}</td>
  <td><span class="score ${scoreClass(s.score)}" title="ציון התאמה לקריטריונים של השיטה — לא אחוז הצלחה">${s.score}%</span><div class="small">${s.quality_tier==='predictive'?'אות חיזוי':'מועמד מעקב'}</div></td><td><span class="badge">${riskLabel(s.risk)}</span></td>
  <td id="sig-${s.ticker}">${signalHtml(baseSignal(s))}</td>
  <td title="${(s.catalyst||"").replace(/"/g,"'")}">${(s.catalyst||"").slice(0,90)}</td>
