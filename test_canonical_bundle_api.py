@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI
 
 from canonical_bundle_api import install
-from chart_api_v7 import _chart_feed
+from chart_api_v7 import _chart_feed, _trim_intraday_session
 
 
 class CanonicalBundleTests(unittest.TestCase):
@@ -16,6 +16,16 @@ class CanonicalBundleTests(unittest.TestCase):
     def test_regular_intraday_chart_keeps_configured_feed(self):
         self.assertEqual(_chart_feed("1D", "regular", "iex"), "iex")
         self.assertEqual(_chart_feed("1D", "regular", "sip"), "sip")
+
+    def test_day_chart_during_regular_session_contains_only_todays_bars(self):
+        now = datetime.fromisoformat("2026-10-14T13:33:00+00:00")
+        points = [{"t": "2026-10-13T19:55:00Z"}, {"t": "2026-10-14T13:30:00Z"}]
+        self.assertEqual(_trim_intraday_session(points, "1D", "regular", now), [points[1]])
+
+    def test_day_chart_premarket_keeps_prior_close_context(self):
+        now = datetime.fromisoformat("2026-10-14T12:00:00+00:00")
+        points = [{"t": "2026-10-13T19:55:00Z"}, {"t": "2026-10-14T11:55:00Z"}]
+        self.assertEqual(_trim_intraday_session(points, "1D", "premarket", now), points)
 
     def test_bundle_replaces_stale_legacy_quote_and_bars_from_canonical_source(self):
         app = FastAPI()
