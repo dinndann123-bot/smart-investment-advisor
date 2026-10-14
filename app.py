@@ -359,3 +359,6 @@ async def learning_curve():
 # Independent read-only company filings and news source lookup.
 from news_verification_api import install as _install_news_verification
 _install_news_verification(app)
+
+from learning_inventory_api import install as _install_learning_inventory
+_install_learning_inventory(app)

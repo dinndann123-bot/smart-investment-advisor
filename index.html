@@ -283,6 +283,7 @@ img,svg,canvas{max-width:100%;height:auto}
     <div class="card metric"><b id="healthDelta">—</b><span>שינוי מול התקופה הקודמת</span></div>
     <div class="card metric"><b id="healthStops">—</b><span>שיעור Stop אחרון</span></div>
   </div>
+  <div id="healthLearningInventory" class="note" style="margin-top:10px" aria-live="polite">בודק נתוני למידה שמורים…</div>
   <div id="healthRecommendations" class="note" style="margin-top:10px">טוען המלצות...</div>
 </div>
 
@@ -928,6 +929,17 @@ async function refreshHealth(){
     document.getElementById("healthRecentR").textContent=h.has_data&&h.recent?`${h.recent.avg_r.toFixed(2)}R`:"—";
     document.getElementById("healthDelta").textContent=h.delta_hit1_pct_points==null?"—":`${h.delta_hit1_pct_points>=0?"+":""}${h.delta_hit1_pct_points.toFixed(1)} נק׳`;
     document.getElementById("healthStops").textContent=h.has_data&&h.recent?`${h.recent.stops.toFixed(1)}%`:"—";
+    const inventoryBox=document.getElementById("healthLearningInventory");
+    if(inventoryBox){
+      try{
+        const inventoryResponse=await fetch("/api/learning/inventory",{cache:"no-store"});
+        if(!inventoryResponse.ok)throw new Error("inventory unavailable");
+        const inv=await inventoryResponse.json();
+        if(!inv.available)throw new Error("inventory unavailable");
+        const c=inv.counts||{};
+        inventoryBox.textContent="למידה שמורה במסד ("+(inv.durable?"קבוע":"מקומי")+"): "+Number(inv.total||0).toLocaleString("he-IL")+" רשומות | "+Number(c.scanner_signal||0)+" אותות | "+Number(c.timing_event||0)+" אירועי כניסה/יציאה | "+Number(c.scheduled_checkpoint||0)+" דגימות | "+Number(inv.long_daily_predictions||0)+" תחזיות ארוכות טווח. הנתונים נשמרו; אחוז הצלחה מחייב אימות תוצאות.";
+      }catch(_){inventoryBox.textContent="לא ניתן לקרוא כרגע את מאגר הלמידה. אין בכך הוכחה שהנתונים נמחקו.";}
+    }
     const box=document.getElementById("healthRecommendations");
     const lines=[...(h.reasons||[]),...(h.recommendations||[])];
     box.innerHTML=lines.length?lines.map(x=>`<div>• ${x}</div>`).join(""):"אין כרגע המלצה לשינוי.";
