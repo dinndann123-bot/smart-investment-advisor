@@ -275,11 +275,11 @@ img,svg,canvas{max-width:100%;height:auto}
     <div class="card metric"><b id="healthData">בודק...</b><span>מצב נתונים</span></div>
     <div class="card metric"><b id="healthFeed">—</b><span>מקור מסחר</span></div>
     <div class="card metric"><b id="healthStrategy">—</b><span>בריאות השיטה</span></div>
-    <div class="card metric"><b id="healthAge">—</b><span>גיל Backtest</span></div>
+    <div class="card metric"><b id="healthAge">—</b><span>גיל האימות האחרון</span></div>
   </div>
   <div class="cards" style="margin-top:10px">
     <div class="card metric"><b id="healthRecentHit">—</b><span>הצלחה בתקופה האחרונה</span></div>
-    <div class="card metric"><b id="healthRecentR">—</b><span>Expectancy אחרון</span></div>
+    <div class="card metric"><b id="healthRecentR">—</b><span>תוחלת תשואה (15 דק׳)</span></div>
     <div class="card metric"><b id="healthDelta">—</b><span>שינוי מול התקופה הקודמת</span></div>
     <div class="card metric"><b id="healthStops">—</b><span>שיעור Stop אחרון</span></div>
   </div>
@@ -924,9 +924,9 @@ async function refreshHealth(){
     }
     if(feed)feed.textContent=actualFeed?providerHe(`Alpaca ${actualFeed}`):s.alpaca_configured?`ערוץ מוגדר: ${providerHe(`Alpaca ${String(s.alpaca_feed||"").toUpperCase()}`)}`:(s.alpha_vantage_configured?"נתוני סגירה — Alpha Vantage":"מקור ציבורי");
     document.getElementById("healthStrategy").textContent=h.status_he||"לא ידוע";
-    document.getElementById("healthAge").textContent=h.has_data?`${h.backtest_age_days} ימים`:"אין בדיקה";
+    document.getElementById("healthAge").textContent=h.has_data?`${h.backtest_age_days} ימים`:"אין אימות";
     document.getElementById("healthRecentHit").textContent=h.has_data&&h.recent?`${h.recent.hit1.toFixed(1)}%`:"—";
-    document.getElementById("healthRecentR").textContent=h.has_data&&h.recent?`${h.recent.avg_r.toFixed(2)}R`:"—";
+    document.getElementById("healthRecentR").textContent=h.has_data&&h.recent&&Number.isFinite(+h.recent.expectancy_pct)?`${h.recent.expectancy_pct>=0?"+":""}${h.recent.expectancy_pct.toFixed(2)}%`:"—";
     document.getElementById("healthDelta").textContent=h.delta_hit1_pct_points==null?"—":`${h.delta_hit1_pct_points>=0?"+":""}${h.delta_hit1_pct_points.toFixed(1)} נק׳`;
     document.getElementById("healthStops").textContent=h.has_data&&h.recent?`${h.recent.stops.toFixed(1)}%`:"—";
     const inventoryBox=document.getElementById("healthLearningInventory");

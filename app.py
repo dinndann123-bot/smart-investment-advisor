@@ -182,6 +182,23 @@ try:
 except ImportError:
  pass
 
+# Replace the v6.6 placeholder so the dashboard reads persisted v6.8 validation.
+for _route in list(app.routes):
+    if getattr(_route,'path',None)=='/api/strategy/health' and 'GET' in getattr(_route,'methods',set()):
+        app.router.routes.remove(_route)
+
+@app.get('/api/strategy/health')
+async def strategy_health():
+    """Return measured forward-validation health for the existing dashboard."""
+    from strategy_health import build_strategy_health
+    try:
+        rows=learning_store.load_by_type('scheduled_checkpoint',limit=100000)
+        storage=learning_store.status()
+    except Exception as exc:
+        rows=[]
+        storage={'connected':False,'durable':False,'error':type(exc).__name__}
+    return build_strategy_health(rows,storage,ASYNC_STRATEGY_VERSION)
+
 # Emit a compact, read-only snapshot of persisted validation records into Render logs.
 # This lets operators verify database history without opening PostgreSQL to external IPs.
 try:
