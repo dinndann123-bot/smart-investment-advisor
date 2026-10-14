@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse
 import asyncio
 import re
 import httpx
+from datetime import datetime, timedelta, timezone
 
 _local_scanner_engine=install_local_scanner(app)
 CHART_API_V7=install_chart_api(app)
@@ -194,7 +195,8 @@ async def strategy_health():
     """Return measured forward-validation health for the existing dashboard."""
     from strategy_health import build_strategy_health
     try:
-        rows=learning_store.load_by_type('scheduled_checkpoint',limit=100000)
+        since=(datetime.now(timezone.utc)-timedelta(days=60)).timestamp()
+        rows=learning_store.load_by_type('scheduled_checkpoint',limit=6000,since_epoch=since)
         storage=learning_store.status()
     except Exception as exc:
         rows=[]
@@ -348,7 +350,8 @@ except Exception as _audit_error:
 async def learning_curve():
     import learning_store as _curve_store
     from scheduled_learning import _first_regular_top10 as _curve_first_regular_top10, _number as _curve_number
-    rows=_curve_store.load_by_type('scheduled_checkpoint',limit=100000)
+    since=(datetime.now(timezone.utc)-timedelta(days=60)).timestamp()
+    rows=_curve_store.load_by_type('scheduled_checkpoint',limit=6000,since_epoch=since)
     rows=[row for row in rows if row.get('strategy_version')==ASYNC_STRATEGY_VERSION]
     first=_curve_first_regular_top10(rows)
     by_date={}
