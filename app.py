@@ -355,3 +355,7 @@ async def learning_curve():
         'success_definition':'positive return at the end of each horizon',
     }
 
+
+# Isolated read-only timing research API.
+from research_timing_api import install as _install_timing_research
+_install_timing_research(app)
