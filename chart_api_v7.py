@@ -20,6 +20,11 @@ def _market_session(ny):
  if minute<960:return 'regular'
  return 'afterhours'
 
+def _chart_feed(range_name, session, configured):
+ live_feed='sip' if str(configured or '').strip().lower()=='sip' else 'iex'
+ if str(range_name).upper()=='1D' and session in {'premarket','afterhours'}:return 'sip'
+ return live_feed
+
 RANGES={
  '1D':('5Min',timedelta(days=7),1000),
  '1W':('15Min',timedelta(days=9),700),
@@ -41,10 +46,12 @@ def install_chart_api(app):
   tf,delta,limit=RANGES[range]; now=datetime.now(timezone.utc);ny=now.astimezone(NY);minute=ny.hour*60+ny.minute
   regular=570<=minute<960
   configured=(os.getenv('ALPACA_FEED') or 'iex').strip().lower()
-  live_feed='sip' if configured=='sip' else 'iex'
-  # Historical bars must use the feed configured for this account; forcing SIP
-  # outside regular hours can silently produce an empty series for IEX accounts.
-  feed=live_feed
+  market_session=_market_session(ny)
+  # Use consolidated SIP for the extended session: the IEX feed stops at the
+  # prior regular close for many symbols, which made the 1D chart look current
+  # while its last candle was yesterday. SIP is delayed outside regular hours
+  # on the Basic plan, so keep the source delay explicit in the response.
+  feed=_chart_feed(range,market_session,configured)
   delayed_minutes=0 if regular and range=='1D' else 16
   end=now-timedelta(minutes=delayed_minutes); start=end-delta
   params={'timeframe':tf,'start':start.isoformat().replace('+00:00','Z'),'end':end.isoformat().replace('+00:00','Z'),'adjustment':'split','feed':feed,'limit':limit,'sort':'asc'}
@@ -53,7 +60,7 @@ def install_chart_api(app):
   if r.status_code>=400:raise HTTPException(r.status_code,detail={'provider':'Alpaca','message':r.text[:300]})
   bars=(r.json() or {}).get('bars') or []
   points=[{'t':b.get('t'),'o':b.get('o'),'h':b.get('h'),'l':b.get('l'),'c':b.get('c'),'v':b.get('v')} for b in bars]
-  return {'symbol':symbol,'range':range,'timeframe':tf,'points':points,'count':len(points),'source':'Alpaca','feed':feed,'session':_market_session(ny),'delayed_minutes':delayed_minutes,'generated_at':now.isoformat(),'last_bar_at':points[-1]['t'] if points else None,'cache_policy':'no-store'}
+  return {'symbol':symbol,'range':range,'timeframe':tf,'points':points,'count':len(points),'source':'Alpaca','feed':feed,'session':market_session,'delayed_minutes':delayed_minutes,'generated_at':now.isoformat(),'last_bar_at':points[-1]['t'] if points else None,'cache_policy':'no-store'}
 
  @app.get('/api/market/quote/{symbol}')
  async def market_quote(symbol:str):
