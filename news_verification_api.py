@@ -6,7 +6,7 @@ from xml.etree import ElementTree as ET
 import httpx
 from fastapi import HTTPException
 
-SEC_HEADERS={"User-Agent":os.getenv("SEC_USER_AGENT","SmartInvestmentAdvisor research admin@example.com"),"Accept":"application/json"}
+SEC_HEADERS={"User-Agent":os.getenv("SEC_USER_AGENT","").strip(),"Accept":"application/json"}
 def clean_symbol(s):
     s=str(s or "").upper().strip()
     if not re.fullmatch(r"[A-Z][A-Z0-9.-]{0,9}",s):raise HTTPException(400,"Invalid ticker")
@@ -20,6 +20,7 @@ async def get_json(client,url,headers=None):
     return None
 
 async def sec_filings(client,symbol):
+    if not SEC_HEADERS["User-Agent"]:return {"status":"configuration_required","filings":[],"reason":"Set SEC_USER_AGENT to application name and real contact email"}
     tickers=await get_json(client,"https://www.sec.gov/files/company_tickers.json",SEC_HEADERS)
     if not isinstance(tickers,dict):return {"status":"unavailable","filings":[]}
     match=next((v for v in tickers.values() if isinstance(v,dict) and str(v.get("ticker","")).upper()==symbol),None)
@@ -32,9 +33,11 @@ async def sec_filings(client,symbol):
     out=[]
     for i,form in enumerate(forms):
         if form not in ("8-K","6-K","S-3","424B5","424B3","S-1","10-Q","10-K"):continue
-        accession=(recent.get("accessionNumber") or [])[i]
-        primary=(recent.get("primaryDocument") or [])[i]
-        filed=(recent.get("filingDate") or [])[i]
+        try:
+            accession=(recent.get("accessionNumber") or [])[i]
+            primary=(recent.get("primaryDocument") or [])[i]
+            filed=(recent.get("filingDate") or [])[i]
+        except IndexError:continue
         out.append({"form":form,"filed":filed,"source":"SEC EDGAR","url":f"https://www.sec.gov/Archives/edgar/data/{cik}/{accession.replace('-','')}/{quote(primary)}"})
         if len(out)>=12:break
     return {"status":"ok","cik":cik,"company":match.get("title"),"filings":out}
