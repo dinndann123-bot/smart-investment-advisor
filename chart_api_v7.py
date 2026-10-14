@@ -25,6 +25,21 @@ def _chart_feed(range_name, session, configured):
  if str(range_name).upper()=='1D' and session in {'premarket','afterhours'}:return 'sip'
  return live_feed
 
+def _trim_intraday_session(points, range_name, session, now):
+ # The upstream 1D request intentionally spans several sessions so premarket
+ # can retain the previous close. During/after today's regular session, show
+ # only today's candles under the UI's "day" range.
+ if str(range_name).upper()!='1D' or session not in {'regular','afterhours'}:return points
+ today=now.astimezone(NY).date()
+ kept=[]
+ for point in points:
+  try:
+   stamp=datetime.fromisoformat(str(point.get('t')).replace('Z','+00:00'))
+   if stamp.astimezone(NY).date()==today:kept.append(point)
+  except (TypeError,ValueError):
+   continue
+ return kept
+
 RANGES={
  '1D':('5Min',timedelta(days=7),1000),
  '1W':('15Min',timedelta(days=9),700),
@@ -60,6 +75,7 @@ def install_chart_api(app):
   if r.status_code>=400:raise HTTPException(r.status_code,detail={'provider':'Alpaca','message':r.text[:300]})
   bars=(r.json() or {}).get('bars') or []
   points=[{'t':b.get('t'),'o':b.get('o'),'h':b.get('h'),'l':b.get('l'),'c':b.get('c'),'v':b.get('v')} for b in bars]
+  points=_trim_intraday_session(points,range,market_session,now)
   return {'symbol':symbol,'range':range,'timeframe':tf,'points':points,'count':len(points),'source':'Alpaca','feed':feed,'session':market_session,'delayed_minutes':delayed_minutes,'generated_at':now.isoformat(),'last_bar_at':points[-1]['t'] if points else None,'cache_policy':'no-store'}
 
  @app.get('/api/market/quote/{symbol}')
