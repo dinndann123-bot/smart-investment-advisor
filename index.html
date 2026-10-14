@@ -702,7 +702,7 @@ let alpacaFeed="iex";
 let alpacaWS=null,alpacaAuthed=false,liveBars=[],lastTradePrice=null;
 let autoScanEnabled=localStorage.getItem("auto_day_scanner")!=="0";
 let autoScanTimer=null;
-let scannerRefreshSec=30;
+let scannerRefreshSec=300;
 let scannerBusy=false;
 let backendInfo={alpaca_configured:false,alpha_vantage_configured:false,alpaca_feed:"iex"};
 const heText=s=>String(s??"").replace(/[&<>'"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
