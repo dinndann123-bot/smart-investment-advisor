@@ -355,3 +355,7 @@ async def learning_curve():
         'success_definition':'positive return at the end of each horizon',
     }
 
+
+# Independent read-only company filings and news source lookup.
+from news_verification_api import install as _install_news_verification
+_install_news_verification(app)

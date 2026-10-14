@@ -1,6 +1,23 @@
 import urllib.request
 _STABLE='https://raw.githubusercontent.com/dinndann123-bot/smart-investment-advisor/13fe48cbb4886fe2ad95a37712562c03a17fc035/app_v66.py'
 _code=urllib.request.urlopen(_STABLE,timeout=30).read().decode('utf-8')
+# The pinned upstream websocket handler leaves a disconnected client task exception
+# unobserved. Make the smallest possible source-level correction before compiling.
+_ws_old='''            async def keep_client():
+                while True:
+                    # We do not need commands from the browser yet, but reading detects disconnects.
+                    await client_ws.receive_text()'''
+_ws_new='''            async def keep_client():
+                try:
+                    while True:
+                        # We do not need commands from the browser yet, but reading detects disconnects.
+                        await client_ws.receive_text()
+                except WebSocketDisconnect:
+                    return'''
+if _ws_old in _code:
+    _code=_code.replace(_ws_old,_ws_new,1)
+else:
+    print('WEBSOCKET_DISCONNECT_PATCH_NOT_APPLIED: upstream source changed',flush=True)
 exec(compile(_code,_STABLE,'exec'),globals(),globals())
 
 # v6.6.7: forward-validation journal. Records every Top-10 signal and measures subsequent live prices.
