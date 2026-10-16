@@ -1,0 +1,26 @@
+name: Keep Aiven PostgreSQL active
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aiven-postgresql-activity-check
+  cancel-in-progress: true
+
+jobs:
+  database-activity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Query app and verify durable database connectivity
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://smart-investment-advisor-yjtz.onrender.com'
+          summary="$(curl --fail --silent --show-error --retry 2 --retry-delay 5 --max-time 90 "$base/api/learning/summary")"
+          python -c 'import json,sys; d=json.load(sys.stdin); s=d.get("storage") or {}; assert s.get("durable") is True and s.get("connected") is True, "learning storage unavailable: "+str(s); print("Aiven PostgreSQL: connected; durable storage verified; signals=%s" % d.get("signals", 0))' <<<"$summary"
