@@ -4,8 +4,9 @@ import os
 import sqlite3
 from pathlib import Path
 
-# Prefer the verified Neon database while retaining the Render URL as a rollback fallback.
-DATABASE_URL = os.getenv("NEON_MIGRATION_URL", "").strip() or os.getenv("DATABASE_URL", "").strip()
+# The configured primary PostgreSQL URL always wins. Neon is legacy-only;
+# never silently fall back to a blocked legacy database after migration.
+DATABASE_URL = os.getenv("LEARNING_DATABASE_URL", "").strip() or os.getenv("DATABASE_URL", "").strip() or os.getenv("NEON_MIGRATION_URL", "").strip()
 SQLITE_PATH = Path(__file__).with_name("learning_signals.sqlite3")
 _INITIALIZED_FOR = None
 
