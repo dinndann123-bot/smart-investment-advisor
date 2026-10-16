@@ -118,6 +118,13 @@ def install_chart_api(app):
   else:state='stale'
   valid=state in {'current','current_delayed','market_closed'}
   previous_close=_number(previous.get('c'))
+  # Before the regular session opens, Alpaca's dailyBar is the latest completed
+  # session close; prevDailyBar is one session older. Use yesterday's close as
+  # the premarket baseline, falling back to prevDailyBar only if dailyBar is missing.
+  daily_close=_number(daily.get('c'))
+  daily_time=parse_time(daily.get('t'))
+  if session=='premarket' and daily_close and daily_time and daily_time.astimezone(NY).date()<ny.date():
+   previous_close=daily_close
   change=((price/previous_close-1)*100) if valid and price and previous_close else None
   return {'symbol':symbol,'price':round(price,4) if valid and price else None,'last_observed_price':round(price,4) if price else None,
           'previous_close':round(previous_close,4) if previous_close else None,'change_percent':round(change,3) if change is not None else None,
