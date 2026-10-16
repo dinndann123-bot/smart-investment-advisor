@@ -89,7 +89,8 @@ try:
  import learning_store
  import os as _neon_os
  def _copy_learning_to_neon():
-     target_url=_neon_os.getenv("NEON_MIGRATION_URL","").strip()
+     # Explicit opt-in only: old NEON_MIGRATION_URL must not trigger reverse copy on boot.
+     target_url=_neon_os.getenv("LEARNING_MIGRATION_TARGET_URL","").strip()
      source_url=getattr(learning_store,"DATABASE_URL","").strip()
      if not target_url:
          return None
