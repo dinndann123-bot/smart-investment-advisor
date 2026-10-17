@@ -75,6 +75,8 @@ def install(core):
             except Exception:
                 continue
 
+        for _items in by_day.values():
+            _items.sort(key=lambda item: item[0])
         today = by_day.get(clock_now.date(), [])
         today_window, hist = [], []
         if window_start is not None and clock_cur >= window_start:
@@ -125,6 +127,11 @@ def install(core):
         row["session_bars_count"] = len(today_window)
         row["market_data_clock"] = clock_now.isoformat()
         row["market_data_delay_minutes"] = SIP_DELAY_MINUTES if session == "premarket" else 0
+        row["quote_realtime"] = False if session == "premarket" else None
+        row["quote_latency_label"] = "SIP delayed ~16 minutes" if session == "premarket" else "feed-dependent"
+        row["price_asof_utc"] = source_time.astimezone(timezone.utc).isoformat() if source_time else None
+        row["price_age_minutes"] = round(max(0, (wall_utc - source_time.astimezone(timezone.utc)).total_seconds() / 60), 1) if source_time else None
+        row["quote_freshness_wall_clock"] = "delayed" if source_time and session == "premarket" else "unknown" if source_time is None else "feed-dependent"
         row["clock_baseline_volume"] = round(baseline) if baseline > 0 else None
         row["historical_baseline_volume"] = round(baseline) if baseline > 0 else row.get("historical_baseline_volume")
         row["clock_live_volume"] = round(live_window_volume) if live_window_volume > 0 else None
@@ -135,6 +142,7 @@ def install(core):
             # from yesterday's snapshot volume.
             if not today_window:
                 row["data_freshness_status"] = "no_premarket_sip_trades"
+                row["quote_freshness_wall_clock"] = "unavailable"
                 row["rvol"] = row["rvol_raw"] = None
                 row["rvol_reliable"] = False
                 row["minute_volume_burst"] = None
