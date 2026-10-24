@@ -67,10 +67,17 @@ jobs:
           test -n "$status" || { echo 'scheduler endpoint did not become ready with installed=true'; exit 1; }
           python -c 'import json,sys; d=json.load(sys.stdin); assert d.get("installed") is True, f"scheduler not installed: {d}"; print("scheduler: installed")' <<<"$status"
 
+          capture="$(curl --fail --silent --show-error --max-time 150 -X POST "$base/api/learning/capture-due")"
+          python -c 'import json,sys; d=json.load(sys.stdin); assert not d.get("missed_checkpoints"), "missed scheduled checkpoints: "+str(d.get("missed_checkpoints")); assert not d.get("checkpoint_due") or d.get("captured") is True, "due checkpoint was not saved: "+str(d); print("checkpoint: %s captured=%s" % (d.get("checkpoint") or "none due",d.get("captured")))' <<<"$capture"
+
           chart="$(curl --fail --silent --show-error --retry 2 --retry-delay 10 --max-time 60 \
             "$base/api/market/chart/SPY?range=1D")"
           python -c 'import json,sys; d=json.load(sys.stdin); assert d.get("source")=="Alpaca" and d.get("count",0)>0 and d.get("last_bar_at"), "chart data invalid"; print("chart: %s Alpaca bars, last=%s" % (d["count"], d["last_bar_at"]))' <<<"$chart"
 
           summary="$(curl --fail --silent --show-error --retry 2 --retry-delay 10 --max-time 90 \
             "$base/api/learning/summary")"
-          python -c 'import json,sys; d=json.load(sys.stdin); s=d.get("storage") or {}; assert s.get("durable") is True and s.get("connected") is True, "learning storage unavailable"; print("learning: %s signals, strategy=%s" % (d.get("signals", 0), d.get("strategy_version")))' <<<"$summary"
+          python -c 'import json,sys; d=json.load(sys.stdin); s=d.get("storage") or {}; assert s.get("durable") is True and s.get("connected") is True, "learning storage unavailable"; print("learning storage: %s signals, strategy=%s" % (d.get("signals", 0), d.get("strategy_version")))' <<<"$summary"
+
+          weekly="$(curl --fail --silent --show-error --retry 2 --retry-delay 10 --max-time 45 \
+            "$base/api/learning/weekly-summary")"
+          python -c 'import json,sys; d=json.load(sys.stdin); assert d.get("calendar_source")=="alpaca_calendar", "market calendar unavailable: "+str(d); print("weekly learning: status=%s coverage=%s/%s evaluated=%s success=%s" % (d.get("status"),d.get("covered_sessions"),d.get("expected_sessions"),d.get("evaluated_15m"),d.get("success_rate_pct")))' <<<"$weekly"
