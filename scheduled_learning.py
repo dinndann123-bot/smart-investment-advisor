@@ -201,18 +201,28 @@ def install_scheduled_learning(app, scanner_engine, learning_store, strategy_ver
         state['missed_checkpoints']=missed
         return captured
 
+    capture_lock=asyncio.Lock()
+
     async def capture(label):
+        async with capture_lock:
+            return await _capture_checkpoint(label)
+
+    async def _capture_checkpoint(label):
         now=datetime.now(timezone.utc);ny=now.astimezone(NY);key=f'{ny.date().isoformat()}:{label}'
         if state['last_capture'].get(label)==ny.date().isoformat():return
-        response=await scanner_engine(top=10,candidates=40)
-        try:
-            import json
-            payload=json.loads(response.body.decode('utf-8')) if hasattr(response,'body') else response
-        except Exception:
-            payload=response if isinstance(response,dict) else {}
-        rows=(payload or {}).get('results') or []
+        payload={};rows=[]
+        for attempt in range(3):
+            response=await scanner_engine(top=10,candidates=120)
+            try:
+                import json
+                payload=json.loads(response.body.decode('utf-8')) if hasattr(response,'body') else response
+            except Exception:
+                payload=response if isinstance(response,dict) else {}
+            rows=(payload or {}).get('results') or []
+            if len(rows)>=10:break
+            if attempt<2:await asyncio.sleep(2)
         if len(rows)<10:
-            state['last_error']=f'incomplete_checkpoint:{label}:rows={len(rows)}'
+            state['last_error']=f'incomplete_checkpoint:{label}:rows={len(rows)}:attempts=3'
             return
         scan_id=(payload or {}).get('scan_id') or key
         for rank,row in enumerate(rows[:10],1):
@@ -337,6 +347,73 @@ def install_scheduled_learning(app, scanner_engine, learning_store, strategy_ver
         all_signal_cohort=cohort(evaluated)
         return {'has_data':bool(rows),'source':'scheduled_point_in_time_forward_validation','storage':learning_store.status(),'strategy_version':strategy_version,'signals':len(rows),'evaluated':n,'all_checkpoint_evaluated':len(evaluated),'pending':len(first_regular_top10)-n,'missed_measurement_windows':missed,'success_rate_pct':independent_cohort['positive_rate_pct'],'target1_rate_pct':independent_cohort['target1_rate_pct'],'target2_rate_pct':independent_cohort['target2_rate_pct'],'expectancy_r':independent_cohort['avg_return_pct'],'all_checkpoint_metrics':all_signal_cohort,'headline_metric':{'cohort':'first Top-10 observation per ticker per trade date during regular trading','horizon_minutes':15,'independent_samples':n,'positive_signals':sum(ret>0 for _,_,ret in independent_top10)},'cohorts':{'predictive':cohort(predictive),'watch_fallback':cohort(fallback),'shadow_entry_eligible':cohort(shadow_eligible),'shadow_other':cohort(shadow_other),'independent_top10_15m':independent_cohort},'precision_research':{'target_positive_rate_pct':70,'measurement_horizon_minutes':15,'minimum_independent_samples':MIN_VALIDATION_SAMPLES,'independent_entry_signals':cohort(independent),'with_fresh_catalyst':cohort([x for x in independent if x[0].get('catalyst_present')]),'without_fresh_catalyst':cohort([x for x in independent if not x[0].get('catalyst_present')]),'opening_lane':cohort(opening_v3),'intraday_ignition_lane':cohort(ignition_v3),'independence_rule':'first eligible signal per ticker per trade date','ready':len(independent)>=MIN_VALIDATION_SAMPLES},'shadow_research':{'version':'shadow-opportunity-entry-v3','production_effect':False,'hypothesis':'Require reliable acceleration, tradable dollar liquidity and acceptable spread; measure fresh catalyst separately; keep extreme conditions observable but veto entry.'},'universe_size':len({r.get('ticker') for r in rows}),'feature_learning':features,'recent_signals':recent,'stock_performance':stock_performance,'horizons_minutes':list(HORIZONS),'periods':PERIOD_LABELS,'checkpoint_health':{'captured':state.get('last_capture'),'missed':state.get('missed_checkpoints'),'grace_minutes':CHECKPOINT_GRACE_MINUTES},'validation':{'ready':ready,'minimum_samples':MIN_VALIDATION_SAMPLES,'chronological_point_in_time':True,'measurement_grace_seconds':MEASUREMENT_GRACE_SECONDS,'weights_changed':False,'production_weights_unchanged':True,'legacy_records_excluded':len(all_rows)-len(rows)},'definitions':{'score':'התאמה לשיטה, לא הסתברות הצלחה','success_rate':'תשואה חיובית אחרי 15 דקות; האות הראשון לכל מניה בשעות המסחר','target1':'עלייה של 1% לפחות אחרי 15 דקות','target2':'עלייה של 2% לפחות אחרי 15 דקות','day':'מחיר סגירה רשמי של יום המסחר','timing':'זמן מהאות עד לשיא ולשפל שנצפו במהלך חלון המסחר'}}
 
+
+    async def expected_market_dates(start_day,end_day):
+        key=(os.getenv('ALPACA_API_KEY') or os.getenv('ALPACA_KEY') or '').strip()
+        secret=(os.getenv('ALPACA_SECRET_KEY') or os.getenv('ALPACA_SECRET') or '').strip()
+        if not key or not secret:return [],'unavailable'
+        try:
+            import httpx
+            headers={'APCA-API-KEY-ID':key,'APCA-API-SECRET-KEY':secret}
+            async with httpx.AsyncClient(timeout=10) as client:
+                response=await client.get('https://paper-api.alpaca.markets/v2/calendar',headers=headers,params={'start':start_day.isoformat(),'end':end_day.isoformat()})
+            if response.status_code>=400:return [],'unavailable'
+            days=sorted({str(row.get('date')) for row in response.json() or [] if row.get('date')})
+            return days,'alpaca_calendar'
+        except Exception:
+            return [],'unavailable'
+
+    async def weekly_report(week_start=None,week_end=None):
+        today=datetime.now(timezone.utc).astimezone(NY).date()
+        monday=today-timedelta(days=today.weekday())
+        start_day=date.fromisoformat(week_start) if week_start else monday
+        end_day=date.fromisoformat(week_end) if week_end else min(today,monday+timedelta(days=4))
+        if end_day<start_day:
+            return {'status':'invalid_window','week_start':start_day.isoformat(),'week_end':end_day.isoformat(),'success_rate_pct':None}
+        sessions,calendar_source=await expected_market_dates(start_day,end_day)
+        if calendar_source!='alpaca_calendar':
+            return {'status':'calendar_unavailable','week_start':start_day.isoformat(),'week_end':end_day.isoformat(),'calendar_source':calendar_source,'success_rate_pct':None,'reason':'אין לוח מסחר מאומת; אחוז הצלחה לא חושב'}
+        session_set=set(sessions)
+        rows=[r for r in checkpoint_rows() if r.get('strategy_version')==strategy_version and r.get('trade_date') in session_set]
+        first=_first_regular_top10(rows)
+        per_day=[]
+        evaluated=[]
+        for day in sessions:
+            day_rows=[r for r in first if r.get('trade_date')==day]
+            day_eval=[r for r in day_rows if _number(r.get('ret15m_pct')) is not None]
+            evaluated.extend(day_eval)
+            positives=sum(_number(r.get('ret15m_pct'))>0 for r in day_eval)
+            per_day.append({'trade_date':day,'regular_signals':len(day_rows),'evaluated_15m':len(day_eval),'positive_15m':positives,'success_rate_pct':round(100*positives/len(day_eval),1) if day_eval else None,'checkpoints':sorted({r.get('checkpoint') for r in day_rows if r.get('checkpoint')})})
+        expected=len(sessions)
+        covered=sum(x['regular_signals']>=10 for x in per_day)
+        fully_evaluated=sum(x['evaluated_15m']>=10 for x in per_day)
+        samples=len(evaluated);positives=sum(_number(r.get('ret15m_pct'))>0 for r in evaluated)
+        complete=expected>0 and covered==expected and fully_evaluated==expected
+        ready=complete and samples>=MIN_VALIDATION_SAMPLES
+        if not sessions:status='no_market_sessions'
+        elif samples==0:status='no_regular_session_signals'
+        elif not complete:status='partial_week_coverage'
+        elif not ready:status='insufficient_samples'
+        else:status='ready'
+        return {'status':status,'week_start':start_day.isoformat(),'week_end':end_day.isoformat(),'calendar_source':calendar_source,'expected_sessions':expected,'covered_sessions':covered,'fully_evaluated_sessions':fully_evaluated,'coverage_pct':round(100*covered/expected,1) if expected else None,'signals':sum(x['regular_signals'] for x in per_day),'evaluated_15m':samples,'positive_15m':positives,'observed_positive_rate_pct':round(100*positives/samples,1) if samples else None,'success_rate_pct':round(100*positives/samples,1) if ready else None,'minimum_validation_samples':MIN_VALIDATION_SAMPLES,'per_session':per_day,'reason':None if ready else 'אין כיסוי מלא לכל ימי המסחר או שאין מספיק דגימות בלתי תלויות'}
+
+    @app.post('/api/learning/capture-due')
+    async def capture_due_checkpoint():
+        ny=datetime.now(timezone.utc).astimezone(NY)
+        captured=refresh_checkpoint_state(ny)
+        label=_checkpoint_due(ny,captured)
+        if label:
+            await capture(label)
+            await evaluate_due()
+            captured=refresh_checkpoint_state(datetime.now(timezone.utc).astimezone(NY))
+        saved=bool(label and state['last_capture'].get(label)==ny.date().isoformat())
+        return {'checkpoint_due':bool(label),'checkpoint':label,'captured':saved,'last_capture':state.get('last_capture',{}),'missed_checkpoints':state.get('missed_checkpoints',[]),'last_error':state.get('last_error'),'strategy_version':strategy_version}
+
+    @app.get('/api/learning/weekly-summary')
+    async def scheduled_weekly_summary(week_start:str=None,week_end:str=None):
+        await evaluate_due()
+        return await weekly_report(week_start,week_end)
+
     async def loop():
         while True:
             try:
@@ -423,7 +500,9 @@ def install_scheduled_learning(app, scanner_engine, learning_store, strategy_ver
     @app.get('/api/learning/summary')
     async def scheduled_summary():
         await evaluate_due()
-        return summary()
+        result=summary()
+        result['weekly_summary']=await weekly_report()
+        return result
 
     @app.get('/api/learning/forward-validation')
     async def scheduled_forward_validation():
